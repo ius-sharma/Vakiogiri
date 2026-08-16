@@ -3,13 +3,13 @@ import sys
 import shutil
 import subprocess
 import math
-from typing import List
+from typing import List, Callable, Optional
 import yt_dlp
 
 # ==============================================================================
 # CONFIGURATION CONSTANTS
 # ==============================================================================
-SEGMENT_DURATION = 45  # seconds
+DEFAULT_SEGMENT_DURATION = 45  # seconds
 TARGET_WIDTH = 1080
 TARGET_HEIGHT = 1920
 
@@ -30,11 +30,22 @@ def check_ffmpeg_installed() -> bool:
     return True
 
 
-def download_video(url: str, output_dir: str) -> str:
+def download_video(url: str, output_dir: str, progress_callback: Optional[Callable[[str, int, str], None]] = None) -> str:
     """Download video from YouTube using yt-dlp in max 1080p quality into output_dir."""
     print(f"[1/4] Starting download for: {url}")
+    if progress_callback:
+        progress_callback("downloading", 10, "Connecting to YouTube and downloading video...")
+
     os.makedirs(output_dir, exist_ok=True)
     
+    def ytdl_hook(d):
+        if d.get('status') == 'downloading' and progress_callback:
+            total = d.get('total_bytes') or d.get('total_bytes_estimate') or 0
+            downloaded = d.get('downloaded_bytes', 0)
+            if total > 0:
+                percent = int(10 + (downloaded / total) * 20)  # 10% to 30%
+                progress_callback("downloading", percent, f"Downloading video ({percent}%)...")
+
     ydl_opts = {
         'format': 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best[height<=1080]/best',
         'outtmpl': os.path.join(output_dir, '%(title)s.%(ext)s'),
@@ -43,6 +54,7 @@ def download_video(url: str, output_dir: str) -> str:
         'no_warnings': False,
         'nocheckcertificate': True,
         'geo_bypass': True,
+        'progress_hooks': [ytdl_hook],
         'extractor_args': {
             'youtube': {
                 'player_client': ['mweb', 'ios', 'web', 'android'],
@@ -73,6 +85,8 @@ def download_video(url: str, output_dir: str) -> str:
             final_path = max(files, key=os.path.getmtime)
 
     print(f"[1/4] Download complete: {final_path}")
+    if progress_callback:
+        progress_callback("analyzing", 35, "Download complete. Reading video duration...")
     return final_path
 
 
@@ -96,12 +110,23 @@ def get_video_duration(video_path: str) -> float:
         raise ValueError("Parsing video duration from ffprobe output failed.")
 
 
-def split_and_crop_video(video_path: str, output_dir: str, duration: float, segment_len: int = 45) -> List[str]:
-    """Split video into fixed-length segments and crop/scale each segment to 1080x1920 (9:16)."""
+MAX_CLIPS_PER_VIDEO = 5
+
+
+def split_and_crop_video(
+    video_path: str,
+    output_dir: str,
+    duration: float,
+    segment_len: int = DEFAULT_SEGMENT_DURATION,
+    max_clips: int = MAX_CLIPS_PER_VIDEO,
+    progress_callback: Optional[Callable[[str, int, str], None]] = None
+) -> List[str]:
+    """Split video into fixed-length segments (up to max_clips) and crop/scale each segment to 1080x1920 (9:16)."""
     os.makedirs(output_dir, exist_ok=True)
-    num_segments = math.ceil(duration / segment_len)
+    total_available_segments = math.ceil(duration / segment_len)
+    num_segments = min(total_available_segments, max_clips)
     
-    print(f"[2/4] Total video duration: {duration:.2f} seconds ({num_segments} segment(s) of max {segment_len}s)")
+    print(f"[2/4] Total video duration: {duration:.2f}s ({total_available_segments} available, creating {num_segments} clip(s) of max {segment_len}s)")
     print(f"[3/4] Splitting video into clips and cropping to 9:16 vertical ({TARGET_WIDTH}x{TARGET_HEIGHT})...")
     
     vf_filter = f"scale={TARGET_WIDTH}:{TARGET_HEIGHT}:force_original_aspect_ratio=increase,crop={TARGET_WIDTH}:{TARGET_HEIGHT}"
@@ -112,6 +137,15 @@ def split_and_crop_video(video_path: str, output_dir: str, duration: float, segm
         clip_name = f"clip_{i + 1}.mp4"
         clip_path = os.path.join(output_dir, clip_name)
         
+        # Calculate progress between 40% and 90%
+        if progress_callback:
+            clip_progress = int(40 + ((i + 1) / num_segments) * 50)
+            progress_callback(
+                "clipping",
+                clip_progress,
+                f"Cropping & rendering clip {i + 1} of {num_segments} ({segment_len}s)..."
+            )
+
         ffmpeg_cmd = [
             "ffmpeg",
             "-y",
@@ -137,10 +171,41 @@ def split_and_crop_video(video_path: str, output_dir: str, duration: float, segm
     return created_clips
 
 
-def run_pipeline(youtube_url: str, clips_output_dir: str, download_dir: str = "downloads") -> List[str]:
-    """Run the complete download, duration reading, and splitting pipeline."""
+def run_pipeline(
+    youtube_url: str,
+    clips_output_dir: str,
+    download_dir: str = "downloads",
+    segment_duration: int = DEFAULT_SEGMENT_DURATION,
+    max_clips: int = MAX_CLIPS_PER_VIDEO,
+    progress_callback: Optional[Callable[[str, int, str], None]] = None
+) -> List[str]:
+    """Run the complete download, duration reading, splitting pipeline, and cleanup."""
     check_ffmpeg_installed()
-    video_path = download_video(youtube_url, download_dir)
-    duration = get_video_duration(video_path)
-    clips = split_and_crop_video(video_path, clips_output_dir, duration, SEGMENT_DURATION)
-    return clips
+    
+    try:
+        if progress_callback:
+            progress_callback("initializing", 5, "Initializing pipeline...")
+
+        # 1. Download YouTube video
+        video_path = download_video(youtube_url, download_dir, progress_callback)
+        
+        # 2. Extract Duration
+        duration = get_video_duration(video_path)
+        
+        # 3. Crop & Split (up to max_clips)
+        clips = split_and_crop_video(video_path, clips_output_dir, duration, segment_duration, max_clips, progress_callback)
+        
+        if progress_callback:
+            progress_callback("cleaning", 95, "Purging raw temporary downloads...")
+            
+        return clips
+        
+    finally:
+        # Guaranteed Zero-Disk-Waste Cleanup of the raw download folder
+        if os.path.exists(download_dir):
+            try:
+                shutil.rmtree(download_dir)
+                print(f"[Auto-Clean] Successfully purged raw download directory: {download_dir}")
+            except Exception as clean_err:
+                print(f"[Auto-Clean Warning] Could not remove download dir {download_dir}: {clean_err}")
+

@@ -1,4 +1,4 @@
-# Python
+# Python & Environments
 __pycache__/
 *.py[cod]
 *.pyo
@@ -8,8 +8,20 @@ venv/
 .venv/
 ENV/
 env/
+
+# Environment Variables & Secrets
 .env
-.env.*
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+!.env.example
+
+# SQLite Database
+*.db
+*.sqlite
+*.sqlite3
+database.db
 
 # IDE / OS
 .vscode/
@@ -19,8 +31,10 @@ Thumbs.db
 
 # Logs
 *.log
+npm-debug.log*
+yarn-debug.log*
 
-# Project-generated media / downloads
+# Generated Media / Temporary Cache
 downloads/
 clips/
 stitch_assets/
@@ -32,3 +46,7 @@ stitch_assets/
 
 # Frontend / Node
 node_modules/
+.next/
+out/
+build/
+.vercel/
