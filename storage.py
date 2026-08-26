@@ -39,7 +39,7 @@ def upload_file_to_supabase(
         with open(local_path, "rb") as f:
             file_data = f.read()
 
-        response = requests.post(upload_url, headers=headers, data=file_data, timeout=60)
+        response = requests.post(upload_url, headers=headers, data=file_data, timeout=4)
         
         if response.status_code in [200, 201]:
             public_url = f"{SUPABASE_URL}/storage/v1/object/public/{BUCKET_NAME}/{destination_path}"
@@ -84,9 +84,9 @@ def delete_job_files_from_supabase(job_id: str, filenames: Optional[List[str]] =
 def upload_clips_and_cleanup(
     job_id: str,
     clips_dir: str,
-    clip_filenames: List[str],
+    clip_filenames: List[Any],
     progress_callback: Optional[Any] = None
-) -> List[Dict[str, str]]:
+) -> List[Dict[str, Any]]:
     """
     Upload all generated clips to Supabase Storage, and return clip metadata.
     If storage is configured, immediately purges local clip files after upload.
@@ -94,7 +94,14 @@ def upload_clips_and_cleanup(
     clip_results = []
     storage_active = is_storage_configured()
 
-    for idx, filename in enumerate(clip_filenames):
+    for idx, item in enumerate(clip_filenames):
+        if isinstance(item, dict):
+            filename = item.get("filename", f"clip_{idx+1}.mp4")
+            base_meta = dict(item)
+        else:
+            filename = str(item)
+            base_meta = {"filename": filename}
+
         local_clip_path = os.path.join(clips_dir, filename)
         if not os.path.exists(local_clip_path):
             continue
@@ -107,18 +114,20 @@ def upload_clips_and_cleanup(
         public_url = upload_file_to_supabase(local_clip_path, destination_path)
 
         if public_url:
-            clip_results.append({
+            base_meta.update({
                 "filename": filename,
                 "url": public_url,
                 "is_cloud": True
             })
         else:
             # Fallback to local server route
-            clip_results.append({
+            base_meta.update({
                 "filename": filename,
                 "url": f"/clips/{job_id}/{filename}",
                 "is_cloud": False
             })
+
+        clip_results.append(base_meta)
 
     # If all clips uploaded to cloud storage, we can safely delete local clip directory to save disk space
     if storage_active and all(c.get("is_cloud") for c in clip_results):

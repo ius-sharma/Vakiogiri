@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import AuthModal from "../components/AuthModal";
+import TopNavBar, { NavItem } from "../components/TopNavBar";
 import { supabase, signOut } from "../lib/supabase";
 
 const BACKEND_URL = "http://localhost:8000";
@@ -10,6 +11,11 @@ interface ClipItem {
   filename: string;
   url: string;
   is_cloud?: boolean;
+  title?: string;
+  score?: number;
+  start?: number;
+  end?: number;
+  duration?: number;
 }
 
 interface JobStatusResponse {
@@ -84,7 +90,8 @@ export default function Home() {
     }
 
     // Check initial Supabase session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then((res: any) => {
+      const session = res?.data?.session;
       setSession(session);
       if (session?.access_token) {
         fetchUserProfile(session.access_token);
@@ -94,7 +101,7 @@ export default function Home() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((_event: any, session: any) => {
       setSession(session);
       if (session?.access_token) {
         fetchUserProfile(session.access_token);
@@ -197,22 +204,69 @@ export default function Home() {
     });
   };
 
-  const getClipUrl = (clip: string | ClipItem, targetJobId?: string) => {
+  const getClipUrl = (clip: any, targetJobId?: string) => {
+    const activeJobId = targetJobId || jobId;
+    if (!clip) return "";
     if (typeof clip === "string") {
-      return `${BACKEND_URL}/clips/${targetJobId || jobId}/${clip}`;
+      if (clip.startsWith("http://") || clip.startsWith("https://")) return clip;
+      if (clip.startsWith("/clips/")) return `${BACKEND_URL}${clip}`;
+      return `${BACKEND_URL}/clips/${activeJobId}/${clip}`;
     }
-    if (clip.url.startsWith("http")) {
-      return clip.url;
+    if (typeof clip === "object") {
+      if (clip.url) {
+        if (clip.url.startsWith("http://") || clip.url.startsWith("https://")) return clip.url;
+        if (clip.url.startsWith("/clips/")) return `${BACKEND_URL}${clip.url}`;
+        return `${BACKEND_URL}/clips/${activeJobId}/${clip.url}`;
+      }
+      if (clip.filename) {
+        return `${BACKEND_URL}/clips/${activeJobId}/${clip.filename}`;
+      }
     }
-    return `${BACKEND_URL}${clip.url}`;
+    return "";
   };
 
-  const getClipFilename = (clip: string | ClipItem) => {
-    return typeof clip === "string" ? clip : clip.filename;
+  const getClipFilename = (clip: any) => {
+    if (!clip) return "clip.mp4";
+    if (typeof clip === "string") {
+      return clip.split("/").pop() || clip;
+    }
+    if (typeof clip === "object") {
+      return clip.filename || "clip.mp4";
+    }
+    return "clip.mp4";
   };
 
-  const isClipCloudHosted = (clip: string | ClipItem) => {
+  const isClipCloudHosted = (clip: any) => {
     return typeof clip === "object" && clip.is_cloud === true;
+  };
+
+  const formatSeconds = (sec?: number) => {
+    if (sec === undefined || sec === null || isNaN(sec)) return "";
+    const totalSeconds = Math.max(0, Math.floor(sec));
+    const m = Math.floor(totalSeconds / 60);
+    const s = totalSeconds % 60;
+    return `${m}:${s.toString().padStart(2, "0")}`;
+  };
+
+  const getClipTitle = (clip: any, index: number) => {
+    if (typeof clip === "object" && clip.title) {
+      return clip.title;
+    }
+    return `Best Moment #${index + 1}`;
+  };
+
+  const getClipScore = (clip: any) => {
+    if (typeof clip === "object" && typeof clip.score === "number") {
+      return clip.score;
+    }
+    return 85;
+  };
+
+  const getClipTimeRange = (clip: any) => {
+    if (typeof clip === "object" && clip.start !== undefined && clip.end !== undefined) {
+      return `${formatSeconds(clip.start)} - ${formatSeconds(clip.end)}`;
+    }
+    return null;
   };
 
   // Direct forced MP4 file download (solves browser popup / XML issues)
@@ -268,14 +322,16 @@ export default function Home() {
   const handleGenerate = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
 
-    // Enforce mandatory authentication
-    if (!session) {
-      handleOpenAuth("login");
+    if (!youtubeUrl.trim()) {
+      setErrorMsg("Please paste a YouTube URL first.");
       return;
     }
 
-    if (!youtubeUrl.trim()) {
-      setErrorMsg("Please paste a valid YouTube URL first.");
+    const trimmedUrl = youtubeUrl.trim();
+    const isYouTube = /^(https?:\/\/)?(www\.|m\.)?(youtube\.com\/(watch\?v=|shorts\/|live\/)|youtu\.be\/)/i.test(trimmedUrl);
+    if (!isYouTube) {
+      setErrorMsg(`"${trimmedUrl}" is not a valid YouTube video link. Please enter a valid link like https://www.youtube.com/watch?v=... or https://youtu.be/...`);
+      setStatus("failed");
       return;
     }
 
@@ -325,7 +381,7 @@ export default function Home() {
 
       pollIntervalRef.current = setInterval(() => {
         checkStatus(currentJobId);
-      }, 1500);
+      }, 800);
 
       checkStatus(currentJobId);
     } catch (err: any) {
@@ -401,116 +457,48 @@ export default function Home() {
       <div className="absolute inset-0 premium-bg pointer-events-none -z-10"></div>
 
       {/* TopNavBar */}
-      <header className="w-full top-0 bg-transparent font-body-md text-body-md border-b border-outline-variant/30 sticky z-50 backdrop-blur-md">
-        <div className="flex justify-between items-center h-20 px-gutter max-w-container-max mx-auto">
-          
-          {/* Brand Logo */}
-          <button 
-            onClick={handleReset} 
-            className="font-headline-sm text-headline-sm font-bold text-on-surface tracking-tight hover:opacity-80 transition-opacity cursor-pointer text-left"
-          >
-            <span>Vakiogiri</span>
-          </button>
-
-          {/* Navigation Views */}
-          <nav className="flex items-center gap-2 sm:gap-4">
-            <button
-              onClick={() => setActiveView("studio")}
-              className={`px-3.5 py-1.5 rounded-xl font-label-md text-xs sm:text-sm font-medium transition-colors flex items-center gap-1.5 cursor-pointer ${
-                activeView === "studio"
-                  ? "bg-surface-container-low text-on-surface border border-outline-variant"
-                  : "text-secondary hover:text-on-surface"
-              }`}
-            >
-              <span className="material-symbols-outlined text-base">auto_fix_high</span>
-              <span>Studio</span>
-            </button>
-
-            <button
-              onClick={() => {
-                if (!session) {
-                  handleOpenAuth("login");
-                } else {
-                  setActiveView("history");
-                  fetchUserHistory();
-                }
-              }}
-              className={`px-3.5 py-1.5 rounded-xl font-label-md text-xs sm:text-sm font-medium transition-colors flex items-center gap-1.5 cursor-pointer ${
-                activeView === "history"
-                  ? "bg-surface-container-low text-on-surface border border-outline-variant"
-                  : "text-secondary hover:text-on-surface"
-              }`}
-            >
-              <span className="material-symbols-outlined text-base">video_library</span>
-              <span>My Clips</span>
-              {history.length > 0 && (
-                <span className="px-1.5 py-0.2 bg-primary/20 text-primary text-[11px] font-bold rounded-full">
-                  {history.length}
-                </span>
-              )}
-            </button>
-          </nav>
-
-          {/* Trailing Actions */}
-          <div className="flex items-center gap-2 sm:gap-3">
-            {/* Daily Credits Counter Badge */}
-            {session ? (
-              <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface-container-low border border-outline-variant/60 text-xs font-semibold text-on-surface shadow-xs">
-                <span className="text-amber-500">⚡</span>
-                <span>{userProfile.credits_remaining}/{userProfile.max_daily_credits || 3} Left</span>
-              </div>
-            ) : (
-              <button
-                onClick={() => handleOpenAuth("signup")}
-                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary/10 hover:bg-primary/20 border border-primary/30 text-xs font-semibold text-primary transition-colors cursor-pointer"
-              >
-                <span className="text-amber-500">⚡</span>
-                <span>Get 3 Free</span>
-              </button>
-            )}
-
-            {/* Theme Toggle */}
-            <button
-              onClick={toggleTheme}
-              className="font-label-md text-label-md text-on-surface hover:bg-surface-container-low transition-colors px-[10px] py-[7px] rounded-lg border border-outline-variant/60 flex items-center gap-1 cursor-pointer"
-              aria-label="Toggle theme"
-            >
-              {theme === "dark" ? <span className="text-amber-400">☀️</span> : <span className="text-primary">🌙</span>}
-            </button>
-
-            {/* Auth Buttons */}
-            {session ? (
-              <div className="flex items-center gap-2">
-                <span className="hidden lg:inline-block text-xs text-secondary font-medium truncate max-w-[120px]">
-                  {session.user?.email || "User"}
-                </span>
-                <button
-                  onClick={handleSignOut}
-                  className="font-label-md text-label-md text-secondary hover:text-on-surface hover:bg-surface-container-low transition-colors px-[12px] py-[6px] rounded-lg border border-outline-variant/60 text-xs cursor-pointer"
-                >
-                  Sign out
-                </button>
-              </div>
-            ) : (
-              <>
-                <button 
-                  onClick={() => handleOpenAuth("login")}
-                  className="hidden sm:inline-flex font-label-md text-label-md text-on-surface hover:bg-surface-container-low transition-colors px-[14px] py-[7px] rounded-lg text-xs cursor-pointer"
-                >
-                  Log in
-                </button>
-                <button 
-                  onClick={() => handleOpenAuth("signup")}
-                  className="hidden sm:inline-flex font-label-md text-label-md bg-on-surface text-surface-container-lowest hover:bg-on-surface/90 transition-opacity px-[14px] py-[7px] rounded-lg shadow-sm text-xs cursor-pointer"
-                >
-                  Sign up
-                </button>
-              </>
-            )}
-          </div>
-
-        </div>
-      </header>
+      <TopNavBar
+        logo={{
+          name: "Vakiogiri",
+          icon: "auto_awesome",
+          onClick: handleReset,
+        }}
+        navItems={[
+          {
+            id: "studio",
+            label: "Studio",
+            icon: "auto_fix_high",
+            isActive: activeView === "studio",
+            onClick: () => setActiveView("studio"),
+          },
+          {
+            id: "history",
+            label: "My Clips",
+            icon: "video_library",
+            badgeCount: history.length > 0 ? history.length : undefined,
+            isActive: activeView === "history",
+            onClick: () => {
+              if (!session) {
+                handleOpenAuth("login");
+              } else {
+                setActiveView("history");
+                fetchUserHistory();
+              }
+            },
+          },
+        ]}
+        authActions={{
+          loginLabel: "Log in",
+          onLogin: () => handleOpenAuth("login"),
+          signupLabel: "Start for free",
+          onSignup: () => handleOpenAuth("signup"),
+        }}
+        session={session}
+        userProfile={userProfile}
+        onSignOut={handleSignOut}
+        theme={theme}
+        onToggleTheme={toggleTheme}
+      />
 
       {/* Main Content Canvas */}
       <main className="flex-grow flex flex-col items-center justify-center px-margin-mobile md:px-margin-desktop py-stack-lg max-w-container-max mx-auto w-full min-h-[75vh]">
@@ -617,11 +605,14 @@ export default function Home() {
 
                     {/* Clips Grid */}
                     {project.clips && project.clips.length > 0 ? (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                         {project.clips.map((clip, cIndex) => {
                           const clipUrl = getClipUrl(clip, project.id);
                           const filename = getClipFilename(clip);
                           const isCloud = isClipCloudHosted(clip);
+                          const title = getClipTitle(clip, cIndex);
+                          const score = getClipScore(clip);
+                          const timeRange = getClipTimeRange(clip);
 
                           return (
                             <div 
@@ -639,13 +630,32 @@ export default function Home() {
                               </div>
 
                               <div className="p-3 flex flex-col gap-2 justify-between flex-grow">
-                                <div className="flex justify-between items-center text-xs">
-                                  <span className="font-semibold text-on-surface">Clip #{cIndex + 1}</span>
-                                  {isCloud && (
-                                    <span className="text-[10px] px-1.5 py-0.2 bg-primary/10 text-primary font-bold rounded">
-                                      CDN
+                                <div className="flex flex-col gap-1">
+                                  <div className="flex justify-between items-start gap-1">
+                                    <span className="font-semibold text-on-surface text-xs truncate max-w-[140px]" title={title}>
+                                      {title}
                                     </span>
-                                  )}
+                                    <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full ${
+                                      score >= 90
+                                        ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                                        : "bg-primary/15 text-primary"
+                                    }`}>
+                                      🔥 {score}
+                                    </span>
+                                  </div>
+
+                                  <div className="flex items-center gap-1.5 text-[10px] text-secondary">
+                                    {timeRange && (
+                                      <span className="font-mono bg-surface-container px-1 rounded">
+                                        {timeRange}
+                                      </span>
+                                    )}
+                                    {isCloud && (
+                                      <span className="px-1 bg-primary/10 text-primary font-bold rounded">
+                                        CDN
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
 
                                 <button
@@ -684,11 +694,15 @@ export default function Home() {
                 
                 {/* Hero Typography */}
                 <div className="flex flex-col gap-5 items-center">
+                  <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-primary/10 border border-primary/20 text-primary text-xs font-semibold tracking-wide">
+                    <span className="material-symbols-outlined text-[15px]">auto_awesome</span>
+                    <span>3-Stage AI Best Moment Detector</span>
+                  </div>
                   <h1 className="text-[44px] leading-[1.1] md:text-[72px] md:leading-[1.05] font-bold text-on-surface tracking-tighter">
                     Turn any YouTube video into shorts, <span className="text-primary italic font-medium">instantly.</span>
                   </h1>
                   <p className="text-[18px] md:text-[20px] leading-[28px] md:leading-[32px] text-secondary max-w-2xl mt-1 font-light">
-                    Paste a link below to extract viral-ready vertical clips using AI. No editing required.
+                    Smart AI finds the highest-energy, viral spikes using audio energy peaks, comment timestamps, and speech hook validation.
                   </p>
                 </div>
 
@@ -706,32 +720,21 @@ export default function Home() {
                       className="w-full pl-3 pr-4 py-4 bg-transparent border-none text-[18px] text-on-surface placeholder:text-outline/70 focus:ring-0 focus:outline-none transition-all"
                       required
                     />
-                    {session ? (
-                      <button
-                        type="submit"
-                        disabled={!youtubeUrl.trim() || userProfile.credits_remaining <= 0}
-                        className="px-8 py-4 bg-primary text-on-primary rounded-xl font-label-md text-[15px] font-semibold hover:bg-surface-tint transition-all flex items-center gap-2 shadow-sm active:scale-[0.98] shrink-0 disabled:opacity-50 cursor-pointer"
-                      >
-                        <span>Generate</span>
-                        <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => handleOpenAuth("login")}
-                        className="px-8 py-4 bg-primary text-on-primary rounded-xl font-label-md text-[15px] font-semibold hover:bg-surface-tint transition-all flex items-center gap-2 shadow-sm active:scale-[0.98] shrink-0 cursor-pointer"
-                      >
-                        <span>Sign in to Generate</span>
-                        <span className="material-symbols-outlined text-[18px]">lock_open</span>
-                      </button>
-                    )}
+                    <button
+                      type="submit"
+                      disabled={!youtubeUrl.trim() || userProfile.credits_remaining <= 0}
+                      className="px-8 py-4 bg-primary text-on-primary rounded-xl font-label-md text-[15px] font-semibold hover:bg-surface-tint transition-all flex items-center gap-2 shadow-sm active:scale-[0.98] shrink-0 disabled:opacity-50 cursor-pointer"
+                    >
+                      <span>Detect & Clip</span>
+                      <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
+                    </button>
                   </div>
 
                   {/* Options & Duration Selector */}
                   <div className="flex flex-wrap items-center justify-between gap-3 px-2 text-xs">
                     {/* Duration Pills */}
                     <div className="flex items-center gap-2">
-                      <span className="text-secondary font-medium">Clip Length:</span>
+                      <span className="text-secondary font-medium">Moment Length:</span>
                       {[30, 45, 60].map((dur) => (
                         <button
                           key={dur}
@@ -749,7 +752,7 @@ export default function Home() {
                     </div>
 
                     <span className="text-outline font-label-sm">
-                      Max 1080p • Auto 9:16 Vertical Crop
+                      Max 1080p • Auto 9:16 Center Crop
                     </span>
                   </div>
 
@@ -764,20 +767,20 @@ export default function Home() {
                 <div id="how-it-works" className="grid grid-cols-1 md:grid-cols-3 gap-8 w-full max-w-3xl mt-12 pt-10 border-t border-outline-variant/30 text-left">
                   <div className="flex flex-col gap-3">
                     <div className="w-10 h-10 rounded-full bg-surface-container-low flex items-center justify-center text-primary font-bold font-label-md mb-1">1</div>
-                    <h3 className="font-headline-sm text-[18px] text-on-surface">Paste URL</h3>
-                    <p className="font-body-sm text-secondary leading-relaxed">Drop any YouTube video link into the field above.</p>
+                    <h3 className="font-headline-sm text-[18px] text-on-surface font-semibold">1. Audio Spike Vibe Check</h3>
+                    <p className="font-body-sm text-secondary leading-relaxed">Librosa scans dB amplitude peaks for high energy, laughter, and climaxes.</p>
                   </div>
 
                   <div className="flex flex-col gap-3">
                     <div className="w-10 h-10 rounded-full bg-surface-container-low flex items-center justify-center text-primary font-bold font-label-md mb-1">2</div>
-                    <h3 className="font-headline-sm text-[18px] text-on-surface">Select Length</h3>
-                    <p className="font-body-sm text-secondary leading-relaxed">Choose 30s, 45s, or 60s vertical clips.</p>
+                    <h3 className="font-headline-sm text-[18px] text-on-surface font-semibold">2. Social Proof & Comments</h3>
+                    <p className="font-body-sm text-secondary leading-relaxed">Mines YouTube comment timestamps to boost community-favorite moments.</p>
                   </div>
 
                   <div className="flex flex-col gap-3">
                     <div className="w-10 h-10 rounded-full bg-surface-container-low flex items-center justify-center text-primary font-bold font-label-md mb-1">3</div>
-                    <h3 className="font-headline-sm text-[18px] text-on-surface">Export Shorts</h3>
-                    <p className="font-body-sm text-secondary leading-relaxed">Download 9:16 vertical clips ready for TikTok, Reels & Shorts.</p>
+                    <h3 className="font-headline-sm text-[18px] text-on-surface font-semibold">3. AI Sense & 9:16 Shorts</h3>
+                    <p className="font-body-sm text-secondary leading-relaxed">Whisper transcripts & LLM hook ratings pick the top 3 viral vertical shorts.</p>
                   </div>
                 </div>
 
@@ -793,10 +796,85 @@ export default function Home() {
                   <span className="material-symbols-outlined text-4xl text-primary animate-spin" style={{ fontVariationSettings: "'FILL' 0, 'wght' 300" }}>sync</span>
                 </div>
 
-                <h1 className="font-display-lg text-[36px] md:text-[48px] text-on-surface mb-2 font-bold">Creating your shorts...</h1>
-                <p className="font-body-lg text-body-lg text-secondary mb-8 max-w-lg">
-                  {progressMessage || "Processing video and preparing vertical cuts..."}
+                <h1 className="font-display-lg text-[36px] md:text-[48px] text-on-surface mb-2 font-bold">Detecting best moments...</h1>
+                <p className="font-body-lg text-body-lg text-secondary mb-6 max-w-lg">
+                  {progressMessage || "Processing video and scoring highest engagement moments..."}
                 </p>
+
+                {/* Live 3-Stage Stepper */}
+                <div className="w-full grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+                  {/* Stage 1: Audio Vibe */}
+                  <div className={`p-3.5 rounded-2xl border flex flex-col gap-1.5 transition-all text-left ${
+                    step === "analyzing_audio" || (progress >= 35 && progress < 55)
+                      ? "bg-primary/5 border-primary ring-1 ring-primary/20"
+                      : progress >= 55
+                      ? "bg-emerald-500/5 border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
+                      : "bg-surface-container-low border-outline-variant/40 opacity-70"
+                  }`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 font-bold text-xs">
+                        <span className="material-symbols-outlined text-base">graphic_eq</span>
+                        <span>1. Vibe Check</span>
+                      </div>
+                      {progress >= 55 ? (
+                        <span className="material-symbols-outlined text-base text-emerald-500">check_circle</span>
+                      ) : step === "analyzing_audio" || (progress >= 35 && progress < 55) ? (
+                        <span className="material-symbols-outlined text-base text-primary animate-spin">progress_activity</span>
+                      ) : (
+                        <span className="text-[10px] text-secondary font-mono">dB Spikes</span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-secondary">Librosa amplitude peaks</p>
+                  </div>
+
+                  {/* Stage 2: Social Proof */}
+                  <div className={`p-3.5 rounded-2xl border flex flex-col gap-1.5 transition-all text-left ${
+                    step === "analyzing_comments" || (progress >= 55 && progress < 70)
+                      ? "bg-primary/5 border-primary ring-1 ring-primary/20"
+                      : progress >= 70
+                      ? "bg-emerald-500/5 border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
+                      : "bg-surface-container-low border-outline-variant/40 opacity-70"
+                  }`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 font-bold text-xs">
+                        <span className="material-symbols-outlined text-base">forum</span>
+                        <span>2. Social Proof</span>
+                      </div>
+                      {progress >= 70 ? (
+                        <span className="material-symbols-outlined text-base text-emerald-500">check_circle</span>
+                      ) : step === "analyzing_comments" || (progress >= 55 && progress < 70) ? (
+                        <span className="material-symbols-outlined text-base text-primary animate-spin">progress_activity</span>
+                      ) : (
+                        <span className="text-[10px] text-secondary font-mono">Comments</span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-secondary">Timestamp mention boost</p>
+                  </div>
+
+                  {/* Stage 3: Sense Check */}
+                  <div className={`p-3.5 rounded-2xl border flex flex-col gap-1.5 transition-all text-left ${
+                    step === "analyzing_transcript" || (progress >= 70 && progress < 85)
+                      ? "bg-primary/5 border-primary ring-1 ring-primary/20"
+                      : progress >= 85
+                      ? "bg-emerald-500/5 border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
+                      : "bg-surface-container-low border-outline-variant/40 opacity-70"
+                  }`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 font-bold text-xs">
+                        <span className="material-symbols-outlined text-base">psychology</span>
+                        <span>3. Sense Check</span>
+                      </div>
+                      {progress >= 85 ? (
+                        <span className="material-symbols-outlined text-base text-emerald-500">check_circle</span>
+                      ) : step === "analyzing_transcript" || (progress >= 70 && progress < 85) ? (
+                        <span className="material-symbols-outlined text-base text-primary animate-spin">progress_activity</span>
+                      ) : (
+                        <span className="text-[10px] text-secondary font-mono">AI Hooks</span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-secondary">Whisper & viral hook rating</p>
+                  </div>
+                </div>
 
                 {/* Live Progress Card */}
                 <div className="w-full bg-surface-container-low border border-outline-variant rounded-2xl p-6 flex flex-col gap-4 shadow-sm relative overflow-hidden text-left">
@@ -817,13 +895,13 @@ export default function Home() {
                   </div>
 
                   <div className="flex justify-between items-center text-xs text-secondary pt-1">
-                    <span className="capitalize">{step}</span>
-                    <span>{segmentDuration}s clips • Auto 9:16</span>
+                    <span className="capitalize">{step.replace('_', ' ')}</span>
+                    <span>{segmentDuration}s best moments • Auto 9:16</span>
                   </div>
                 </div>
 
                 <div className="mt-6 text-center">
-                  <p className="font-body-sm text-body-sm text-outline">Temporary files are automatically cleaned upon cloud storage sync.</p>
+                  <p className="font-body-sm text-body-sm text-outline">Lightweight center-cropping & zero-disk cloud sync active.</p>
                 </div>
               </div>
             )}
@@ -880,16 +958,19 @@ export default function Home() {
                 </div>
 
                 {/* Video Cards Grid */}
-                <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-gutter">
+                <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-gutter">
                   {clips.map((clip, index) => {
                     const clipUrl = getClipUrl(clip);
                     const filename = getClipFilename(clip);
                     const isCloud = isClipCloudHosted(clip);
+                    const title = getClipTitle(clip, index);
+                    const score = getClipScore(clip);
+                    const timeRange = getClipTimeRange(clip);
 
                     return (
                       <article 
                         key={filename + index}
-                        className="bg-surface-container-lowest border border-outline-variant/50 rounded-2xl overflow-hidden flex flex-col shadow-sm hover:shadow-md transition-shadow"
+                        className="bg-surface-container-lowest border border-outline-variant/50 rounded-2xl overflow-hidden flex flex-col shadow-sm hover:shadow-md transition-all group"
                       >
                         {/* Video Player */}
                         <div className="relative aspect-[9/16] bg-slate-900 overflow-hidden flex items-center justify-center">
@@ -904,31 +985,50 @@ export default function Home() {
 
                         {/* Meta & Download */}
                         <div className="p-4 flex flex-col gap-3 justify-between flex-grow">
-                          <div>
-                            <div className="flex justify-between items-start">
-                              <h2 className="font-label-lg text-label-lg text-on-surface font-semibold">
-                                Clip #{index + 1}
+                          <div className="flex flex-col gap-2">
+                            <div className="flex justify-between items-start gap-2">
+                              <h2 className="font-label-lg text-[15px] text-on-surface font-bold leading-tight">
+                                {title}
                               </h2>
-                              <div className="flex items-center gap-1.5">
-                                {isCloud && (
-                                  <span className="font-label-sm text-[10px] px-1.5 py-0.5 bg-primary/10 text-primary rounded-md font-semibold">
-                                    CDN
-                                  </span>
-                                )}
-                                <span className="font-label-sm text-[11px] px-2 py-0.5 bg-surface-container-low text-secondary rounded-md">
-                                  {segmentDuration}s
+                              <div className="flex items-center gap-1 shrink-0">
+                                <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-xs ${
+                                  score >= 90
+                                    ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
+                                    : score >= 80
+                                    ? "bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30"
+                                    : "bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30"
+                                }`}>
+                                  <span>🔥</span>
+                                  <span>{score} Score</span>
                                 </span>
                               </div>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-1.5 text-xs text-secondary">
+                              <span className="text-[11px] font-medium text-secondary">
+                                Rank #{index + 1}
+                              </span>
+                              {timeRange && (
+                                <span className="flex items-center gap-1 font-mono text-[11px] px-2 py-0.5 rounded-md bg-surface-container text-secondary">
+                                  <span className="material-symbols-outlined text-[13px]">schedule</span>
+                                  <span>{timeRange}</span>
+                                </span>
+                              )}
+                              {isCloud && (
+                                <span className="font-label-sm text-[10px] px-1.5 py-0.5 bg-primary/10 text-primary rounded-md font-semibold">
+                                  CDN
+                                </span>
+                              )}
                             </div>
                           </div>
 
                           <button
                             type="button"
                             onClick={() => handleDownloadSingle(clip)}
-                            className="w-full bg-surface-container-low hover:bg-surface-container text-on-surface font-label-md text-xs py-2 rounded-xl border border-outline-variant/60 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                            className="w-full bg-primary/10 hover:bg-primary/20 text-primary font-semibold text-xs py-2.5 rounded-xl border border-primary/20 flex items-center justify-center gap-1.5 transition-all active:scale-[0.98] cursor-pointer"
                           >
                             <span className="material-symbols-outlined text-[16px]">download</span>
-                            <span>Download MP4</span>
+                            <span>Download MP4 (9:16)</span>
                           </button>
                         </div>
                       </article>
@@ -962,7 +1062,8 @@ export default function Home() {
         onClose={() => setIsAuthModalOpen(false)}
         initialMode={authModalMode}
         onAuthSuccess={() => {
-          supabase.auth.getSession().then(({ data: { session } }) => {
+          supabase.auth.getSession().then((res: any) => {
+            const session = res?.data?.session;
             setSession(session);
             fetchUserProfile(session?.access_token);
             if (session?.access_token) {

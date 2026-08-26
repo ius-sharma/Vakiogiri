@@ -92,13 +92,14 @@ def get_current_user_optional(authorization: Optional[str] = Header(None)) -> Di
 
 def get_current_user(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
     """
-    Strict auth requirement for protected actions like POST /process.
-    Rejects unauthenticated guests with HTTP 401.
+    Extract user from Supabase JWT token if provided.
+    If unauthenticated or running in local guest mode, automatically assigns guest account with daily credits.
     """
     user = get_current_user_optional(authorization)
     if not user.get("is_authenticated"):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required. Please sign in with Google or Email to generate video clips."
-        )
+        # Seamlessly fallback to guest user with tracked database credits
+        guest_user = get_or_create_user("guest", "guest@vakiogiri.ai")
+        guest_user["is_authenticated"] = False
+        return guest_user
+
     return user

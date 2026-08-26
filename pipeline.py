@@ -3,8 +3,9 @@ import sys
 import shutil
 import subprocess
 import math
-from typing import List, Callable, Optional
+from typing import List, Callable, Optional, Dict, Any
 import yt_dlp
+from moment_detector import detect_best_moments
 
 # ==============================================================================
 # CONFIGURATION CONSTANTS
@@ -12,6 +13,7 @@ import yt_dlp
 DEFAULT_SEGMENT_DURATION = 45  # seconds
 TARGET_WIDTH = 1080
 TARGET_HEIGHT = 1920
+MAX_CLIPS_PER_VIDEO = 3
 
 
 def check_ffmpeg_installed() -> bool:
@@ -47,9 +49,10 @@ def download_video(url: str, output_dir: str, progress_callback: Optional[Callab
                 progress_callback("downloading", percent, f"Downloading video ({percent}%)...")
 
     ydl_opts = {
-        'format': 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best[height<=1080]/best',
-        'outtmpl': os.path.join(output_dir, '%(title)s.%(ext)s'),
+        'format': 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080]/best',
+        'outtmpl': os.path.join(output_dir, '%(id)s.%(ext)s'),
         'merge_output_format': 'mp4',
+        'windowsfilenames': True,
         'quiet': False,
         'no_warnings': False,
         'nocheckcertificate': True,
@@ -57,14 +60,9 @@ def download_video(url: str, output_dir: str, progress_callback: Optional[Callab
         'progress_hooks': [ytdl_hook],
         'extractor_args': {
             'youtube': {
-                'player_client': ['mweb', 'ios', 'web', 'android'],
+                'player_client': ['android', 'ios'],
             }
         },
-        'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'en-us,en;q=0.5',
-        }
     }
     
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -84,7 +82,7 @@ def download_video(url: str, output_dir: str, progress_callback: Optional[Callab
                 raise FileNotFoundError("Downloaded file could not be found.")
             final_path = max(files, key=os.path.getmtime)
 
-    print(f"[1/4] Download complete: {final_path}")
+    print(f"[1/4] Download complete: {os.path.basename(final_path)}")
     if progress_callback:
         progress_callback("analyzing", 35, "Download complete. Reading video duration...")
     return final_path
@@ -110,47 +108,72 @@ def get_video_duration(video_path: str) -> float:
         raise ValueError("Parsing video duration from ffprobe output failed.")
 
 
-MAX_CLIPS_PER_VIDEO = 5
-
-
 def split_and_crop_video(
     video_path: str,
     output_dir: str,
     duration: float,
+    moments: Optional[List[Dict[str, Any]]] = None,
     segment_len: int = DEFAULT_SEGMENT_DURATION,
     max_clips: int = MAX_CLIPS_PER_VIDEO,
     progress_callback: Optional[Callable[[str, int, str], None]] = None
 ) -> List[str]:
-    """Split video into fixed-length segments (up to max_clips) and crop/scale each segment to 1080x1920 (9:16)."""
+    """
+    Split and crop video into 9:16 vertical (1080x1920) clips based on dynamic best moments
+    (or fallback uniform segments).
+    """
     os.makedirs(output_dir, exist_ok=True)
-    total_available_segments = math.ceil(duration / segment_len)
-    num_segments = min(total_available_segments, max_clips)
-    
-    print(f"[2/4] Total video duration: {duration:.2f}s ({total_available_segments} available, creating {num_segments} clip(s) of max {segment_len}s)")
-    print(f"[3/4] Splitting video into clips and cropping to 9:16 vertical ({TARGET_WIDTH}x{TARGET_HEIGHT})...")
-    
     vf_filter = f"scale={TARGET_WIDTH}:{TARGET_HEIGHT}:force_original_aspect_ratio=increase,crop={TARGET_WIDTH}:{TARGET_HEIGHT}"
 
+    # Use dynamically detected moments if provided; otherwise fallback to uniform split
+    clip_targets = []
+    if moments and len(moments) > 0:
+        for idx, m in enumerate(moments[:max_clips]):
+            s_time = max(0.0, float(m["start"]))
+            e_time = min(duration, float(m["end"]))
+            clip_dur = max(1.0, e_time - s_time)
+            clip_targets.append({
+                "start": s_time,
+                "duration": clip_dur,
+                "title": m.get("title", f"Clip {idx + 1}"),
+                "score": m.get("score", 85)
+            })
+    else:
+        total_available_segments = math.ceil(duration / segment_len)
+        num_segments = min(total_available_segments, max_clips)
+        for i in range(num_segments):
+            s_time = i * segment_len
+            clip_dur = min(float(segment_len), max(1.0, duration - s_time))
+            clip_targets.append({
+                "start": s_time,
+                "duration": clip_dur,
+                "title": f"Clip {i + 1}",
+                "score": 75
+            })
+
+    num_clips = len(clip_targets)
+    print(f"[3/4] Cropping and rendering {num_clips} dynamic 9:16 vertical clip(s)...")
+
     created_clips = []
-    for i in range(num_segments):
-        start_time = i * segment_len
+    for i, target in enumerate(clip_targets):
+        start_time = target["start"]
+        clip_dur = target["duration"]
         clip_name = f"clip_{i + 1}.mp4"
         clip_path = os.path.join(output_dir, clip_name)
         
-        # Calculate progress between 40% and 90%
+        # Calculate progress between 75% and 92%
         if progress_callback:
-            clip_progress = int(40 + ((i + 1) / num_segments) * 50)
+            clip_progress = int(75 + ((i + 1) / max(1, num_clips)) * 17)
             progress_callback(
                 "clipping",
                 clip_progress,
-                f"Cropping & rendering clip {i + 1} of {num_segments} ({segment_len}s)..."
+                f"Cropping & rendering clip {i + 1} of {num_clips} ('{target['title']}', score {target['score']})..."
             )
 
         ffmpeg_cmd = [
             "ffmpeg",
             "-y",
             "-ss", str(start_time),
-            "-t", str(segment_len),
+            "-t", str(clip_dur),
             "-i", video_path,
             "-vf", vf_filter,
             "-c:v", "libx264",
@@ -163,8 +186,15 @@ def split_and_crop_video(
         
         try:
             subprocess.run(ffmpeg_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
-            print(f"  -> Created {clip_name} (starts at {start_time}s)")
-            created_clips.append(clip_name)
+            print(f"  -> Created {clip_name} (starts at {start_time:.1f}s, len: {clip_dur:.1f}s, score: {target['score']}, title: '{target['title']}')")
+            created_clips.append({
+                "filename": clip_name,
+                "title": target["title"],
+                "score": target["score"],
+                "start": round(start_time, 2),
+                "end": round(start_time + clip_dur, 2),
+                "duration": round(clip_dur, 2)
+            })
         except subprocess.CalledProcessError as e:
             raise RuntimeError(f"Failed creating clip {clip_name}: {e.stderr}")
 
@@ -178,8 +208,15 @@ def run_pipeline(
     segment_duration: int = DEFAULT_SEGMENT_DURATION,
     max_clips: int = MAX_CLIPS_PER_VIDEO,
     progress_callback: Optional[Callable[[str, int, str], None]] = None
-) -> List[str]:
-    """Run the complete download, duration reading, splitting pipeline, and cleanup."""
+) -> List[Dict[str, Any]]:
+    """
+    Run complete AI video clipping pipeline:
+    1. Download YouTube video
+    2. Extract duration
+    3. Run 3-Stage Smart Best Moment Detector
+    4. Render dynamic 9:16 center-cropped clips
+    5. Clean up temporary download artifacts
+    """
     check_ffmpeg_installed()
     
     try:
@@ -192,8 +229,26 @@ def run_pipeline(
         # 2. Extract Duration
         duration = get_video_duration(video_path)
         
-        # 3. Crop & Split (up to max_clips)
-        clips = split_and_crop_video(video_path, clips_output_dir, duration, segment_duration, max_clips, progress_callback)
+        # 3. Detect Best Moments using 3-Stage Scoring
+        moments = detect_best_moments(
+            video_path=video_path,
+            youtube_url=youtube_url,
+            duration=duration,
+            target_duration=segment_duration,
+            top_k=max_clips,
+            progress_callback=progress_callback
+        )
+        
+        # 4. Crop & Split dynamically identified moments
+        clips = split_and_crop_video(
+            video_path=video_path,
+            output_dir=clips_output_dir,
+            duration=duration,
+            moments=moments,
+            segment_len=segment_duration,
+            max_clips=max_clips,
+            progress_callback=progress_callback
+        )
         
         if progress_callback:
             progress_callback("cleaning", 95, "Purging raw temporary downloads...")
@@ -208,4 +263,5 @@ def run_pipeline(
                 print(f"[Auto-Clean] Successfully purged raw download directory: {download_dir}")
             except Exception as clean_err:
                 print(f"[Auto-Clean Warning] Could not remove download dir {download_dir}: {clean_err}")
+
 

@@ -62,6 +62,28 @@
   --spacing-margin-mobile: 16px;
 }
 
+:root {
+  --nav-bg: #eef0fd;
+  --nav-pill-bg: #dfe2f9;
+  --nav-pill-hover: rgba(53, 37, 205, 0.08);
+  --text-primary: #191c1d;
+  --text-muted: #575e70;
+  --accent: #3525cd;
+  --cta-bg: #ffffff;
+  --cta-text: #191c1d;
+}
+
+.dark {
+  --nav-bg: #121222;
+  --nav-pill-bg: #1c1c32;
+  --nav-pill-hover: rgba(255, 255, 255, 0.08);
+  --text-primary: #f8fafc;
+  --text-muted: #94a3b8;
+  --accent: #818cf8;
+  --cta-bg: #ffffff;
+  --cta-text: #0f172a;
+}
+
 /* Material Symbols configuration */
 .material-symbols-outlined {
   font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;

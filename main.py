@@ -140,6 +140,20 @@ def delete_user_clip_project(job_id: str, user: Dict[str, Any] = Depends(get_cur
     return {"success": True, "message": "Project deleted successfully"}
 
 
+def is_valid_youtube_url(url: str) -> bool:
+    if not url:
+        return False
+    u = url.strip().lower()
+    return any(domain in u for domain in [
+        "youtube.com/watch",
+        "youtu.be/",
+        "youtube.com/shorts/",
+        "youtube.com/live/",
+        "m.youtube.com/watch",
+        "youtube.com/clip/",
+    ])
+
+
 @app.post("/process")
 def process_video(
     request: ProcessRequest,
@@ -147,8 +161,15 @@ def process_video(
     user: Dict[str, Any] = Depends(get_current_user)
 ):
     """Accept a YouTube URL, verify & deduct daily credit, and run clipping pipeline in background."""
-    if not request.youtube_url or not request.youtube_url.strip():
-        raise HTTPException(status_code=400, detail="youtube_url must be provided.")
+    raw_url = request.youtube_url.strip() if request.youtube_url else ""
+    if not raw_url:
+        raise HTTPException(status_code=400, detail="YouTube URL must be provided.")
+        
+    if not is_valid_youtube_url(raw_url):
+        raise HTTPException(
+            status_code=400,
+            detail=f"'{raw_url}' is not a valid YouTube video URL. Please paste a link like https://www.youtube.com/watch?v=... or https://youtu.be/..."
+        )
         
     user_id = user["id"]
     
