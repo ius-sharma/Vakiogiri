@@ -82,4 +82,4 @@ NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
 ---
 
 ## 📄 License
-MIT License. Created with ❤️ by Vakiogiri Team.
+MIT License. Created with ❤️ by Ayush Sharma.
