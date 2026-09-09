@@ -13,6 +13,7 @@ interface ClipItem {
   is_cloud?: boolean;
   title?: string;
   score?: number;
+  heatmap_score?: number;
   start?: number;
   end?: number;
   duration?: number;
@@ -260,6 +261,13 @@ export default function Home() {
       return clip.score;
     }
     return 85;
+  };
+
+  const getClipHeatmapScore = (clip: any): number | null => {
+    if (typeof clip === "object" && typeof clip.heatmap_score === "number") {
+      return clip.heatmap_score;
+    }
+    return null;
   };
 
   const getClipTimeRange = (clip: any) => {
@@ -612,6 +620,7 @@ export default function Home() {
                           const isCloud = isClipCloudHosted(clip);
                           const title = getClipTitle(clip, cIndex);
                           const score = getClipScore(clip);
+                          const heatmapScore = getClipHeatmapScore(clip);
                           const timeRange = getClipTimeRange(clip);
 
                           return (
@@ -632,16 +641,23 @@ export default function Home() {
                               <div className="p-3 flex flex-col gap-2 justify-between flex-grow">
                                 <div className="flex flex-col gap-1">
                                   <div className="flex justify-between items-start gap-1">
-                                    <span className="font-semibold text-on-surface text-xs truncate max-w-[140px]" title={title}>
+                                    <span className="font-semibold text-on-surface text-xs truncate max-w-[130px]" title={title}>
                                       {title}
                                     </span>
-                                    <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full ${
-                                      score >= 90
-                                        ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-                                        : "bg-primary/15 text-primary"
-                                    }`}>
-                                      🔥 {score}
-                                    </span>
+                                    <div className="flex items-center gap-1 shrink-0">
+                                      <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full ${
+                                        score >= 90
+                                          ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                                          : "bg-primary/15 text-primary"
+                                      }`}>
+                                        🔥 {score}
+                                      </span>
+                                      {heatmapScore !== null && (
+                                        <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/20" title="Audience Heatmap Replay Score">
+                                          📈 {heatmapScore}%
+                                        </span>
+                                      )}
+                                    </div>
                                   </div>
 
                                   <div className="flex items-center gap-1.5 text-[10px] text-secondary">
@@ -801,8 +817,8 @@ export default function Home() {
                   {progressMessage || "Processing video and scoring highest engagement moments..."}
                 </p>
 
-                {/* Live 3-Stage Stepper */}
-                <div className="w-full grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+                {/* Live 4-Stage Stepper */}
+                <div className="w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
                   {/* Stage 1: Audio Vibe */}
                   <div className={`p-3.5 rounded-2xl border flex flex-col gap-1.5 transition-all text-left ${
                     step === "analyzing_audio" || (progress >= 35 && progress < 55)
@@ -824,12 +840,12 @@ export default function Home() {
                         <span className="text-[10px] text-secondary font-mono">dB Spikes</span>
                       )}
                     </div>
-                    <p className="text-[11px] text-secondary">Librosa amplitude peaks</p>
+                    <p className="text-[11px] text-secondary">Audio energy peaks</p>
                   </div>
 
-                  {/* Stage 2: Social Proof */}
+                  {/* Stage 2: Most Replayed Heatmap */}
                   <div className={`p-3.5 rounded-2xl border flex flex-col gap-1.5 transition-all text-left ${
-                    step === "analyzing_comments" || (progress >= 55 && progress < 70)
+                    step === "analyzing_heatmap" || (progress >= 55 && progress < 70)
                       ? "bg-primary/5 border-primary ring-1 ring-primary/20"
                       : progress >= 70
                       ? "bg-emerald-500/5 border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
@@ -837,42 +853,66 @@ export default function Home() {
                   }`}>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5 font-bold text-xs">
-                        <span className="material-symbols-outlined text-base">forum</span>
-                        <span>2. Social Proof</span>
+                        <span className="material-symbols-outlined text-base">insights</span>
+                        <span>2. Heatmap</span>
                       </div>
                       {progress >= 70 ? (
                         <span className="material-symbols-outlined text-base text-emerald-500">check_circle</span>
-                      ) : step === "analyzing_comments" || (progress >= 55 && progress < 70) ? (
+                      ) : step === "analyzing_heatmap" || (progress >= 55 && progress < 70) ? (
+                        <span className="material-symbols-outlined text-base text-primary animate-spin">progress_activity</span>
+                      ) : (
+                        <span className="text-[10px] text-secondary font-mono">YouTube</span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-secondary">Most replayed spikes</p>
+                  </div>
+
+                  {/* Stage 3: Social Proof */}
+                  <div className={`p-3.5 rounded-2xl border flex flex-col gap-1.5 transition-all text-left ${
+                    step === "analyzing_comments" || (progress >= 70 && progress < 80)
+                      ? "bg-primary/5 border-primary ring-1 ring-primary/20"
+                      : progress >= 80
+                      ? "bg-emerald-500/5 border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
+                      : "bg-surface-container-low border-outline-variant/40 opacity-70"
+                  }`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 font-bold text-xs">
+                        <span className="material-symbols-outlined text-base">forum</span>
+                        <span>3. Social Proof</span>
+                      </div>
+                      {progress >= 80 ? (
+                        <span className="material-symbols-outlined text-base text-emerald-500">check_circle</span>
+                      ) : step === "analyzing_comments" || (progress >= 70 && progress < 80) ? (
                         <span className="material-symbols-outlined text-base text-primary animate-spin">progress_activity</span>
                       ) : (
                         <span className="text-[10px] text-secondary font-mono">Comments</span>
                       )}
                     </div>
-                    <p className="text-[11px] text-secondary">Timestamp mention boost</p>
+                    <p className="text-[11px] text-secondary">Community timestamps</p>
                   </div>
 
-                  {/* Stage 3: Sense Check */}
+                  {/* Stage 4: Sense Check */}
                   <div className={`p-3.5 rounded-2xl border flex flex-col gap-1.5 transition-all text-left ${
-                    step === "analyzing_transcript" || (progress >= 70 && progress < 85)
+                    step === "analyzing_transcript" || (progress >= 80 && progress < 90)
                       ? "bg-primary/5 border-primary ring-1 ring-primary/20"
-                      : progress >= 85
+                      : progress >= 90
                       ? "bg-emerald-500/5 border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
                       : "bg-surface-container-low border-outline-variant/40 opacity-70"
                   }`}>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5 font-bold text-xs">
                         <span className="material-symbols-outlined text-base">psychology</span>
-                        <span>3. Sense Check</span>
+                        <span>4. Sense Check</span>
                       </div>
-                      {progress >= 85 ? (
+                      {progress >= 90 ? (
                         <span className="material-symbols-outlined text-base text-emerald-500">check_circle</span>
-                      ) : step === "analyzing_transcript" || (progress >= 70 && progress < 85) ? (
+                      ) : step === "analyzing_transcript" || (progress >= 80 && progress < 90) ? (
                         <span className="material-symbols-outlined text-base text-primary animate-spin">progress_activity</span>
                       ) : (
                         <span className="text-[10px] text-secondary font-mono">AI Hooks</span>
                       )}
                     </div>
-                    <p className="text-[11px] text-secondary">Whisper & viral hook rating</p>
+                    <p className="text-[11px] text-secondary">Whisper viral rating</p>
                   </div>
                 </div>
 

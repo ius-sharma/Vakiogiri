@@ -8,6 +8,8 @@ import subprocess
 from typing import List, Dict, Any, Optional, Tuple, Callable
 from dotenv import load_dotenv
 
+from youtube_heatmap import extract_heatmap, generate_clip_windows, get_window_intensity_score
+
 load_dotenv()
 
 # ==============================================================================
@@ -24,6 +26,12 @@ WEIGHT_SEMANTIC_HOOK = 0.40      # Semantic hook, curiosity, narrative completen
 WEIGHT_DYNAMIC_AUDIO = 0.30      # Relative dynamic energy surge & excitement peaks
 WEIGHT_SOCIAL_COMMENTS = 0.20    # YouTube comment timestamp mentions
 WEIGHT_SPEECH_PACING = 0.10      # Conversational density (WPM)
+
+# Adaptive weights when YouTube 'Most Replayed' Heatmap is available
+WEIGHT_HEATMAP_ACTIVE = 0.30
+WEIGHT_SEMANTIC_WITH_HEATMAP = 0.35
+WEIGHT_AUDIO_WITH_HEATMAP = 0.25
+WEIGHT_PACING_WITH_HEATMAP = 0.10
 
 # Rebalanced weights when video has no comment timestamps
 WEIGHT_SEMANTIC_NO_COMMENTS = 0.50
@@ -709,11 +717,28 @@ def detect_best_moments(
 
     # Channel C: Social Proof Comments
     if progress_callback:
-        progress_callback("analyzing_comments", 70, "Stage 3/3: Mining community comment timestamps...")
+        progress_callback("analyzing_comments", 65, "Stage 3/4: Mining community comment timestamps...")
 
     comment_timestamps = []
     if youtube_url and ("youtube.com" in youtube_url or "youtu.be" in youtube_url):
         comment_timestamps = extract_youtube_comment_timestamps(youtube_url, max_comments=100)
+
+    # Channel D: YouTube "Most Replayed" Heatmap (Route 2 Audience Signal)
+    if progress_callback:
+        progress_callback("analyzing_heatmap", 75, "Stage 4/4: Extracting YouTube 'Most Replayed' heatmap curve...")
+
+    heatmap_markers = []
+    has_heatmap = False
+    if youtube_url and ("youtube.com" in youtube_url or "youtu.be" in youtube_url):
+        try:
+            hm_data = extract_heatmap(youtube_url)
+            if hm_data.get("has_heatmap"):
+                heatmap_markers = hm_data.get("markers", [])
+                has_heatmap = len(heatmap_markers) > 0
+                if has_heatmap:
+                    print(f"[Channel 4: Heatmap] Successfully extracted {len(heatmap_markers)} viewer replay segments!")
+        except Exception as e:
+            print(f"[Channel 4 Notice] Could not extract heatmap: {e}. Gracefully falling back.")
 
     # --------------------------------------------------------------------------
     # UNIFIED CANDIDATE POOL & SENTENCE BOUNDARY SNAPPING
@@ -754,6 +779,41 @@ def detect_best_moments(
             "text": t_slice
         })
 
+    # Seed candidates from Heatmap peaks if available
+    if has_heatmap:
+        hm_seed_clips = generate_clip_windows(
+            heatmap_markers,
+            target_clip_duration=float(target_duration),
+            min_intensity_threshold=0.45,
+            max_clips=5
+        )
+        for hmc in hm_seed_clips:
+            s_time = hmc["start_seconds"]
+            e_time = min(duration, hmc["end_seconds"])
+            t_slice = ""
+            if transcript_segments:
+                t_slice = " ".join([
+                    s["text"] for s in transcript_segments
+                    if not (s["end"] < s_time or s["start"] > e_time)
+                ]).strip()
+
+            hook_sc, title = score_transcript_hook_and_story(
+                text_slice=t_slice,
+                opener_slice=" ".join(t_slice.split()[:4]),
+                word_count=len(t_slice.split()),
+                duration=e_time - s_time
+            )
+
+            raw_pool.append({
+                "start": s_time,
+                "end": e_time,
+                "semantic_score": hook_sc,
+                "audio_score": 72.0,
+                "heatmap_score": hmc["window_score"],
+                "title": title,
+                "text": t_slice
+            })
+
     boosted_pool = boost_candidates_with_comments(raw_pool, comment_timestamps, tolerance_seconds=6.0)
 
     snapped_candidates = []
@@ -784,6 +844,13 @@ def detect_best_moments(
         a_score = cand.get("audio_score", 70.0)
         c_score = cand.get("comment_score")
         
+        # Calculate Heatmap score for the actual snapped window
+        if has_heatmap:
+            hm_score = get_window_intensity_score(heatmap_markers, cand["start"], cand["end"])
+            cand["heatmap_score"] = hm_score
+        else:
+            cand["heatmap_score"] = None
+        
         word_count = len(cand.get("text", "").split())
         wpm = (word_count / max(5.0, cand["duration"])) * 60.0
         pacing_score = 80.0
@@ -792,7 +859,25 @@ def detect_best_moments(
         elif wpm < 70:
             pacing_score = 60.0
 
-        if has_comments and c_score is not None:
+        # Multi-factor score computation
+        if has_heatmap:
+            hm_sc = cand.get("heatmap_score", 50.0)
+            if has_comments and c_score is not None:
+                final_score = (
+                    (s_score * 0.30) +
+                    (a_score * 0.20) +
+                    (hm_sc * 0.25) +
+                    (c_score * 0.15) +
+                    (pacing_score * 0.10)
+                )
+            else:
+                final_score = (
+                    (s_score * WEIGHT_SEMANTIC_WITH_HEATMAP) +
+                    (a_score * WEIGHT_AUDIO_WITH_HEATMAP) +
+                    (hm_sc * WEIGHT_HEATMAP_ACTIVE) +
+                    (pacing_score * WEIGHT_PACING_WITH_HEATMAP)
+                )
+        elif has_comments and c_score is not None:
             final_score = (
                 (s_score * WEIGHT_SEMANTIC_HOOK) +
                 (a_score * WEIGHT_DYNAMIC_AUDIO) +
@@ -821,12 +906,16 @@ def detect_best_moments(
         if any(abs(cand["start"] - exist["start"]) < min_separation for exist in final_moments):
             continue
         
-        final_moments.append({
+        moment_dict = {
             "start": cand["start"],
             "end": cand["end"],
             "title": cand["title"],
             "score": cand["score"]
-        })
+        }
+        if cand.get("heatmap_score") is not None:
+            moment_dict["heatmap_score"] = cand["heatmap_score"]
+        final_moments.append(moment_dict)
+
         if len(final_moments) >= top_k:
             break
 

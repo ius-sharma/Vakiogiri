@@ -135,7 +135,8 @@ def split_and_crop_video(
                 "start": s_time,
                 "duration": clip_dur,
                 "title": m.get("title", f"Clip {idx + 1}"),
-                "score": m.get("score", 85)
+                "score": m.get("score", 85),
+                "heatmap_score": m.get("heatmap_score")
             })
     else:
         total_available_segments = math.ceil(duration / segment_len)
@@ -191,6 +192,7 @@ def split_and_crop_video(
                 "filename": clip_name,
                 "title": target["title"],
                 "score": target["score"],
+                "heatmap_score": target.get("heatmap_score"),
                 "start": round(start_time, 2),
                 "end": round(start_time + clip_dur, 2),
                 "duration": round(clip_dur, 2)

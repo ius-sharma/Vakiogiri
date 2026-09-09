@@ -2,6 +2,7 @@
 import json
 import requests
 import sys
+from typing import List, Dict, Any, Optional
 
 HEADERS = {
     "User-Agent": (
@@ -18,16 +19,19 @@ def extract_video_id(url_or_id: str) -> str:
         return match.group(1)
     return url_or_id.strip()
 
-def extract_heatmap(video_id_or_url: str):
+def extract_heatmap(video_id_or_url: str) -> Dict[str, Any]:
     """
     Extracts YouTube 'Most Replayed' heatmap data.
     """
     video_id = extract_video_id(video_id_or_url)
     url = f"https://www.youtube.com/watch?v={video_id}"
     
-    resp = requests.get(url, headers=HEADERS, timeout=15)
-    resp.raise_for_status()
-    html = resp.text
+    try:
+        resp = requests.get(url, headers=HEADERS, timeout=12)
+        resp.raise_for_status()
+        html = resp.text
+    except Exception as e:
+        return {"video_id": video_id, "has_heatmap": False, "error": f"Failed to fetch watch page: {e}"}
 
     pattern = r"var\s+ytInitialData\s*=\s*(\{.*?\});</script>"
     match = re.search(pattern, html)
@@ -99,19 +103,33 @@ def extract_heatmap(video_id_or_url: str):
         "markers": parsed_markers
     }
 
-def generate_clip_windows(markers, target_clip_duration=45.0, min_intensity_threshold=0.6, max_clips=3):
+def get_window_intensity_score(markers: List[Dict[str, Any]], start_sec: float, end_sec: float) -> float:
     """
-    Groups high-intensity segments into continuous 30-60s clip candidates for Shorts/Reels.
+    Computes an average normalized intensity score (0 to 100) for an arbitrary [start_sec, end_sec] window.
+    """
+    if not markers:
+        return 50.0
+
+    overlapping_intensities = []
+    for m in markers:
+        # Check for overlap: max(start1, start2) < min(end1, end2)
+        if max(start_sec, m["start_seconds"]) < min(end_sec, m["end_seconds"]):
+            overlapping_intensities.append(m["intensity"])
+
+    if not overlapping_intensities:
+        return 0.0
+
+    avg_intensity = sum(overlapping_intensities) / len(overlapping_intensities)
+    # Return as 0-100 score
+    return round(avg_intensity * 100.0, 1)
+
+def generate_clip_windows(markers: List[Dict[str, Any]], target_clip_duration: float = 45.0, min_intensity_threshold: float = 0.5, max_clips: int = 5) -> List[Dict[str, Any]]:
+    """
+    Groups high-intensity segments into continuous candidate windows for Shorts/Reels.
     """
     if not markers:
         return []
 
-    # Find peaks above threshold or top percentiles
-    intensities = [m["intensity"] for m in markers]
-    avg_intensity = sum(intensities) / len(intensities)
-    threshold = max(min_intensity_threshold, avg_intensity * 1.5)
-
-    # Sort segments by intensity to find anchor peaks
     sorted_markers = sorted(markers, key=lambda x: x["intensity"], reverse=True)
     
     clips = []
@@ -120,7 +138,6 @@ def generate_clip_windows(markers, target_clip_duration=45.0, min_intensity_thre
     for marker in sorted_markers:
         peak_time = (marker["start_seconds"] + marker["end_seconds"]) / 2.0
         
-        # Check if already covered by another clip
         overlap = False
         for start, end in used_ranges:
             if start <= peak_time <= end:
@@ -129,17 +146,11 @@ def generate_clip_windows(markers, target_clip_duration=45.0, min_intensity_thre
         if overlap:
             continue
 
-        # Build a window centered around the peak
         half_window = target_clip_duration / 2.0
         clip_start = max(0.0, peak_time - half_window)
         clip_end = clip_start + target_clip_duration
 
-        # Calculate average intensity in this window
-        window_intensities = [
-            m["intensity"] for m in markers 
-            if (m["start_seconds"] >= clip_start and m["end_seconds"] <= clip_end)
-        ]
-        score = sum(window_intensities) / len(window_intensities) if window_intensities else marker["intensity"]
+        window_score = get_window_intensity_score(markers, clip_start, clip_end)
 
         clips.append({
             "start_seconds": round(clip_start, 1),
@@ -147,7 +158,7 @@ def generate_clip_windows(markers, target_clip_duration=45.0, min_intensity_thre
             "duration": round(target_clip_duration, 1),
             "peak_second": round(peak_time, 1),
             "peak_intensity": marker["intensity"],
-            "window_score": round(score, 3)
+            "window_score": window_score
         })
         used_ranges.append((clip_start - 10, clip_end + 10))
 
@@ -174,8 +185,6 @@ if __name__ == "__main__":
         print(f"[!] {result.get('message', result.get('error'))}")
     else:
         print(f"[+] Total Segments Analyzed: {result['total_segments']}")
-        
-        # Suggested Shorts/Reels Cliping Windows
         clips = generate_clip_windows(result["markers"], target_clip_duration=45.0, max_clips=4)
         
         print("\nSUGGESTED SHORTS/REELS CLIP WINDOWS (45s each):")
@@ -184,6 +193,6 @@ if __name__ == "__main__":
             t_start = format_timestamp(clip['start_seconds'])
             t_end = format_timestamp(clip['end_seconds'])
             t_peak = format_timestamp(clip['peak_second'])
-            bar = "#" * int(clip['window_score'] * 20)
+            bar = "#" * int((clip['window_score'] / 100.0) * 20)
             print(f"Clip #{idx}: {t_start} -> {t_end} (Peak at {t_peak})")
-            print(f"         Engagement Score: {clip['window_score']*100:5.1f}% | {bar}\n")
+            print(f"         Engagement Score: {clip['window_score']:5.1f}% | {bar}\n")
