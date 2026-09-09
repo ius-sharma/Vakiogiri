@@ -1005,6 +1005,7 @@ export default function Home() {
                     const isCloud = isClipCloudHosted(clip);
                     const title = getClipTitle(clip, index);
                     const score = getClipScore(clip);
+                    const heatmapScore = getClipHeatmapScore(clip);
                     const timeRange = getClipTimeRange(clip);
 
                     return (
@@ -1030,7 +1031,7 @@ export default function Home() {
                               <h2 className="font-label-lg text-[15px] text-on-surface font-bold leading-tight">
                                 {title}
                               </h2>
-                              <div className="flex items-center gap-1 shrink-0">
+                              <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
                                 <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-xs ${
                                   score >= 90
                                     ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
@@ -1041,6 +1042,12 @@ export default function Home() {
                                   <span>🔥</span>
                                   <span>{score} Score</span>
                                 </span>
+                                {heatmapScore !== null && (
+                                  <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30 flex items-center gap-1 shadow-xs" title="Audience Most Replayed Curve Score">
+                                    <span>📈</span>
+                                    <span>{heatmapScore}% Replay</span>
+                                  </span>
+                                )}
                               </div>
                             </div>
 
