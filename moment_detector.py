@@ -782,46 +782,76 @@ def boost_candidates_with_comments(
 # ==============================================================================
 # LLM EVALUATION (OPENAI / GEMINI COMPATIBILITY)
 # ==============================================================================
+_CACHED_GROQ_CLIENT = None
+
+def get_cached_groq_client():
+    """Module-level cached Groq client singleton for fast repeated cloud inference."""
+    global _CACHED_GROQ_CLIENT
+    if _CACHED_GROQ_CLIENT is None:
+        key = os.getenv("GROQ_API_KEY")
+        if key and key.strip().startswith("gsk_"):
+            try:
+                from groq import Groq
+                _CACHED_GROQ_CLIENT = Groq(api_key=key.strip())
+                print("  -> Initialized Groq Cloud Client (Qwen 3.8 27B) for Hindi/Hinglish/English AI rating.")
+            except Exception as e:
+                print(f"[Groq Warning] Could not initialize Groq client: {e}")
+                _CACHED_GROQ_CLIENT = False
+        else:
+            _CACHED_GROQ_CLIENT = False
+    return _CACHED_GROQ_CLIENT if _CACHED_GROQ_CLIENT is not False else None
+
+
 def evaluate_context_with_llm(text: str, duration: float) -> Tuple[float, str]:
     """
-    Pass candidate transcript to LLM (gpt-4o-mini or Gemini) for viral hook rating (1-10) and title.
+    Pass candidate transcript to Groq Cloud LLM for viral hook rating (1-10) and title.
+    Specially tuned for Hindi, Hinglish, and English conversational nuances.
+    100% Free cloud inference with zero local GPU/CPU load.
     """
     if not text or len(text.split()) < 3:
         return 7.0, "Engaging Video Highlight"
 
-    openai_key = os.getenv("OPENAI_API_KEY")
-    if openai_key:
+    # 1. Try Groq Cloud LLM (Qwen 3.8 27B)
+    client = get_cached_groq_client()
+    if client:
         try:
-            import openai
-            client = openai.OpenAI(api_key=openai_key)
             prompt = (
-                f"You are an expert viral short video editor (TikTok/Reels/Shorts).\n"
-                f"Evaluate this transcript segment (~{int(duration)}s):\n\n"
-                f"\"{text}\"\n\n"
-                f"Rate virality/hook/punchline on scale 1-10, and generate a punchy 3-6 word click-worthy title.\n"
-                f"Return JSON only: {{\"rating\": 8, \"title\": \"Short Viral Title\"}}"
+                f"You are an expert viral short-form video editor specializing in Hindi, Hinglish, and English content (YouTube Shorts, Instagram Reels).\n\n"
+                f"Analyze this speech transcript segment (~{int(duration)}s):\n"
+                f"\"\"\"{text}\"\"\"\n\n"
+                f"Instructions:\n"
+                f"1. Rate viral potential on a scale of 1-10:\n"
+                f"   - Is there a strong curiosity hook or punchy opening in the first 3 seconds?\n"
+                f"   - Does it deliver a clear revelation, joke, insight, or emotional payoff?\n"
+                f"   - Does it feel complete as a standalone short without confusing the viewer?\n"
+                f"2. Generate an ultra-catchy, viral 3-6 word title in the natural language of the video (e.g. if Hinglish, write natural Hinglish like 'Sabse Badi Galti'; if English, write clicky English).\n\n"
+                f"Respond with JSON ONLY in this format:\n"
+                f"{{\"rating\": 8.5, \"title\": \"Catchy 3-6 Word Title\"}}"
             )
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
+            resp = client.chat.completions.create(
+                model="qwen/qwen3.8-27b",
                 messages=[
-                    {"role": "system", "content": "You are a professional video editor. Return JSON only."},
+                    {"role": "system", "content": "You are an expert viral short video curator. Always reply in valid JSON only."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.3,
-                max_tokens=120,
+                max_tokens=150,
                 response_format={"type": "json_object"}
             )
-            data = json.loads(response.choices[0].message.content or "{}")
-            rating = max(1.0, min(10.0, float(data.get("rating", 7))))
-            title = data.get("title", "").strip() or generate_smart_title_from_text(text)
+            raw_content = resp.choices[0].message.content or "{}"
+            data = json.loads(raw_content)
+            rating = max(1.0, min(10.0, float(data.get("rating", 7.5))))
+            raw_title = data.get("title", "").strip()
+            title = generate_smart_title_from_text(raw_title) if raw_title else generate_smart_title_from_text(text)
             return rating, title
         except Exception as err:
-            print(f"  -> OpenAI LLM context evaluation notice: {err}")
+            print(f"  -> Groq LLM evaluation notice: {err}. Gracefully falling back to local heuristic.")
 
+    # 2. Local heuristic fallback
     words = text.split()
     hook_score, smart_title = score_transcript_hook_and_story(
         text_slice=text,
-        opener_slice=" ".join(words[:4]),
+        opener_slice=" ".join(words[:5]),
         word_count=len(words),
         duration=duration
     )
@@ -1033,15 +1063,12 @@ def detect_best_moments(
             ]).strip()
             if final_text:
                 cand_copy["text"] = final_text
-                snapped_hook_sc, snapped_title = score_transcript_hook_and_story(
-                    text_slice=final_text,
-                    opener_slice=" ".join(final_text.split()[:5]),
-                    word_count=len(final_text.split()),
+                llm_rating, llm_title = evaluate_context_with_llm(
+                    text=final_text,
                     duration=cand_copy["duration"]
                 )
-                cand_copy["semantic_score"] = snapped_hook_sc
-                if not cand_copy.get("title") or cand_copy["title"] == "Top Video Moment":
-                    cand_copy["title"] = snapped_title
+                cand_copy["semantic_score"] = round(llm_rating * 10.0, 1)
+                cand_copy["title"] = llm_title
 
         snapped_candidates.append(cand_copy)
 
