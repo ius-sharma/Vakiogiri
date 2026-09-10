@@ -1,12 +1,21 @@
 import os
 import re
+import sys
 import json
 import math
 import shutil
 import tempfile
 import subprocess
+import unicodedata
 from typing import List, Dict, Any, Optional, Tuple, Callable
 from dotenv import load_dotenv
+
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 from youtube_heatmap import extract_heatmap, generate_clip_windows, get_window_intensity_score
 
@@ -578,7 +587,9 @@ def generate_smart_title_from_text(text: str) -> str:
     if not text:
         return "Top Video Moment"
 
-    clean = re.sub(r'\[.*?\]', '', text).strip()
+    # Normalize unicode to clean ASCII (converts accented characters like \u1edb to normal Latin)
+    clean = unicodedata.normalize('NFKD', text).encode('ascii', 'ignore').decode('ascii')
+    clean = re.sub(r'\[.*?\]', '', clean).strip()
     sentences = re.split(r'[.!?\n]', clean)
     first_sentence = sentences[0].strip() if sentences else clean
     

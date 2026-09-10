@@ -1,10 +1,18 @@
 # uvicorn main:app --reload --port 8000
 
 import os
+import sys
 import uuid
 import requests
 from typing import Dict, Any, List, Optional
 from dotenv import load_dotenv
+
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 from fastapi import FastAPI, BackgroundTasks, HTTPException, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse

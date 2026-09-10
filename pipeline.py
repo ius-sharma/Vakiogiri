@@ -4,6 +4,14 @@ import shutil
 import subprocess
 import math
 from typing import List, Callable, Optional, Dict, Any
+
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 import yt_dlp
 from moment_detector import detect_best_moments
 
@@ -187,7 +195,8 @@ def split_and_crop_video(
         
         try:
             subprocess.run(ffmpeg_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
-            print(f"  -> Created {clip_name} (starts at {start_time:.1f}s, len: {clip_dur:.1f}s, score: {target['score']}, title: '{target['title']}')")
+            safe_title = str(target.get('title', '')).encode('ascii', 'replace').decode('ascii')
+            print(f"  -> Created {clip_name} (starts at {start_time:.1f}s, len: {clip_dur:.1f}s, score: {target['score']}, title: '{safe_title}')")
             created_clips.append({
                 "filename": clip_name,
                 "title": target["title"],
