@@ -1,4 +1,4 @@
-﻿import re
+import re
 import json
 import requests
 import sys
@@ -123,47 +123,148 @@ def get_window_intensity_score(markers: List[Dict[str, Any]], start_sec: float, 
     # Return as 0-100 score
     return round(avg_intensity * 100.0, 1)
 
-def generate_clip_windows(markers: List[Dict[str, Any]], target_clip_duration: float = 45.0, min_intensity_threshold: float = 0.5, max_clips: int = 5) -> List[Dict[str, Any]]:
+def detect_heatmap_surges(markers: List[Dict[str, Any]], min_relative_surge: float = 0.08) -> List[Dict[str, Any]]:
     """
-    Groups high-intensity segments into continuous candidate windows for Shorts/Reels.
+    Identifies dynamic surge regions using numerical derivative (rate of change in replay intensity).
+    Returns list of detected surges with:
+      - surge_start: Time where curve starts sharp upward climb (The Hook)
+      - peak_time: Timestamp of maximum replay intensity (The Climax / Punchline)
+      - peak_intensity: Maximum score reached
+      - surge_end: Timestamp where intensity decays back to baseline
+    """
+    if not markers or len(markers) < 3:
+        return []
+
+    surges = []
+    n = len(markers)
+    
+    # Calculate derivative (differences between consecutive segments)
+    deltas = [0.0] * n
+    for i in range(1, n):
+        deltas[i] = markers[i]["intensity"] - markers[i-1]["intensity"]
+
+    i = 1
+    while i < n:
+        # Check if an upward surge begins
+        if deltas[i] >= min_relative_surge or (markers[i]["intensity"] >= 0.70 and deltas[i] >= 0.02):
+            surge_start_idx = max(0, i - 1)
+            surge_start_time = markers[surge_start_idx]["start_seconds"]
+            
+            # Trace upward climb to the peak
+            peak_idx = i
+            while peak_idx < n - 1 and markers[peak_idx + 1]["intensity"] >= markers[peak_idx]["intensity"]:
+                peak_idx += 1
+            
+            peak_time = (markers[peak_idx]["start_seconds"] + markers[peak_idx]["end_seconds"]) / 2.0
+            peak_val = markers[peak_idx]["intensity"]
+
+            # Trace decay after peak
+            end_idx = peak_idx
+            while end_idx < n - 1 and markers[end_idx + 1]["intensity"] <= markers[end_idx]["intensity"] and markers[end_idx + 1]["intensity"] >= (peak_val * 0.75):
+                end_idx += 1
+            
+            surge_end_time = markers[end_idx]["end_seconds"]
+
+            surges.append({
+                "surge_start": surge_start_time,
+                "peak_time": round(peak_time, 2),
+                "peak_intensity": round(peak_val, 4),
+                "surge_end": surge_end_time,
+                "peak_marker_idx": peak_idx
+            })
+
+            # Advance pointer past peak
+            i = max(i + 1, end_idx)
+        else:
+            i += 1
+
+    # Sort surges by peak intensity descending
+    surges.sort(key=lambda x: x["peak_intensity"], reverse=True)
+    return surges
+
+def generate_clip_windows(
+    markers: List[Dict[str, Any]],
+    target_clip_duration: float = 45.0,
+    min_intensity_threshold: float = 0.45,
+    max_clips: int = 5
+) -> List[Dict[str, Any]]:
+    """
+    Groups high-intensity segments into intelligent candidate windows for Shorts/Reels.
+    Uses Heatmap Surge Derivative (Slope) to anchor the clip start near the hook (surge start)
+    and ensure the climax (peak) is delivered within the first 60-80% of the clip.
     """
     if not markers:
         return []
 
-    sorted_markers = sorted(markers, key=lambda x: x["intensity"], reverse=True)
-    
+    # Method 1: Detect curve surges (derivative rate-of-change)
+    surges = detect_heatmap_surges(markers)
     clips = []
     used_ranges = []
 
-    for marker in sorted_markers:
-        peak_time = (marker["start_seconds"] + marker["end_seconds"]) / 2.0
-        
-        overlap = False
-        for start, end in used_ranges:
-            if start <= peak_time <= end:
-                overlap = True
-                break
+    for surge in surges:
+        surge_start = surge["surge_start"]
+        peak_time = surge["peak_time"]
+        peak_intensity = surge["peak_intensity"]
+
+        if peak_intensity < min_intensity_threshold:
+            continue
+
+        # Check overlap with existing chosen windows
+        overlap = any(u_start <= peak_time <= u_end for u_start, u_end in used_ranges)
         if overlap:
             continue
 
-        half_window = target_clip_duration / 2.0
-        clip_start = max(0.0, peak_time - half_window)
-        clip_end = clip_start + target_clip_duration
+        # Smart Hook-to-Climax windowing:
+        # A great Short hooks at surge_start, and reaches the climax roughly 15-30s into the clip
+        # rather than dumbly placing the peak at dead center.
+        ideal_lead_in = min(20.0, target_clip_duration * 0.40)
+        
+        # Start shortly before surge start so speaker's phrase isn't cut off
+        candidate_start = max(0.0, min(surge_start - 3.0, peak_time - ideal_lead_in))
+        candidate_end = candidate_start + target_clip_duration
 
-        window_score = get_window_intensity_score(markers, clip_start, clip_end)
+        window_score = get_window_intensity_score(markers, candidate_start, candidate_end)
 
         clips.append({
-            "start_seconds": round(clip_start, 1),
-            "end_seconds": round(clip_end, 1),
+            "start_seconds": round(candidate_start, 1),
+            "end_seconds": round(candidate_end, 1),
             "duration": round(target_clip_duration, 1),
             "peak_second": round(peak_time, 1),
-            "peak_intensity": marker["intensity"],
-            "window_score": window_score
+            "peak_intensity": peak_intensity,
+            "window_score": window_score,
+            "surge_hook_second": round(surge_start, 1)
         })
-        used_ranges.append((clip_start - 10, clip_end + 10))
+        used_ranges.append((candidate_start - 12.0, candidate_end + 12.0))
 
         if len(clips) >= max_clips:
             break
+
+    # Fallback if no distinct sharp surges detected: use global top peaks
+    if len(clips) < max_clips:
+        sorted_markers = sorted(markers, key=lambda x: x["intensity"], reverse=True)
+        for marker in sorted_markers:
+            peak_time = (marker["start_seconds"] + marker["end_seconds"]) / 2.0
+            overlap = any(u_start <= peak_time <= u_end for u_start, u_end in used_ranges)
+            if overlap:
+                continue
+
+            candidate_start = max(0.0, peak_time - (target_clip_duration * 0.38))
+            candidate_end = candidate_start + target_clip_duration
+            window_score = get_window_intensity_score(markers, candidate_start, candidate_end)
+
+            clips.append({
+                "start_seconds": round(candidate_start, 1),
+                "end_seconds": round(candidate_end, 1),
+                "duration": round(target_clip_duration, 1),
+                "peak_second": round(peak_time, 1),
+                "peak_intensity": marker["intensity"],
+                "window_score": window_score,
+                "surge_hook_second": round(candidate_start, 1)
+            })
+            used_ranges.append((candidate_start - 10.0, candidate_end + 10.0))
+
+            if len(clips) >= max_clips:
+                break
 
     return sorted(clips, key=lambda x: x["start_seconds"])
 

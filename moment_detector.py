@@ -177,6 +177,150 @@ def transcribe_video_audio(video_or_audio_path: str) -> List[Dict[str, Any]]:
 # ==============================================================================
 # SENTENCE & SILENCE BOUNDARY SNAPPING (NO MID-SENTENCE CUTS)
 # ==============================================================================
+DANGLING_END_WORDS = {
+    "and", "or", "but", "so", "because", "that", "to", "with", "if", "when", 
+    "like", "uh", "um", "the", "a", "an", "then", "which", "who", "whom", "where",
+    "as", "for", "of", "in", "on", "at", "by", "from", "about", "into"
+}
+
+DANGLING_START_WORDS = {
+    "and", "but", "or", "so", "because", "then", "which", "also", "plus"
+}
+
+def is_true_sentence_starter(segment: Dict[str, Any], prev_segment: Optional[Dict[str, Any]] = None) -> bool:
+    """Checks if a segment is a natural sentence beginning rather than a trailing thought."""
+    text = segment.get("text", "").strip()
+    if not text:
+        return False
+
+    # Check 1: Previous segment ended with sentence-final punctuation
+    if prev_segment:
+        prev_text = prev_segment.get("text", "").strip()
+        if prev_text and prev_text[-1] in {".", "!", "?"}:
+            return True
+        # Or there was a significant silence gap (> 0.5s)
+        if (segment["start"] - prev_segment["end"]) >= 0.5:
+            return True
+
+    # Check 2: First word is capitalized and not a weak trailing conjunction
+    first_word = text.split()[0].strip().rstrip(",;:-")
+    if first_word and first_word[0].isupper() and first_word.lower() not in DANGLING_START_WORDS:
+        return True
+
+    return False
+
+def is_clean_sentence_ender(segment: Dict[str, Any]) -> bool:
+    """Checks if segment ends with a complete thought, avoiding dangling prepositions/conjunctions."""
+    text = segment.get("text", "").strip()
+    if not text:
+        return False
+
+    # Check terminal punctuation
+    if text[-1] in {".", "!", "?"}:
+        clean_words = re.findall(r'\b\w+\b', text)
+        if clean_words and clean_words[-1].lower() not in DANGLING_END_WORDS:
+            return True
+
+    words = text.split()
+    if words:
+        last_word = words[-1].lower().strip(".,!?;:\"'")
+        if last_word in DANGLING_END_WORDS:
+            return False
+
+    return False
+
+def trace_narrative_context_for_peak(
+    peak_time: float,
+    segments: List[Dict[str, Any]],
+    total_duration: float,
+    target_duration: float = DEFAULT_CLIP_DURATION,
+    min_duration: float = MIN_CLIP_DURATION,
+    max_duration: float = MAX_CLIP_DURATION
+) -> Tuple[float, float]:
+    """
+    Backward Narrative Context Reconstruction:
+    Traces backward from a climax/peak timestamp to find the true story inception point,
+    then bounds forward to complete the resolution without abrupt mid-thought cuts.
+    """
+    if not segments:
+        s = max(0.0, round(peak_time - (target_duration * 0.4), 2))
+        e = min(total_duration, round(s + target_duration, 2))
+        return s, e
+
+    # Find segment closest to peak_time
+    peak_idx = 0
+    for idx, seg in enumerate(segments):
+        if seg["start"] <= peak_time <= seg["end"]:
+            peak_idx = idx
+            break
+        if seg["start"] > peak_time:
+            peak_idx = max(0, idx - 1)
+            break
+
+    # 1. Trace BACKWARD from peak_idx to find the anchor hook/sentence starter
+    ideal_lead_in = min(22.0, target_duration * 0.45)
+    earliest_allowed_start = max(0.0, peak_time - ideal_lead_in)
+    
+    best_start_idx = peak_idx
+    for idx in range(peak_idx, -1, -1):
+        seg = segments[idx]
+        prev_seg = segments[idx - 1] if idx > 0 else None
+        
+        if seg["start"] >= earliest_allowed_start:
+            if is_true_sentence_starter(seg, prev_seg):
+                best_start_idx = idx
+                if (peak_time - seg["start"]) >= 8.0:
+                    break
+        elif seg["start"] < earliest_allowed_start:
+            if is_true_sentence_starter(seg, prev_seg):
+                best_start_idx = idx
+            break
+
+    start_time = segments[best_start_idx]["start"]
+
+    # 2. Trace FORWARD from peak_idx to find a clean, punchy sentence resolution
+    best_end_idx = peak_idx
+    found_clean_end = is_clean_sentence_ender(segments[peak_idx])
+    
+    for idx in range(peak_idx, len(segments)):
+        seg = segments[idx]
+        current_dur = seg["end"] - start_time
+        
+        if current_dur > max_duration:
+            break
+            
+        if is_clean_sentence_ender(seg):
+            best_end_idx = idx
+            found_clean_end = True
+            if current_dur >= (target_duration - 6.0):
+                break
+        elif not found_clean_end and current_dur <= target_duration:
+            best_end_idx = idx
+
+    end_time = segments[best_end_idx]["end"]
+
+    # Validate duration bounds without allowing dangling endings
+    if (end_time - start_time) < min_duration:
+        for idx in range(best_end_idx + 1, len(segments)):
+            if is_clean_sentence_ender(segments[idx]) and (segments[idx]["end"] - start_time) <= max_duration:
+                best_end_idx = idx
+                end_time = segments[idx]["end"]
+                if (end_time - start_time) >= min_duration:
+                    break
+
+        if (end_time - start_time) < min_duration:
+            for idx in range(best_start_idx - 1, -1, -1):
+                prev_seg = segments[idx - 1] if idx > 0 else None
+                if is_true_sentence_starter(segments[idx], prev_seg):
+                    start_time = segments[idx]["start"]
+                    best_start_idx = idx
+                    if (end_time - start_time) >= min_duration:
+                        break
+
+    start_time = max(0.0, round(start_time, 2))
+    end_time = min(total_duration, round(end_time, 2))
+    return start_time, end_time
+
 def snap_to_sentence_boundaries(
     target_start: float,
     target_end: float,
@@ -194,36 +338,43 @@ def snap_to_sentence_boundaries(
         e = min(total_duration, round(target_end, 2))
         return s, e
 
-    # Find the best sentence start near target_start (search window +/- 4.5 seconds)
+    # Find the best sentence start near target_start
     best_start = target_start
-    start_candidates = [
-        seg["start"] for seg in segments
-        if abs(seg["start"] - target_start) <= 5.0 and seg["start"] < target_end
-    ]
-    if start_candidates:
-        # Prefer the sentence start closest to target_start
-        best_start = min(start_candidates, key=lambda s: abs(s - target_start))
+    start_candidates = []
+    for idx, seg in enumerate(segments):
+        if abs(seg["start"] - target_start) <= 6.0 and seg["start"] < target_end:
+            prev_seg = segments[idx - 1] if idx > 0 else None
+            is_true_start = is_true_sentence_starter(seg, prev_seg)
+            # Give priority bonus to true sentence beginnings
+            distance = abs(seg["start"] - target_start) - (3.0 if is_true_start else 0.0)
+            start_candidates.append((distance, seg["start"]))
 
-    # Find the best sentence end near target_end (search window +/- 5.0 seconds)
+    if start_candidates:
+        start_candidates.sort(key=lambda x: x[0])
+        best_start = start_candidates[0][1]
+
+    # Find the best sentence end near target_end
     best_end = target_end
-    end_candidates = [
-        seg["end"] for seg in segments
-        if abs(seg["end"] - target_end) <= 6.0 and seg["end"] > best_start
-    ]
+    end_candidates = []
+    for seg in segments:
+        if abs(seg["end"] - target_end) <= 6.5 and seg["end"] > best_start:
+            is_clean_end = is_clean_sentence_ender(seg)
+            distance = abs(seg["end"] - target_end) - (3.0 if is_clean_end else 0.0)
+            end_candidates.append((distance, seg["end"]))
+
     if end_candidates:
-        best_end = min(end_candidates, key=lambda e: abs(e - target_end))
+        end_candidates.sort(key=lambda x: x[0])
+        best_end = end_candidates[0][1]
 
     # Validate duration constraints
     dur = best_end - best_start
     if dur < min_duration:
-        # Extend end to encompass next sentence or add time
         extend_candidates = [seg["end"] for seg in segments if seg["end"] >= best_start + min_duration]
         if extend_candidates:
             best_end = min(extend_candidates)
         else:
             best_end = min(total_duration, best_start + min_duration)
     elif dur > max_duration:
-        # Shrink to previous sentence end
         shrink_candidates = [seg["end"] for seg in segments if best_start + min_duration <= seg["end"] <= best_start + max_duration]
         if shrink_candidates:
             best_end = max(shrink_candidates)
@@ -360,7 +511,8 @@ def score_transcript_hook_and_story(
     duration: float
 ) -> Tuple[float, str]:
     """
-    Score semantic virality, curiosity hooks, and narrative coherence of a transcript slice.
+    Score semantic virality, curiosity hooks, narrative completeness, and pacing of a transcript slice.
+    100% open-source heuristic model (no paid API calls required).
     Returns (hook_score_100, candidate_title).
     """
     if not text_slice or word_count < 4:
@@ -368,33 +520,50 @@ def score_transcript_hook_and_story(
 
     lower_text = text_slice.lower()
     lower_opener = opener_slice.lower()
-    first_words = lower_opener.split()[:4]
+    first_words = lower_opener.split()[:5]
 
-    score = 65.0  # Base score
+    score = 60.0  # Clean baseline score
 
-    # 1. Hook Opener Check (First 3-5 seconds):
-    # Questions are the #1 highest-converting short-form hook format
+    # 1. First 3-5 Seconds Hook Strength (The Scroll-Stopper):
+    # Questions & curiosity hooks
     if any(q in first_words for q in HOOK_QUESTION_WORDS) or "?" in opener_slice:
-        score += 15.0
+        score += 16.0
+    # Second-person address ('you', 'your') - hooks audience directly
+    if any(w in {"you", "your", "you're", "we", "everybody"} for w in first_words):
+        score += 8.0
+    # Numerical or list hook ('3 reasons', 'one thing', 'first step')
+    if re.search(r'\b(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:reasons?|things?|steps?|ways?|mistakes?|secrets?)\b', lower_opener):
+        score += 14.0
 
     # 2. Viral Trigger Regex Matches (Curiosity gap, controversy, superlatives, shocking words)
     trigger_matches = 0
     for pattern in HOOK_TRIGGERS:
         if re.search(pattern, lower_text, re.IGNORECASE):
             trigger_matches += 1
-    score += min(18.0, trigger_matches * 6.0)
+    score += min(18.0, trigger_matches * 5.0)
 
-    # 3. Conversational Interaction & Pacing (Words Per Minute):
-    # Ideal viral short pacing is 130 - 180 WPM
+    # 3. Conversational Pacing & Energy (Words Per Minute):
+    # Ideal viral short pacing is 125 - 175 WPM
     wpm = (word_count / max(5.0, duration)) * 60.0
-    if 110 <= wpm <= 190:
-        score += 8.0
+    if 125 <= wpm <= 175:
+        score += 10.0
+    elif 100 <= wpm < 125 or 175 < wpm <= 200:
+        score += 5.0
     elif wpm < 80:
-        score -= 5.0  # Dead air / slow speech
+        score -= 8.0  # Boring silence / dragging speech
 
-    # 4. Emotional Exclamation Punctuation:
-    if "!" in text_slice:
-        score += 4.0
+    # 4. Narrative Completeness & Structural Coherence:
+    clean_strip = text_slice.strip()
+    # Bonus for clean sentence beginning
+    if clean_strip and clean_strip[0].isupper() and clean_strip.split()[0].lower() not in DANGLING_START_WORDS:
+        score += 6.0
+    # Bonus for clean terminal punctuation
+    if clean_strip and clean_strip[-1] in {".", "!", "?"}:
+        score += 8.0
+    # Penalty for dangling conjunctions at end
+    words = clean_strip.split()
+    if words and words[-1].lower().strip(".,!?;:\"'") in DANGLING_END_WORDS:
+        score -= 14.0
 
     score = max(40.0, min(99.0, score))
 
@@ -779,17 +948,29 @@ def detect_best_moments(
             "text": t_slice
         })
 
-    # Seed candidates from Heatmap peaks if available
+    # Seed candidates from Heatmap peaks using Backward Narrative Tracing
     if has_heatmap:
         hm_seed_clips = generate_clip_windows(
             heatmap_markers,
             target_clip_duration=float(target_duration),
             min_intensity_threshold=0.45,
-            max_clips=5
+            max_clips=6
         )
         for hmc in hm_seed_clips:
-            s_time = hmc["start_seconds"]
-            e_time = min(duration, hmc["end_seconds"])
+            peak_time = hmc["peak_second"]
+            if transcript_segments:
+                s_time, e_time = trace_narrative_context_for_peak(
+                    peak_time=peak_time,
+                    segments=transcript_segments,
+                    total_duration=duration,
+                    target_duration=float(target_duration),
+                    min_duration=MIN_CLIP_DURATION,
+                    max_duration=MAX_CLIP_DURATION
+                )
+            else:
+                s_time = hmc["start_seconds"]
+                e_time = min(duration, hmc["end_seconds"])
+
             t_slice = ""
             if transcript_segments:
                 t_slice = " ".join([
@@ -799,7 +980,7 @@ def detect_best_moments(
 
             hook_sc, title = score_transcript_hook_and_story(
                 text_slice=t_slice,
-                opener_slice=" ".join(t_slice.split()[:4]),
+                opener_slice=" ".join(t_slice.split()[:5]),
                 word_count=len(t_slice.split()),
                 duration=e_time - s_time
             )
@@ -808,10 +989,11 @@ def detect_best_moments(
                 "start": s_time,
                 "end": e_time,
                 "semantic_score": hook_sc,
-                "audio_score": 72.0,
+                "audio_score": 75.0,
                 "heatmap_score": hmc["window_score"],
                 "title": title,
-                "text": t_slice
+                "text": t_slice,
+                "source": "heatmap_surge"
             })
 
     boosted_pool = boost_candidates_with_comments(raw_pool, comment_timestamps, tolerance_seconds=6.0)
@@ -831,6 +1013,25 @@ def detect_best_moments(
         cand_copy["start"] = snapped_s
         cand_copy["end"] = snapped_e
         cand_copy["duration"] = round(snapped_e - snapped_s, 2)
+
+        # Refresh text and hook score on the final snapped boundaries
+        if transcript_segments:
+            final_text = " ".join([
+                s["text"] for s in transcript_segments
+                if not (s["end"] < snapped_s or s["start"] > snapped_e)
+            ]).strip()
+            if final_text:
+                cand_copy["text"] = final_text
+                snapped_hook_sc, snapped_title = score_transcript_hook_and_story(
+                    text_slice=final_text,
+                    opener_slice=" ".join(final_text.split()[:5]),
+                    word_count=len(final_text.split()),
+                    duration=cand_copy["duration"]
+                )
+                cand_copy["semantic_score"] = snapped_hook_sc
+                if not cand_copy.get("title") or cand_copy["title"] == "Top Video Moment":
+                    cand_copy["title"] = snapped_title
+
         snapped_candidates.append(cand_copy)
 
     # --------------------------------------------------------------------------
@@ -854,9 +1055,9 @@ def detect_best_moments(
         word_count = len(cand.get("text", "").split())
         wpm = (word_count / max(5.0, cand["duration"])) * 60.0
         pacing_score = 80.0
-        if 120 <= wpm <= 180:
+        if 125 <= wpm <= 175:
             pacing_score = 95.0
-        elif wpm < 70:
+        elif wpm < 80:
             pacing_score = 60.0
 
         # Multi-factor score computation
