@@ -50,3 +50,5 @@ node_modules/
 out/
 build/
 .vercel/
+clip_test.py
+eval_critic.py
