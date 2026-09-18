@@ -80,6 +80,28 @@ export default function TopNavBar({
     };
   }, []);
 
+  // Handle mobile menu scroll locking and Escape listener
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setMobileMenuOpen(false);
+        setActiveDropdown(null);
+      }
+    };
+
+    if (mobileMenuOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = "";
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [mobileMenuOpen]);
+
   const toggleDropdown = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     setActiveDropdown((prev) => (prev === id ? null : id));
@@ -369,11 +391,7 @@ export default function TopNavBar({
                   <button
                     type="button"
                     onClick={authActions.onSignup}
-                    className="px-5 py-2 rounded-full font-bold text-[14px] tracking-tight transition-all active:scale-95 cursor-pointer shadow-xs"
-                    style={{
-                      backgroundColor: "var(--cta-bg)",
-                      color: "var(--cta-text)",
-                    }}
+                    className="px-5 py-2 rounded-full font-bold text-[14px] tracking-tight transition-all active:scale-95 cursor-pointer shadow-sm bg-[#191c1d] text-white hover:bg-neutral-800 dark:bg-white dark:text-[#0a0a0d] dark:hover:bg-neutral-200"
                   >
                     {authActions.signupLabel || "Start for free"}
                   </button>
@@ -401,12 +419,20 @@ export default function TopNavBar({
         </div>
       </div>
 
+      {/* Backdrop overlay for mobile drawer */}
+      {mobileMenuOpen && (
+        <div
+          className="fixed inset-0 top-[68px] bg-black/40 backdrop-blur-xs z-40 lg:hidden animate-in fade-in duration-150"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
+
       {/* ========================================================================= */}
       {/* MOBILE SLIDE-DOWN DRAWER PANEL (< 1024px)                                 */}
       {/* ========================================================================= */}
       {mobileMenuOpen && (
         <div
-          className="lg:hidden border-t border-black/5 dark:border-white/5 px-6 py-4 flex flex-col gap-3 animate-in slide-in-from-top-2 duration-200"
+          className="lg:hidden border-t border-black/5 dark:border-white/5 px-6 py-4 flex flex-col gap-3 relative z-50 animate-in slide-in-from-top-2 duration-200 shadow-xl"
           style={{
             backgroundColor: "var(--nav-bg)",
           }}
@@ -529,32 +555,48 @@ export default function TopNavBar({
 
           {/* Mobile Auth Actions */}
           <div className="pt-3 border-t border-black/5 dark:border-white/5 flex flex-col gap-2">
-            {!session && authActions.onLogin && (
-              <button
-                type="button"
-                onClick={() => {
-                  authActions.onLogin?.();
-                  setMobileMenuOpen(false);
-                }}
-                className="w-full text-center py-2.5 rounded-xl text-[14px] font-medium hover:bg-[var(--nav-pill-hover)] transition-colors cursor-pointer"
-                style={{ color: "var(--text-primary)" }}
-              >
-                {authActions.loginLabel || "Log in"}
-              </button>
-            )}
-
-            {session && onSignOut && (
-              <button
-                type="button"
-                onClick={() => {
-                  onSignOut();
-                  setMobileMenuOpen(false);
-                }}
-                className="w-full text-center py-2.5 rounded-xl text-[14px] font-medium hover:bg-[var(--nav-pill-hover)] transition-colors cursor-pointer"
-                style={{ color: "var(--text-primary)" }}
-              >
-                Sign out ({session.user?.email || "User"})
-              </button>
+            {!session ? (
+              <div className="flex flex-col gap-2">
+                {authActions.onSignup && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      authActions.onSignup?.();
+                      setMobileMenuOpen(false);
+                    }}
+                    className="w-full text-center py-2.5 rounded-xl text-[14px] font-bold bg-[#191c1d] text-white hover:bg-neutral-800 dark:bg-white dark:text-[#0a0a0d] dark:hover:bg-neutral-200 transition-all cursor-pointer shadow-xs active:scale-[0.98]"
+                  >
+                    {authActions.signupLabel || "Start for free"}
+                  </button>
+                )}
+                {authActions.onLogin && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      authActions.onLogin?.();
+                      setMobileMenuOpen(false);
+                    }}
+                    className="w-full text-center py-2.5 rounded-xl text-[14px] font-medium hover:bg-[var(--nav-pill-hover)] transition-colors cursor-pointer"
+                    style={{ color: "var(--text-primary)" }}
+                  >
+                    {authActions.loginLabel || "Log in"}
+                  </button>
+                )}
+              </div>
+            ) : (
+              session && onSignOut && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSignOut();
+                    setMobileMenuOpen(false);
+                  }}
+                  className="w-full text-center py-2.5 rounded-xl text-[14px] font-medium hover:bg-[var(--nav-pill-hover)] transition-colors cursor-pointer"
+                  style={{ color: "var(--text-primary)" }}
+                >
+                  Sign out ({session.user?.email || "User"})
+                </button>
+              )
             )}
           </div>
         </div>

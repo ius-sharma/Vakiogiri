@@ -69,8 +69,8 @@
   --text-primary: #191c1d;
   --text-muted: #575e70;
   --accent: #3525cd;
-  --cta-bg: #ffffff;
-  --cta-text: #191c1d;
+  --cta-bg: #191c1d;
+  --cta-text: #ffffff;
 }
 
 .dark {
@@ -81,7 +81,7 @@
   --text-muted: #94a3b8;
   --accent: #818cf8;
   --cta-bg: #ffffff;
-  --cta-text: #0f172a;
+  --cta-text: #0a0a0d;
 }
 
 /* Material Symbols configuration */
