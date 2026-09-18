@@ -77,7 +77,26 @@ export default function Home() {
   const [clips, setClips] = useState<(string | ClipItem)[]>([]);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // Micro-interaction & download states
+  const [pasted, setPasted] = useState(false);
+  const [downloadingClips, setDownloadingClips] = useState<Record<string, "downloading" | "done">>({});
+  const [isDownloadingAll, setIsDownloadingAll] = useState(false);
+
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const isPollingRef = useRef<boolean>(false);
+
+  const handlePasteFromClipboard = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) {
+        setYoutubeUrl(text.trim());
+        setPasted(true);
+        setTimeout(() => setPasted(false), 2000);
+      }
+    } catch (err) {
+      console.warn("Clipboard access denied or unavailable", err);
+    }
+  };
 
   // Load theme and auth session
   useEffect(() => {
@@ -294,15 +313,32 @@ export default function Home() {
   const handleDownloadSingle = (clip: string | ClipItem, targetJobId?: string) => {
     const clipUrl = getClipUrl(clip, targetJobId);
     const filename = getClipFilename(clip);
+    
+    setDownloadingClips((prev) => ({ ...prev, [filename]: "downloading" }));
     downloadClipFile(clipUrl, filename);
+
+    setTimeout(() => {
+      setDownloadingClips((prev) => ({ ...prev, [filename]: "done" }));
+      setTimeout(() => {
+        setDownloadingClips((prev) => {
+          const next = { ...prev };
+          delete next[filename];
+          return next;
+        });
+      }, 2500);
+    }, 600);
   };
 
   const handleDownloadAll = (targetClips = clips, targetJobId = jobId) => {
     if (targetClips.length === 0) return;
+    setIsDownloadingAll(true);
     targetClips.forEach((clip, index) => {
       setTimeout(() => {
         handleDownloadSingle(clip, targetJobId || undefined);
-      }, index * 250);
+        if (index === targetClips.length - 1) {
+          setTimeout(() => setIsDownloadingAll(false), 2000);
+        }
+      }, index * 400);
     });
   };
 
@@ -389,7 +425,7 @@ export default function Home() {
 
       pollIntervalRef.current = setInterval(() => {
         checkStatus(currentJobId);
-      }, 800);
+      }, 1200);
 
       checkStatus(currentJobId);
     } catch (err: any) {
@@ -399,6 +435,8 @@ export default function Home() {
   };
 
   const checkStatus = async (currentJobId: string) => {
+    if (isPollingRef.current) return;
+    isPollingRef.current = true;
     try {
       const res = await fetch(`${BACKEND_URL}/status/${currentJobId}`);
       if (!res.ok) {
@@ -435,11 +473,16 @@ export default function Home() {
       stopPolling();
       setStatus("failed");
       setErrorMsg(err.message || "Error polling backend status.");
+    } finally {
+      isPollingRef.current = false;
     }
   };
 
   const handleReset = () => {
     stopPolling();
+    isPollingRef.current = false;
+    setIsDownloadingAll(false);
+    setDownloadingClips({});
     setStatus("idle");
     setJobId(null);
     setProgress(5);
@@ -459,7 +502,7 @@ export default function Home() {
   }
 
   return (
-    <div className={`min-h-screen flex flex-col font-body-md antialiased relative ${theme === "dark" ? "dark bg-slate-950 text-slate-100" : "bg-background text-on-background"}`}>
+    <div className={`min-h-screen flex flex-col font-body-md antialiased relative ${theme === "dark" ? "dark bg-[#0a0a0d] text-[#f8fafc]" : "bg-background text-on-background"}`}>
       
       {/* Background radial glow */}
       <div className="absolute inset-0 premium-bg pointer-events-none -z-10"></div>
@@ -628,7 +671,7 @@ export default function Home() {
                               key={filename + cIndex}
                               className="bg-surface-container-low border border-outline-variant/40 rounded-2xl overflow-hidden flex flex-col shadow-xs"
                             >
-                              <div className="relative aspect-[9/16] bg-slate-900 overflow-hidden">
+                              <div className="relative aspect-[9/16] bg-black/95 dark:bg-black overflow-hidden border-b border-outline-variant/30">
                                 <video
                                   src={clipUrl}
                                   controls
@@ -677,10 +720,20 @@ export default function Home() {
                                 <button
                                   type="button"
                                   onClick={() => handleDownloadSingle(clip, project.id)}
-                                  className="w-full py-1.5 bg-surface-container hover:bg-surface-container-high text-on-surface text-[11px] font-medium rounded-lg flex items-center justify-center gap-1 border border-outline-variant/40 transition-colors cursor-pointer"
+                                  className={`w-full py-1.5 text-[11px] font-medium rounded-lg flex items-center justify-center gap-1 border transition-all cursor-pointer ${
+                                    downloadingClips[filename] === "done"
+                                      ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
+                                      : downloadingClips[filename] === "downloading"
+                                      ? "bg-primary/20 border-primary/40 text-primary"
+                                      : "bg-surface-container hover:bg-surface-container-high text-on-surface border-outline-variant/40"
+                                  }`}
                                 >
-                                  <span className="material-symbols-outlined text-[14px]">download</span>
-                                  <span>Download MP4</span>
+                                  <span className={`material-symbols-outlined text-[14px] ${downloadingClips[filename] === "downloading" ? "animate-spin" : ""}`}>
+                                    {downloadingClips[filename] === "done" ? "check_circle" : downloadingClips[filename] === "downloading" ? "sync" : "download"}
+                                  </span>
+                                  <span>
+                                    {downloadingClips[filename] === "done" ? "Downloaded!" : downloadingClips[filename] === "downloading" ? "Downloading..." : "Download MP4"}
+                                  </span>
                                 </button>
                               </div>
                             </div>
@@ -718,28 +771,39 @@ export default function Home() {
                     Turn any YouTube video into shorts, <span className="text-primary italic font-medium">instantly.</span>
                   </h1>
                   <p className="text-[18px] md:text-[20px] leading-[28px] md:leading-[32px] text-secondary max-w-2xl mt-1 font-light">
-                    Smart AI finds the highest-energy, viral spikes using audio energy peaks, comment timestamps, and speech hook validation.
+                    AI analyzes vocal energy peaks, audience replayed heatmaps, and hook virality to craft captivating vertical shorts.
                   </p>
                 </div>
 
                 {/* Input Form */}
                 <form onSubmit={handleGenerate} className="w-full max-w-[680px] relative mt-2 flex flex-col gap-4 group">
-                  <div className="relative flex items-center bg-surface-container-lowest rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-outline-variant/60 hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] hover:border-outline-variant transition-all duration-300 p-2 overflow-hidden">
-                    <div className="pl-4 flex items-center pointer-events-none">
-                      <span className="material-symbols-outlined text-outline group-focus-within:text-primary transition-colors">link</span>
+                  <div className="relative flex flex-col sm:flex-row items-stretch sm:items-center bg-surface-container-lowest rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-outline-variant/60 hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] hover:border-outline-variant transition-all duration-300 p-2 gap-2 overflow-hidden">
+                    <div className="flex items-center flex-grow pl-3 pr-2 py-1">
+                      <span className="material-symbols-outlined text-outline group-focus-within:text-primary transition-colors text-xl mr-2">link</span>
+                      <input
+                        type="url"
+                        placeholder="https://www.youtube.com/watch?v=..."
+                        value={youtubeUrl}
+                        onChange={(e) => setYoutubeUrl(e.target.value)}
+                        className="w-full bg-transparent border-none text-[16px] sm:text-[18px] text-on-surface placeholder:text-outline/70 focus:ring-0 focus:outline-none transition-all"
+                        required
+                      />
+                      <button
+                        type="button"
+                        onClick={handlePasteFromClipboard}
+                        className="shrink-0 px-2.5 py-1.5 rounded-lg bg-surface-container-low hover:bg-surface-container text-secondary hover:text-on-surface text-xs font-semibold flex items-center gap-1 border border-outline-variant/40 transition-all cursor-pointer"
+                        title="Paste from clipboard"
+                      >
+                        <span className="material-symbols-outlined text-[15px]">
+                          {pasted ? "done" : "content_paste"}
+                        </span>
+                        <span>{pasted ? "Pasted!" : "Paste"}</span>
+                      </button>
                     </div>
-                    <input
-                      type="url"
-                      placeholder="https://www.youtube.com/watch?v=..."
-                      value={youtubeUrl}
-                      onChange={(e) => setYoutubeUrl(e.target.value)}
-                      className="w-full pl-3 pr-4 py-4 bg-transparent border-none text-[18px] text-on-surface placeholder:text-outline/70 focus:ring-0 focus:outline-none transition-all"
-                      required
-                    />
                     <button
                       type="submit"
                       disabled={!youtubeUrl.trim() || userProfile.credits_remaining <= 0}
-                      className="px-8 py-4 bg-primary text-on-primary rounded-xl font-label-md text-[15px] font-semibold hover:bg-surface-tint transition-all flex items-center gap-2 shadow-sm active:scale-[0.98] shrink-0 disabled:opacity-50 cursor-pointer"
+                      className="px-8 py-3.5 sm:py-4 bg-primary text-on-primary rounded-xl font-label-md text-[15px] font-semibold hover:bg-surface-tint transition-all flex items-center justify-center gap-2 shadow-sm active:scale-[0.98] shrink-0 disabled:opacity-50 cursor-pointer"
                     >
                       <span>Detect & Clip</span>
                       <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
@@ -783,20 +847,20 @@ export default function Home() {
                 <div id="how-it-works" className="grid grid-cols-1 md:grid-cols-3 gap-8 w-full max-w-3xl mt-12 pt-10 border-t border-outline-variant/30 text-left">
                   <div className="flex flex-col gap-3">
                     <div className="w-10 h-10 rounded-full bg-surface-container-low flex items-center justify-center text-primary font-bold font-label-md mb-1">1</div>
-                    <h3 className="font-headline-sm text-[18px] text-on-surface font-semibold">1. Audio Spike Vibe Check</h3>
-                    <p className="font-body-sm text-secondary leading-relaxed">Librosa scans dB amplitude peaks for high energy, laughter, and climaxes.</p>
+                    <h3 className="font-headline-sm text-[18px] text-on-surface font-semibold">1. Energy & Reaction Spikes</h3>
+                    <p className="font-body-sm text-secondary leading-relaxed">Detects vocal peaks, crowd reactions, and laughter to identify the most exciting moments.</p>
                   </div>
 
                   <div className="flex flex-col gap-3">
                     <div className="w-10 h-10 rounded-full bg-surface-container-low flex items-center justify-center text-primary font-bold font-label-md mb-1">2</div>
-                    <h3 className="font-headline-sm text-[18px] text-on-surface font-semibold">2. Social Proof & Comments</h3>
-                    <p className="font-body-sm text-secondary leading-relaxed">Mines YouTube comment timestamps to boost community-favorite moments.</p>
+                    <h3 className="font-headline-sm text-[18px] text-on-surface font-semibold">2. Audience Retention Heatmap</h3>
+                    <p className="font-body-sm text-secondary leading-relaxed">Mines YouTube's most-replayed curves and timestamps to pinpoint community-favorite clips.</p>
                   </div>
 
                   <div className="flex flex-col gap-3">
                     <div className="w-10 h-10 rounded-full bg-surface-container-low flex items-center justify-center text-primary font-bold font-label-md mb-1">3</div>
-                    <h3 className="font-headline-sm text-[18px] text-on-surface font-semibold">3. AI Sense & 9:16 Shorts</h3>
-                    <p className="font-body-sm text-secondary leading-relaxed">Whisper transcripts & LLM hook ratings pick the top 3 viral vertical shorts.</p>
+                    <h3 className="font-headline-sm text-[18px] text-on-surface font-semibold">3. Smart 9:16 Framing & Hooks</h3>
+                    <p className="font-body-sm text-secondary leading-relaxed">Scores opening hook retention, aligns speech, and renders ready-to-publish vertical clips.</p>
                   </div>
                 </div>
 
@@ -840,7 +904,7 @@ export default function Home() {
                         <span className="text-[10px] text-secondary font-mono">dB Spikes</span>
                       )}
                     </div>
-                    <p className="text-[11px] text-secondary">Audio energy peaks</p>
+                    <p className="text-[11px] text-secondary">Vocal energy & reactions</p>
                   </div>
 
                   {/* Stage 2: Most Replayed Heatmap */}
@@ -864,7 +928,7 @@ export default function Home() {
                         <span className="text-[10px] text-secondary font-mono">YouTube</span>
                       )}
                     </div>
-                    <p className="text-[11px] text-secondary">Most replayed spikes</p>
+                    <p className="text-[11px] text-secondary">Audience replay curve</p>
                   </div>
 
                   {/* Stage 3: Social Proof */}
@@ -902,7 +966,7 @@ export default function Home() {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5 font-bold text-xs">
                         <span className="material-symbols-outlined text-base">psychology</span>
-                        <span>4. Sense Check</span>
+                        <span>4. Hook Virality</span>
                       </div>
                       {progress >= 90 ? (
                         <span className="material-symbols-outlined text-base text-emerald-500">check_circle</span>
@@ -912,7 +976,7 @@ export default function Home() {
                         <span className="text-[10px] text-secondary font-mono">AI Hooks</span>
                       )}
                     </div>
-                    <p className="text-[11px] text-secondary">Whisper viral rating</p>
+                    <p className="text-[11px] text-secondary">Opening retention rating</p>
                   </div>
                 </div>
 
@@ -926,12 +990,15 @@ export default function Home() {
                     <span className="font-bold text-primary">{progress}%</span>
                   </div>
 
-                  {/* Dynamic Progress Bar */}
-                  <div className="w-full bg-outline-variant/30 rounded-full h-2.5 overflow-hidden">
-                    <div 
-                      className="bg-primary h-2.5 rounded-full transition-all duration-500 ease-out"
-                      style={{ width: `${progress}%` }}
-                    ></div>
+                  {/* Dynamic Progress Bar with Stitch Pulse Animation */}
+                  <div className="w-full flex flex-col gap-2">
+                    <div className="w-full bg-outline-variant/30 rounded-full h-2.5 overflow-hidden">
+                      <div 
+                        className="bg-primary h-2.5 rounded-full transition-all duration-500 ease-out"
+                        style={{ width: `${progress}%` }}
+                      ></div>
+                    </div>
+                    <div className="pulse-bar"></div>
                   </div>
 
                   <div className="flex justify-between items-center text-xs text-secondary pt-1">
@@ -941,30 +1008,60 @@ export default function Home() {
                 </div>
 
                 <div className="mt-6 text-center">
-                  <p className="font-body-sm text-body-sm text-outline">Lightweight center-cropping & zero-disk cloud sync active.</p>
+                  <p className="font-body-sm text-body-sm text-outline">AI auto-framing, subtitle synchronization, and instant vertical rendering active.</p>
                 </div>
               </div>
             )}
 
             {/* STATE 3: ERROR STATE */}
             {status === "failed" && (
-              <div className="max-w-[480px] w-full text-center flex flex-col items-center fade-in my-auto py-8">
-                <div className="w-16 h-16 rounded-full bg-primary-container/10 flex items-center justify-center mb-stack-lg">
-                  <span className="material-symbols-outlined text-primary text-[32px]">error</span>
+              <div className="max-w-[520px] w-full text-center flex flex-col items-center fade-in my-auto py-8">
+                <div className="w-16 h-16 rounded-2xl bg-red-500/10 text-red-500 flex items-center justify-center mb-6">
+                  <span className="material-symbols-outlined text-[36px]">error_outline</span>
                 </div>
 
-                <h1 className="font-display-lg text-[36px] md:text-[48px] text-on-surface mb-stack-sm tracking-tight font-bold">Something went wrong.</h1>
-                <p className="font-body-lg text-body-lg text-on-surface-variant mb-stack-lg max-w-[400px]">
-                  {errorMsg || "We couldn't process that link. Please check if the video is public and try again."}
+                <h1 className="font-display-lg text-[32px] md:text-[44px] text-on-surface mb-2 tracking-tight font-bold">Something went wrong.</h1>
+                <p className="font-body-md text-secondary mb-6 max-w-[440px]">
+                  {errorMsg || "We couldn't process that link. Please verify that the video is public and accessible."}
                 </p>
 
-                <button
-                  onClick={() => handleGenerate()}
-                  className="bg-primary text-on-primary font-label-md text-label-md px-gutter py-3 rounded-full flex items-center gap-2 hover:opacity-90 transition-all duration-300 shadow-md active:opacity-100 cursor-pointer"
-                >
-                  <span className="material-symbols-outlined text-[18px]">refresh</span>
-                  <span>Try again</span>
-                </button>
+                {/* Editable Recovery Input */}
+                <div className="w-full bg-surface-container-lowest border border-outline-variant/70 rounded-2xl p-2 mb-6 flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shadow-xs">
+                  <div className="flex items-center flex-grow pl-3 pr-2 py-1">
+                    <span className="material-symbols-outlined text-outline text-lg mr-2">link</span>
+                    <input
+                      type="url"
+                      placeholder="https://www.youtube.com/watch?v=..."
+                      value={youtubeUrl}
+                      onChange={(e) => setYoutubeUrl(e.target.value)}
+                      className="w-full bg-transparent border-none text-sm text-on-surface placeholder:text-outline/70 focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={handlePasteFromClipboard}
+                      className="shrink-0 px-2 py-1 rounded-lg bg-surface-container-low hover:bg-surface-container text-secondary text-xs font-medium"
+                    >
+                      Paste
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-center gap-3">
+                  <button
+                    onClick={() => handleGenerate()}
+                    className="bg-primary text-on-primary font-semibold text-sm px-6 py-3 rounded-xl flex items-center gap-2 hover:bg-surface-tint transition-all shadow-sm active:scale-[0.98] cursor-pointer"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">refresh</span>
+                    <span>Retry Video</span>
+                  </button>
+                  <button
+                    onClick={handleReset}
+                    className="bg-surface-container-low hover:bg-surface-container text-on-surface font-semibold text-sm px-6 py-3 rounded-xl border border-outline-variant/60 flex items-center gap-2 transition-all active:scale-[0.98] cursor-pointer"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">arrow_back</span>
+                    <span>Back to Studio</span>
+                  </button>
+                </div>
               </div>
             )}
 
@@ -981,18 +1078,33 @@ export default function Home() {
                 </header>
 
                 {/* Action Bar */}
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-outline-variant/40 pb-stack-sm">
-                  <span className="font-label-md text-label-md text-secondary">
-                    {clips.length} clip{clips.length !== 1 ? "s" : ""} generated (1080x1920)
-                  </span>
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-outline-variant/40 pb-4">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <span className="font-semibold text-sm text-on-surface">
+                      {clips.length} clip{clips.length !== 1 ? "s" : ""} ready for export
+                    </span>
+                    <span className="text-xs text-secondary">• 1080x1920 Vertical</span>
+                  </div>
 
-                  <div className="flex items-center gap-3 w-full sm:w-auto">
+                  <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
+                    <button
+                      onClick={handleReset}
+                      className="flex-1 sm:flex-initial px-4 py-2.5 rounded-xl border border-outline-variant/60 hover:bg-surface-container-low text-on-surface font-semibold text-xs sm:text-sm flex items-center justify-center gap-1.5 transition-all active:scale-[0.98] cursor-pointer"
+                    >
+                      <span className="material-symbols-outlined text-[18px]">add</span>
+                      <span>New Video</span>
+                    </button>
+
                     <button
                       onClick={() => handleDownloadAll()}
-                      className="w-full sm:w-auto bg-primary text-on-primary font-label-md text-label-md px-gutter py-2.5 rounded-full flex items-center justify-center gap-2 hover:opacity-90 transition-all duration-200 shadow-sm active:scale-95 cursor-pointer"
+                      disabled={isDownloadingAll}
+                      className="flex-1 sm:flex-initial bg-primary text-on-primary font-semibold text-xs sm:text-sm px-5 py-2.5 rounded-xl flex items-center justify-center gap-2 hover:bg-surface-tint transition-all duration-200 shadow-sm active:scale-[0.98] cursor-pointer disabled:opacity-60"
                     >
-                      <span className="material-symbols-outlined text-[18px]">download_for_offline</span>
-                      <span>Download All</span>
+                      <span className={`material-symbols-outlined text-[18px] ${isDownloadingAll ? "animate-spin" : ""}`}>
+                        {isDownloadingAll ? "sync" : "download_for_offline"}
+                      </span>
+                      <span>{isDownloadingAll ? "Downloading All..." : "Download All"}</span>
                     </button>
                   </div>
                 </div>
@@ -1007,6 +1119,7 @@ export default function Home() {
                     const score = getClipScore(clip);
                     const heatmapScore = getClipHeatmapScore(clip);
                     const timeRange = getClipTimeRange(clip);
+                    const downloadState = downloadingClips[filename];
 
                     return (
                       <article 
@@ -1014,7 +1127,7 @@ export default function Home() {
                         className="bg-surface-container-lowest border border-outline-variant/50 rounded-2xl overflow-hidden flex flex-col shadow-sm hover:shadow-md transition-all group"
                       >
                         {/* Video Player */}
-                        <div className="relative aspect-[9/16] bg-slate-900 overflow-hidden flex items-center justify-center">
+                        <div className="relative aspect-[9/16] bg-black/95 dark:bg-black overflow-hidden flex items-center justify-center border-b border-outline-variant/30">
                           <video
                             src={clipUrl}
                             controls
@@ -1072,10 +1185,20 @@ export default function Home() {
                           <button
                             type="button"
                             onClick={() => handleDownloadSingle(clip)}
-                            className="w-full bg-primary/10 hover:bg-primary/20 text-primary font-semibold text-xs py-2.5 rounded-xl border border-primary/20 flex items-center justify-center gap-1.5 transition-all active:scale-[0.98] cursor-pointer"
+                            className={`w-full font-semibold text-xs py-2.5 rounded-xl border flex items-center justify-center gap-1.5 transition-all active:scale-[0.98] cursor-pointer ${
+                              downloadState === "done"
+                                ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
+                                : downloadState === "downloading"
+                                ? "bg-primary/20 border-primary/40 text-primary"
+                                : "bg-primary/10 hover:bg-primary/20 text-primary border-primary/20"
+                            }`}
                           >
-                            <span className="material-symbols-outlined text-[16px]">download</span>
-                            <span>Download MP4 (9:16)</span>
+                            <span className={`material-symbols-outlined text-[16px] ${downloadState === "downloading" ? "animate-spin" : ""}`}>
+                              {downloadState === "done" ? "check_circle" : downloadState === "downloading" ? "sync" : "download"}
+                            </span>
+                            <span>
+                              {downloadState === "done" ? "Downloaded!" : downloadState === "downloading" ? "Downloading..." : "Download MP4 (9:16)"}
+                            </span>
                           </button>
                         </div>
                       </article>
@@ -1098,7 +1221,7 @@ export default function Home() {
           </div>
           <div className="flex items-center gap-6">
             <span>Daily 3 Free Generations Policy</span>
-            <span>Zero-Disk Cloud Storage</span>
+            <span>Automated Cloud Backup</span>
           </div>
         </div>
       </footer>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { signInWithGoogle, signInWithEmail, signUpWithEmail, isSupabaseConfigured } from "../lib/supabase";
 
 interface AuthModalProps {
@@ -17,6 +17,20 @@ export default function AuthModal({ isOpen, onClose, initialMode = "login", onAu
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    };
+    if (isOpen) {
+      window.addEventListener("keydown", handleKeyDown);
+    }
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -69,9 +83,12 @@ export default function AuthModal({ isOpen, onClose, initialMode = "login", onAu
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 cursor-pointer"
+      onClick={onClose}
+    >
       <div 
-        className="w-full max-w-[420px] bg-surface-container-lowest border border-outline-variant rounded-3xl p-8 shadow-2xl relative flex flex-col gap-6"
+        className="w-full max-w-[420px] bg-surface-container-lowest border border-outline-variant rounded-3xl p-8 shadow-2xl relative flex flex-col gap-6 cursor-default"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Close Button */}
