@@ -831,7 +831,7 @@ def extract_youtube_comment_timestamps(youtube_url: str, max_comments: int = 100
             'extractor_args': {
                 'youtube': {
                     'max_comments': [str(max_comments), 'all', str(max_comments), '0'],
-                    'player_client': ['android', 'web']
+                    'player_client': ['android_vr', 'web', 'mweb']
                 }
             },
             'skip_download': True,
