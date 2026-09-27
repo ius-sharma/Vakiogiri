@@ -55,10 +55,19 @@ jobs: Dict[str, Dict[str, Any]] = {}
 class ProcessRequest(BaseModel):
     youtube_url: str
     segment_duration: Optional[int] = Field(default=DEFAULT_SEGMENT_DURATION, ge=15, le=180)
-    synthesize_stories: Optional[bool] = Field(default=True)
+    synthesize_stories: Optional[bool] = Field(default=None)
+    mode: Optional[str] = Field(default="heuristic")  # "heuristic" (Free / Fast) or "ai_enhanced" (AI Storytelling)
 
 
-def process_video_task(job_id: str, user_id: str, youtube_url: str, segment_duration: int, synthesize_stories: bool = True):
+def process_video_task(
+    job_id: str,
+    user_id: str,
+    youtube_url: str,
+    segment_duration: int,
+    mode: str = "heuristic",
+    synthesize_stories: bool = False,
+    credit_deducted: bool = False
+):
     """Background task to run video processing pipeline with progress callback and job recording."""
     clips_output_dir = os.path.join("clips", job_id)
     download_dir = os.path.join("downloads", job_id)
@@ -76,6 +85,7 @@ def process_video_task(job_id: str, user_id: str, youtube_url: str, segment_dura
             download_dir=download_dir,
             segment_duration=segment_duration,
             synthesize_stories=synthesize_stories,
+            mode=mode,
             progress_callback=progress_callback
         )
 
@@ -95,7 +105,7 @@ def process_video_task(job_id: str, user_id: str, youtube_url: str, segment_dura
         
         # Update database with saved clips metadata
         update_job_status(job_id, "completed", len(uploaded_clips), uploaded_clips)
-        print(f"[Job {job_id}] Processing completed successfully. Stored {len(uploaded_clips)} clip(s).")
+        print(f"[Job {job_id}] Processing completed successfully ({mode} mode). Stored {len(uploaded_clips)} clip(s).")
         
     except Exception as e:
         print(f"[Job {job_id}] Processing failed with error: {e}")
@@ -104,8 +114,9 @@ def process_video_task(job_id: str, user_id: str, youtube_url: str, segment_dura
         jobs[job_id]["error"] = str(e)
         jobs[job_id]["message"] = f"Failed: {str(e)}"
         
-        # Refund credit to user on failure
-        refund_credit(user_id)
+        # Refund credit to user on failure if it was deducted
+        if credit_deducted:
+            refund_credit(user_id)
         update_job_status(job_id, "failed", 0, [])
 
 
@@ -182,24 +193,32 @@ def process_video(
         )
         
     user_id = user["id"]
-    
-    # Check and deduct 1 credit (Daily 3 video generations quota)
-    has_credit = deduct_credit(user_id)
-    if not has_credit:
-        raise HTTPException(
-            status_code=403,
-            detail="Daily limit reached (0/3 generations remaining). Your quota resets at midnight UTC!"
-        )
+    mode = (request.mode or "heuristic").lower()
+    if mode not in ["heuristic", "ai_enhanced"]:
+        mode = "heuristic"
+
+    credit_deducted = False
+    # In 'ai_enhanced' mode, 1 daily credit is deducted
+    if mode == "ai_enhanced":
+        has_credit = deduct_credit(user_id)
+        if not has_credit:
+            raise HTTPException(
+                status_code=403,
+                detail="Daily AI credit limit reached (0/3 remaining). Switch to 'Fast Highlights (Free)' mode for unlimited clips!"
+            )
+        credit_deducted = True
 
     job_id = str(uuid.uuid4())
     segment_duration = request.segment_duration or DEFAULT_SEGMENT_DURATION
+    mode_label = "AI Smart Moments" if mode == "ai_enhanced" else "Fast Highlights (Free)"
     
     jobs[job_id] = {
         "status": "processing",
         "step": "initializing",
         "progress": 5,
-        "message": "Initializing video clipping job...",
+        "message": f"Initializing {mode_label} clipping job...",
         "segment_duration": segment_duration,
+        "mode": mode,
         "clips": [],
         "error": None
     }
@@ -207,21 +226,26 @@ def process_video(
     # Record job in database
     record_job(job_id, user_id, request.youtube_url.strip(), segment_duration)
     
+    synth = request.synthesize_stories if request.synthesize_stories is not None else (mode == "ai_enhanced")
     background_tasks.add_task(
         process_video_task,
         job_id,
         user_id,
         request.youtube_url.strip(),
         segment_duration,
-        request.synthesize_stories if request.synthesize_stories is not None else True
+        mode,
+        synth,
+        credit_deducted
     )
     
+    current_credits = (user["credits_remaining"] - 1) if credit_deducted else user["credits_remaining"]
     return {
         "job_id": job_id,
         "status": "processing",
         "progress": 5,
-        "message": "Initializing video clipping job...",
-        "credits_remaining": user["credits_remaining"] - 1
+        "mode": mode,
+        "message": f"Initializing {mode_label} clipping job...",
+        "credits_remaining": current_credits
     }
 
 
