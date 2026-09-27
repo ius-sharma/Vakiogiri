@@ -16,6 +16,7 @@ if sys.platform == "win32":
 import yt_dlp
 from moment_detector import detect_best_moments, transcribe_video_audio
 from story_synthesizer import synthesize_story_blueprints, stitch_synthesized_story
+from stream_detector import detect_stream_audio_peaks, stitch_highlight_compilation
 
 # ==============================================================================
 # CONFIGURATION CONSTANTS
@@ -24,6 +25,53 @@ DEFAULT_SEGMENT_DURATION = 45  # seconds
 TARGET_WIDTH = 1080
 TARGET_HEIGHT = 1920
 MAX_CLIPS_PER_VIDEO = 3
+
+# Safety Guardrails for Stream & Video Length
+MAX_STREAM_DURATION_HOURS = 5.0
+MAX_STREAM_DURATION_SECONDS = int(MAX_STREAM_DURATION_HOURS * 3600)  # 18,000s = 5 hours
+
+
+def format_duration(seconds: float) -> str:
+    """Format seconds into readable 'Xh Ym' or 'Ym Zs' string."""
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = int(seconds % 60)
+    if hours > 0:
+        return f"{hours}h {minutes}m"
+    if minutes > 0:
+        return f"{minutes}m {secs}s"
+    return f"{secs}s"
+
+
+def probe_stream_metadata(url: str) -> Dict[str, Any]:
+    """
+    Fast pre-flight inspection using yt-dlp without downloading media.
+    Takes ~1-2 seconds and extracts duration, title, and live status.
+    """
+    ydl_opts = {
+        'skip_download': True,
+        'quiet': True,
+        'no_warnings': True,
+        'extract_flat': True,
+        'nocheckcertificate': True,
+    }
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            if not info:
+                return {"duration": 0.0, "title": "YouTube Video", "is_live": False}
+            duration = float(info.get("duration") or 0.0)
+            title = info.get("title") or "YouTube Video"
+            is_live = bool(info.get("is_live") or info.get("was_live"))
+            return {
+                "duration": duration,
+                "title": title,
+                "is_live": is_live,
+                "uploader": info.get("uploader") or "",
+            }
+    except Exception as e:
+        print(f"[Probe Notice] Fast probe encountered notice: {e}")
+        return {"duration": 0.0, "title": "YouTube Video", "is_live": False}
 
 
 def check_ffmpeg_installed() -> bool:
@@ -125,14 +173,22 @@ def split_and_crop_video(
     moments: Optional[List[Dict[str, Any]]] = None,
     segment_len: int = DEFAULT_SEGMENT_DURATION,
     max_clips: int = MAX_CLIPS_PER_VIDEO,
+    aspect_ratio: str = "9:16",
     progress_callback: Optional[Callable[[str, int, str], None]] = None
-) -> List[str]:
+) -> List[Dict[str, Any]]:
     """
-    Split and crop video into 9:16 vertical (1080x1920) clips based on dynamic best moments
-    (or fallback uniform segments).
+    Split and render video clips based on dynamic best moments.
+    Supports:
+    - '9:16': Vertical center crop for mobile Shorts / Reels (1080x1920)
+    - '16:9': Landscape widescreen for gaming & stream highlights (1920x1080)
     """
     os.makedirs(output_dir, exist_ok=True)
-    vf_filter = f"scale={TARGET_WIDTH}:{TARGET_HEIGHT}:force_original_aspect_ratio=increase,crop={TARGET_WIDTH}:{TARGET_HEIGHT}"
+    if aspect_ratio == "16:9":
+        # 16:9 Landscape - Perfect for gaming streams, preserves HUD, killfeed, minimap
+        vf_filter = "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2"
+    else:
+        # 9:16 Vertical - Center-cropped for Shorts / Reels / TikTok
+        vf_filter = f"scale={TARGET_WIDTH}:{TARGET_HEIGHT}:force_original_aspect_ratio=increase,crop={TARGET_WIDTH}:{TARGET_HEIGHT}"
 
     # Use dynamically detected moments if provided; otherwise fallback to uniform split
     clip_targets = []
@@ -162,7 +218,8 @@ def split_and_crop_video(
             })
 
     num_clips = len(clip_targets)
-    print(f"[3/4] Cropping and rendering {num_clips} dynamic 9:16 vertical clip(s)...")
+    ratio_label = "16:9 Widescreen" if aspect_ratio == "16:9" else "9:16 Vertical"
+    print(f"[3/4] Rendering {num_clips} dynamic {ratio_label} clip(s)...")
 
     created_clips = []
     for i, target in enumerate(clip_targets):
@@ -177,7 +234,7 @@ def split_and_crop_video(
             progress_callback(
                 "clipping",
                 clip_progress,
-                f"Cropping & rendering clip {i + 1} of {num_clips} ('{target['title']}', score {target['score']})..."
+                f"Rendering clip {i + 1} of {num_clips} ({ratio_label} '{target['title']}', score {target['score']})..."
             )
 
         ffmpeg_cmd = [
@@ -206,7 +263,8 @@ def split_and_crop_video(
                 "heatmap_score": target.get("heatmap_score"),
                 "start": round(start_time, 2),
                 "end": round(start_time + clip_dur, 2),
-                "duration": round(clip_dur, 2)
+                "duration": round(clip_dur, 2),
+                "aspect_ratio": aspect_ratio
             })
         except subprocess.CalledProcessError as e:
             raise RuntimeError(f"Failed creating clip {clip_name}: {e.stderr}")
@@ -231,16 +289,19 @@ def run_pipeline(
     max_clips: int = MAX_CLIPS_PER_VIDEO,
     synthesize_stories: bool = False,
     mode: str = "heuristic",
+    aspect_ratio: str = "9:16",
+    content_type: str = "shorts",
     progress_callback: Optional[Callable[[str, int, str], None]] = None
 ) -> List[Dict[str, Any]]:
     """
     Run complete AI / Heuristic video clipping pipeline:
-    1. Download YouTube video
-    2. Extract duration
-    3. Run Best Moment Detector (Heuristic or AI-Enhanced)
-    4. Render dynamic 9:16 center-cropped clips
-    5. Optional Non-Linear Story Synthesis
-    6. Clean up temporary download artifacts
+    1. Pre-flight duration check (5-Hour max guardrail)
+    2. Download YouTube video
+    3. Extract duration
+    4. Run Best Moment Detector (Heuristic or AI-Enhanced)
+    5. Render dynamic clips (9:16 vertical or 16:9 widescreen)
+    6. Optional Non-Linear Story Synthesis
+    7. Clean up temporary download artifacts
     """
     check_ffmpeg_installed()
     ai_enabled = (mode == "ai_enhanced")
@@ -248,7 +309,18 @@ def run_pipeline(
     try:
         if progress_callback:
             mode_label = "AI Storytelling" if ai_enabled else "Fast Highlights"
-            progress_callback("initializing", 5, f"Initializing {mode_label} pipeline...")
+            type_label = "Stream Highlights" if content_type == "stream" else "Shorts"
+            progress_callback("probing", 5, f"Verifying {type_label} duration & metadata ({mode_label})...")
+
+        # 0. Pre-Flight Duration Safety Guardrail (Cap at 5 hours)
+        meta = probe_stream_metadata(youtube_url)
+        stream_dur = meta.get("duration", 0.0)
+        if stream_dur > MAX_STREAM_DURATION_SECONDS:
+            dur_str = format_duration(stream_dur)
+            raise ValueError(
+                f"Stream duration ({dur_str}) exceeds the beta safety limit of {int(MAX_STREAM_DURATION_HOURS)} hours. "
+                f"Please choose a stream under {int(MAX_STREAM_DURATION_HOURS)} hours to avoid system overload."
+            )
 
         # 1. Download YouTube video
         video_path = download_video(youtube_url, download_dir, progress_callback)
@@ -257,17 +329,47 @@ def run_pipeline(
         duration = get_video_duration(video_path)
         
         # 3. Detect Best Moments
-        moments = detect_best_moments(
-            video_path=video_path,
-            youtube_url=youtube_url,
-            duration=duration,
-            target_duration=segment_duration,
-            top_k=max_clips,
-            ai_enabled=ai_enabled,
-            progress_callback=progress_callback
-        )
+        if content_type == "stream":
+            if progress_callback:
+                progress_callback("analyzing_stream", 50, "Analyzing gaming screams, decibel surges & reaction peaks...")
+            temp_wav = os.path.join(download_dir, "temp_stream_audio.wav")
+            from moment_detector import extract_audio_pcm
+            has_wav = extract_audio_pcm(video_path, temp_wav)
+            stream_moments = []
+            if has_wav and os.path.exists(temp_wav):
+                try:
+                    stream_moments = detect_stream_audio_peaks(
+                        wav_path=temp_wav,
+                        target_duration=segment_duration,
+                        top_k=max_clips
+                    )
+                except Exception as stream_err:
+                    print(f"[Stream Detector Notice] Audio peak scan notice: {stream_err}")
+
+            if stream_moments and len(stream_moments) >= 2:
+                moments = stream_moments
+            else:
+                moments = detect_best_moments(
+                    video_path=video_path,
+                    youtube_url=youtube_url,
+                    duration=duration,
+                    target_duration=segment_duration,
+                    top_k=max_clips,
+                    ai_enabled=ai_enabled,
+                    progress_callback=progress_callback
+                )
+        else:
+            moments = detect_best_moments(
+                video_path=video_path,
+                youtube_url=youtube_url,
+                duration=duration,
+                target_duration=segment_duration,
+                top_k=max_clips,
+                ai_enabled=ai_enabled,
+                progress_callback=progress_callback
+            )
         
-        # 4. Crop & Split dynamically identified moments
+        # 4. Crop & Split dynamically identified moments (9:16 or 16:9)
         clips = split_and_crop_video(
             video_path=video_path,
             output_dir=clips_output_dir,
@@ -275,11 +377,14 @@ def run_pipeline(
             moments=moments,
             segment_len=segment_duration,
             max_clips=max_clips,
+            aspect_ratio=aspect_ratio,
             progress_callback=progress_callback
         )
         
         for c in clips:
             c["mode"] = mode
+            c["aspect_ratio"] = aspect_ratio
+            c["content_type"] = content_type
 
         # 5. Optional Non-Linear Story Synthesis (Franken-Editing for AI mode)
         if synthesize_stories and ai_enabled:
@@ -309,6 +414,39 @@ def run_pipeline(
                 print(f"[Pipeline] Added {len(blueprints)} synthesized micro-stories to {meta_file}")
             except Exception as synth_err:
                 print(f"[Pipeline] Story synthesis notice: {synth_err}")
+
+        # 6. Stream Compilation Reel Stitcher
+        if content_type == "stream" and len(clips) >= 2:
+            try:
+                if progress_callback:
+                    progress_callback("stitching_compilation", 92, "Merging highlight clips into single continuous stream reel...")
+                clip_file_paths = [os.path.join(clips_output_dir, c["filename"]) for c in clips if not c.get("is_synthesized")]
+                compilation_file = "compilation_highlights.mp4"
+                compilation_path = os.path.join(clips_output_dir, compilation_file)
+                compilation_info = stitch_highlight_compilation(
+                    clip_paths=clip_file_paths,
+                    output_compilation_path=compilation_path,
+                    titles=[c.get("title", "Highlight") for c in clips if not c.get("is_synthesized")],
+                    aspect_ratio=aspect_ratio
+                )
+                clips.insert(0, {
+                    "filename": compilation_file,
+                    "title": "Full Stream Highlights Compilation",
+                    "score": 98,
+                    "duration": compilation_info["total_duration"],
+                    "aspect_ratio": aspect_ratio,
+                    "content_type": content_type,
+                    "mode": mode,
+                    "is_compilation": True,
+                    "chapters": compilation_info["chapters"],
+                    "chapter_description": compilation_info["chapter_description"]
+                })
+                meta_file = os.path.join(clips_output_dir, "metadata.json")
+                with open(meta_file, "w", encoding="utf-8") as f:
+                    json.dump(clips, f, indent=2)
+                print(f"[Pipeline] Successfully generated stream compilation reel: {compilation_file}")
+            except Exception as stitch_err:
+                print(f"[Pipeline Warning] Compilation stitching notice: {stitch_err}")
         
         if progress_callback:
             progress_callback("cleaning", 95, "Purging raw temporary downloads...")
