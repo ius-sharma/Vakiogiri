@@ -20,7 +20,14 @@ from pydantic import BaseModel, Field
 
 load_dotenv()
 
-from pipeline import run_pipeline, DEFAULT_SEGMENT_DURATION
+from pipeline import (
+    run_pipeline,
+    DEFAULT_SEGMENT_DURATION,
+    probe_stream_metadata,
+    format_duration,
+    MAX_STREAM_DURATION_HOURS,
+    MAX_STREAM_DURATION_SECONDS
+)
 from db import (
     init_db,
     deduct_credit,
@@ -57,6 +64,8 @@ class ProcessRequest(BaseModel):
     segment_duration: Optional[int] = Field(default=DEFAULT_SEGMENT_DURATION, ge=15, le=180)
     synthesize_stories: Optional[bool] = Field(default=None)
     mode: Optional[str] = Field(default="heuristic")  # "heuristic" (Free / Fast) or "ai_enhanced" (AI Storytelling)
+    aspect_ratio: Optional[str] = Field(default="9:16")  # "9:16" (Vertical) | "16:9" (Landscape Gaming Stream)
+    content_type: Optional[str] = Field(default="shorts")  # "shorts" | "stream"
 
 
 def process_video_task(
@@ -66,7 +75,9 @@ def process_video_task(
     segment_duration: int,
     mode: str = "heuristic",
     synthesize_stories: bool = False,
-    credit_deducted: bool = False
+    credit_deducted: bool = False,
+    aspect_ratio: str = "9:16",
+    content_type: str = "shorts"
 ):
     """Background task to run video processing pipeline with progress callback and job recording."""
     clips_output_dir = os.path.join("clips", job_id)
@@ -86,6 +97,8 @@ def process_video_task(
             segment_duration=segment_duration,
             synthesize_stories=synthesize_stories,
             mode=mode,
+            aspect_ratio=aspect_ratio,
+            content_type=content_type,
             progress_callback=progress_callback
         )
 
@@ -197,6 +210,24 @@ def process_video(
     if mode not in ["heuristic", "ai_enhanced"]:
         mode = "heuristic"
 
+    aspect_ratio = (request.aspect_ratio or "9:16").lower()
+    if aspect_ratio not in ["9:16", "16:9"]:
+        aspect_ratio = "9:16"
+
+    content_type = (request.content_type or "shorts").lower()
+    if content_type not in ["shorts", "stream"]:
+        content_type = "shorts"
+
+    # Pre-Flight Fast Metadata Inspection & 5-Hour Duration Cap (Runs before any download)
+    meta = probe_stream_metadata(raw_url)
+    stream_dur = meta.get("duration", 0.0)
+    if stream_dur > MAX_STREAM_DURATION_SECONDS:
+        dur_str = format_duration(stream_dur)
+        raise HTTPException(
+            status_code=400,
+            detail=f"This stream is {dur_str}. During early beta, streams are capped at {int(MAX_STREAM_DURATION_HOURS)} hours to ensure ultra-fast processing and zero server queue."
+        )
+
     credit_deducted = False
     # In 'ai_enhanced' mode, 1 daily credit is deducted
     if mode == "ai_enhanced":
@@ -211,14 +242,20 @@ def process_video(
     job_id = str(uuid.uuid4())
     segment_duration = request.segment_duration or DEFAULT_SEGMENT_DURATION
     mode_label = "AI Smart Moments" if mode == "ai_enhanced" else "Fast Highlights (Free)"
+    type_label = "Stream Highlights" if content_type == "stream" else "Shorts"
+    ratio_label = "16:9 Widescreen" if aspect_ratio == "16:9" else "9:16 Vertical"
     
     jobs[job_id] = {
         "status": "processing",
         "step": "initializing",
         "progress": 5,
-        "message": f"Initializing {mode_label} clipping job...",
+        "message": f"Initializing {mode_label} for {type_label} ({ratio_label})...",
         "segment_duration": segment_duration,
         "mode": mode,
+        "aspect_ratio": aspect_ratio,
+        "content_type": content_type,
+        "stream_title": meta.get("title", ""),
+        "stream_duration": stream_dur,
         "clips": [],
         "error": None
     }
@@ -235,7 +272,9 @@ def process_video(
         segment_duration,
         mode,
         synth,
-        credit_deducted
+        credit_deducted,
+        aspect_ratio,
+        content_type
     )
     
     current_credits = (user["credits_remaining"] - 1) if credit_deducted else user["credits_remaining"]
@@ -244,7 +283,11 @@ def process_video(
         "status": "processing",
         "progress": 5,
         "mode": mode,
-        "message": f"Initializing {mode_label} clipping job...",
+        "aspect_ratio": aspect_ratio,
+        "content_type": content_type,
+        "stream_title": meta.get("title", ""),
+        "stream_duration": stream_dur,
+        "message": f"Initializing {mode_label} for {type_label} ({ratio_label})...",
         "credits_remaining": current_credits
     }
 
