@@ -444,7 +444,9 @@ export default function Home() {
       checkStatus(currentJobId);
     } catch (err: any) {
       setStatus("failed");
-      setErrorMsg(err.message || "We couldn't process that link. Please check if the video is public and try again.");
+      const cleanError = (err.message || "We couldn't process that link. Please check if the video is public and try again.")
+        .replace(/\x1b\[[0-9;]*[a-zA-Z]|\[[0-9;]+m/g, '');
+      setErrorMsg(cleanError);
     }
   };
 
@@ -479,14 +481,18 @@ export default function Home() {
       } else if (data.status === "failed") {
         stopPolling();
         setStatus("failed");
-        setErrorMsg(data.error || "We couldn't process that video. Please check if the link is valid.");
+        const cleanError = (data.error || "We couldn't process that video. Please check if the link is valid.")
+          .replace(/\x1b\[[0-9;]*[a-zA-Z]|\[[0-9;]+m/g, '');
+        setErrorMsg(cleanError);
         fetchUserProfile(session?.access_token);
         fetchUserHistory(session?.access_token);
       }
     } catch (err: any) {
       stopPolling();
       setStatus("failed");
-      setErrorMsg(err.message || "Error polling backend status.");
+      const cleanError = (err.message || "Error polling backend status.")
+        .replace(/\x1b\[[0-9;]*[a-zA-Z]|\[[0-9;]+m/g, '');
+      setErrorMsg(cleanError);
     } finally {
       isPollingRef.current = false;
     }
@@ -880,6 +886,7 @@ export default function Home() {
                         onClick={() => {
                           setAspectRatio("9:16");
                           setContentType("shorts");
+                          if (segmentDuration > 90) setSegmentDuration(45);
                         }}
                         className={`px-3 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
                           aspectRatio === "9:16"
@@ -896,6 +903,7 @@ export default function Home() {
                         onClick={() => {
                           setAspectRatio("16:9");
                           setContentType("stream");
+                          if (segmentDuration < 120) setSegmentDuration(180);
                         }}
                         className={`px-3 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
                           aspectRatio === "16:9"
@@ -910,8 +918,10 @@ export default function Home() {
 
                     {/* Duration Pills */}
                     <div className="flex items-center gap-2">
-                      <span className="text-secondary font-medium">Clip Len:</span>
-                      {(aspectRatio === "16:9" ? [45, 60, 90] : [30, 45, 60]).map((dur) => (
+                      <span className="text-secondary font-medium">
+                        {aspectRatio === "16:9" ? "Highlight Scene:" : "Clip Len:"}
+                      </span>
+                      {(aspectRatio === "16:9" ? [120, 180, 300, 480, 600] : [30, 45, 60, 90]).map((dur) => (
                         <button
                           key={dur}
                           type="button"
@@ -922,7 +932,7 @@ export default function Home() {
                               : "bg-surface-container-low text-secondary hover:text-on-surface border border-outline-variant/60"
                           }`}
                         >
-                          {dur}s
+                          {dur >= 60 ? `${Math.floor(dur / 60)} Min` : `${dur}s`}
                         </button>
                       ))}
                     </div>
