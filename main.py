@@ -55,9 +55,10 @@ jobs: Dict[str, Dict[str, Any]] = {}
 class ProcessRequest(BaseModel):
     youtube_url: str
     segment_duration: Optional[int] = Field(default=DEFAULT_SEGMENT_DURATION, ge=15, le=180)
+    synthesize_stories: Optional[bool] = Field(default=True)
 
 
-def process_video_task(job_id: str, user_id: str, youtube_url: str, segment_duration: int):
+def process_video_task(job_id: str, user_id: str, youtube_url: str, segment_duration: int, synthesize_stories: bool = True):
     """Background task to run video processing pipeline with progress callback and job recording."""
     clips_output_dir = os.path.join("clips", job_id)
     download_dir = os.path.join("downloads", job_id)
@@ -74,6 +75,7 @@ def process_video_task(job_id: str, user_id: str, youtube_url: str, segment_dura
             clips_output_dir=clips_output_dir,
             download_dir=download_dir,
             segment_duration=segment_duration,
+            synthesize_stories=synthesize_stories,
             progress_callback=progress_callback
         )
 
@@ -210,7 +212,8 @@ def process_video(
         job_id,
         user_id,
         request.youtube_url.strip(),
-        segment_duration
+        segment_duration,
+        request.synthesize_stories if request.synthesize_stories is not None else True
     )
     
     return {
@@ -282,3 +285,8 @@ def download_proxy(url: str = Query(..., description="Target file URL"), filenam
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Download proxy failed: {str(e)}")
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

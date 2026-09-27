@@ -60,13 +60,9 @@ def get_current_user_optional(authorization: Optional[str] = Header(None)) -> Di
     Extract user from Supabase JWT token if provided.
     If no token is provided or invalid, gracefully returns guest state.
     """
-    guest_state = {
-        "id": "guest",
-        "email": "guest@vakiogiri.ai",
-        "is_authenticated": False,
-        "credits_remaining": 3,
-        "max_daily_credits": 3
-    }
+    guest_user = get_or_create_user("guest", "guest@vakiogiri.ai")
+    guest_user["is_authenticated"] = False
+    guest_state = guest_user
 
     if not authorization or not authorization.startswith("Bearer "):
         return guest_state

@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List
 
 DB_FILE = os.path.join(os.path.dirname(__file__), "database.db")
-MAX_DAILY_CREDITS = 3
+MAX_DAILY_CREDITS = 100
 
 
 def get_db_connection():
