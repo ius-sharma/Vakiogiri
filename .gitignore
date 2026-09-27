@@ -50,5 +50,21 @@ node_modules/
 out/
 build/
 .vercel/
+
+# Local Scratch, Evaluation & Test Workflow (Privacy / Temporary)
 clip_test.py
 eval_critic.py
+eval_*.py
+scratch_*
+test_*_run.py
+test_stitch_*.py
+test_refined_*.py
+test_synthesizer_run.py
+verify_*.py
+phase1_clips/
+phase2_clips/
+synthesized_clips/
+test_clips/
+test_download/
+test_leetcode/
+test_leetcode_clips/
