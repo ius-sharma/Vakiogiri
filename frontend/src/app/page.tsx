@@ -17,6 +17,8 @@ interface ClipItem {
   start?: number;
   end?: number;
   duration?: number;
+  mode?: string;
+  is_synthesized?: boolean;
 }
 
 interface JobStatusResponse {
@@ -69,6 +71,7 @@ export default function Home() {
   // Video generation state
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [segmentDuration, setSegmentDuration] = useState<number>(45);
+  const [clippingMode, setClippingMode] = useState<"heuristic" | "ai_enhanced">("heuristic");
   const [jobId, setJobId] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "processing" | "completed" | "failed">("idle");
   const [progress, setProgress] = useState<number>(5);
@@ -404,7 +407,9 @@ export default function Home() {
         headers,
         body: JSON.stringify({ 
           youtube_url: youtubeUrl.trim(),
-          segment_duration: segmentDuration
+          segment_duration: segmentDuration,
+          mode: clippingMode,
+          synthesize_stories: clippingMode === "ai_enhanced"
         }),
       });
 
@@ -777,6 +782,53 @@ export default function Home() {
 
                 {/* Input Form */}
                 <form onSubmit={handleGenerate} className="w-full max-w-[680px] relative mt-2 flex flex-col gap-4 group">
+                  {/* Dual Mode Switcher: Fast Highlights vs AI Smart Moments */}
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-2 p-1.5 bg-surface-container-lowest/90 border border-outline-variant/60 rounded-2xl shadow-sm">
+                    <div className="flex items-center gap-1.5 w-full sm:w-auto">
+                      <button
+                        type="button"
+                        onClick={() => setClippingMode("heuristic")}
+                        className={`flex-1 sm:flex-initial py-2 px-4 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                          clippingMode === "heuristic"
+                            ? "bg-primary text-on-primary shadow-sm"
+                            : "bg-transparent text-secondary hover:text-on-surface"
+                        }`}
+                      >
+                        <span className="material-symbols-outlined text-[16px]">bolt</span>
+                        <span>Fast Highlights</span>
+                        <span className={`text-[10px] px-1.5 py-0.2 font-bold rounded-full ${
+                          clippingMode === "heuristic" ? "bg-white/20 text-white" : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                        }`}>
+                          FREE
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setClippingMode("ai_enhanced")}
+                        className={`flex-1 sm:flex-initial py-2 px-4 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                          clippingMode === "ai_enhanced"
+                            ? "bg-primary text-on-primary shadow-sm"
+                            : "bg-transparent text-secondary hover:text-on-surface"
+                        }`}
+                      >
+                        <span className="material-symbols-outlined text-[16px]">auto_awesome</span>
+                        <span>AI Smart Moments</span>
+                        <span className={`text-[10px] px-1.5 py-0.2 font-bold rounded-full ${
+                          clippingMode === "ai_enhanced" ? "bg-white/20 text-white" : "bg-primary/15 text-primary"
+                        }`}>
+                          PRO
+                        </span>
+                      </button>
+                    </div>
+
+                    <span className="text-[11px] text-secondary px-3 py-1 font-medium hidden sm:inline-block">
+                      {clippingMode === "heuristic" 
+                        ? "⚡ Heatmap + Audio Spikes (0 Credits)" 
+                        : "🧠 AI Story Arc (1 Credit)"}
+                    </span>
+                  </div>
+
                   <div className="relative flex flex-col sm:flex-row items-stretch sm:items-center bg-surface-container-lowest rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-outline-variant/60 hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] hover:border-outline-variant transition-all duration-300 p-2 gap-2 overflow-hidden">
                     <div className="flex items-center flex-grow pl-3 pr-2 py-1">
                       <span className="material-symbols-outlined text-outline group-focus-within:text-primary transition-colors text-xl mr-2">link</span>
@@ -802,10 +854,10 @@ export default function Home() {
                     </div>
                     <button
                       type="submit"
-                      disabled={!youtubeUrl.trim() || userProfile.credits_remaining <= 0}
+                      disabled={!youtubeUrl.trim() || (clippingMode === "ai_enhanced" && userProfile.credits_remaining <= 0)}
                       className="px-8 py-3.5 sm:py-4 bg-primary text-on-primary rounded-xl font-label-md text-[15px] font-semibold hover:bg-surface-tint transition-all flex items-center justify-center gap-2 shadow-sm active:scale-[0.98] shrink-0 disabled:opacity-50 cursor-pointer"
                     >
-                      <span>Detect & Clip</span>
+                      <span>{clippingMode === "heuristic" ? "Detect Highlights (Free)" : "Detect & Clip (AI)"}</span>
                       <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
                     </button>
                   </div>
@@ -836,9 +888,16 @@ export default function Home() {
                     </span>
                   </div>
 
-                  {userProfile.credits_remaining <= 0 && (
-                    <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-600 dark:text-amber-400 text-center">
-                      Daily free limit reached (0/3 generations left). Your quota resets at midnight UTC!
+                  {userProfile.credits_remaining <= 0 && clippingMode === "ai_enhanced" && (
+                    <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-600 dark:text-amber-400 text-center flex flex-col sm:flex-row items-center justify-center gap-2">
+                      <span>Daily AI credit limit reached (0/3).</span>
+                      <button
+                        type="button"
+                        onClick={() => setClippingMode("heuristic")}
+                        className="underline font-bold hover:text-amber-700 cursor-pointer"
+                      >
+                        Switch to Fast Highlights (100% Free & Unlimited)
+                      </button>
                     </div>
                   )}
                 </form>
@@ -1177,6 +1236,13 @@ export default function Home() {
                               {isCloud && (
                                 <span className="font-label-sm text-[10px] px-1.5 py-0.5 bg-primary/10 text-primary rounded-md font-semibold">
                                   CDN
+                                </span>
+                              )}
+                              {typeof clip === "object" && (clip as any).mode && (
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-semibold flex items-center gap-0.5 ${
+                                  (clip as any).mode === "heuristic" ? "bg-amber-500/10 text-amber-600 dark:text-amber-400" : "bg-primary/10 text-primary"
+                                }`}>
+                                  <span>{(clip as any).mode === "heuristic" ? "⚡ Fast" : "🧠 AI"}</span>
                                 </span>
                               )}
                             </div>
