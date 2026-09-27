@@ -3,6 +3,7 @@ import sys
 import shutil
 import subprocess
 import math
+import json
 from typing import List, Callable, Optional, Dict, Any
 
 if sys.platform == "win32":
@@ -13,7 +14,8 @@ if sys.platform == "win32":
         pass
 
 import yt_dlp
-from moment_detector import detect_best_moments
+from moment_detector import detect_best_moments, transcribe_video_audio
+from story_synthesizer import synthesize_story_blueprints, stitch_synthesized_story
 
 # ==============================================================================
 # CONFIGURATION CONSTANTS
@@ -209,6 +211,15 @@ def split_and_crop_video(
         except subprocess.CalledProcessError as e:
             raise RuntimeError(f"Failed creating clip {clip_name}: {e.stderr}")
 
+    # Persist clip metadata.json for the frontend, critic agent, and API consumers
+    try:
+        meta_file = os.path.join(output_dir, "metadata.json")
+        with open(meta_file, "w", encoding="utf-8") as f:
+            json.dump(created_clips, f, indent=2)
+        print(f"[Pipeline] Saved {len(created_clips)} clip records to {meta_file}")
+    except Exception as meta_err:
+        print(f"[Pipeline Warning] Could not write metadata.json: {meta_err}")
+
     return created_clips
 
 
@@ -218,6 +229,7 @@ def run_pipeline(
     download_dir: str = "downloads",
     segment_duration: int = DEFAULT_SEGMENT_DURATION,
     max_clips: int = MAX_CLIPS_PER_VIDEO,
+    synthesize_stories: bool = False,
     progress_callback: Optional[Callable[[str, int, str], None]] = None
 ) -> List[Dict[str, Any]]:
     """
@@ -260,6 +272,34 @@ def run_pipeline(
             max_clips=max_clips,
             progress_callback=progress_callback
         )
+
+        # 5. Optional Non-Linear Story Synthesis (Franken-Editing)
+        if synthesize_stories:
+            try:
+                if progress_callback:
+                    progress_callback("synthesizing_stories", 88, "Synthesizing non-linear narrative micro-stories...")
+                segs = transcribe_video_audio(video_path)
+                blueprints = synthesize_story_blueprints(segs, duration, max_stories=3)
+                for s_idx, bp in enumerate(blueprints):
+                    synth_filename = f"synth_clip_{s_idx+1}.mp4"
+                    synth_path = os.path.join(clips_output_dir, synth_filename)
+                    if stitch_synthesized_story(video_path, bp, synth_path):
+                        clips.append({
+                            "filename": synth_filename,
+                            "title": bp.get("title", f"Synthesized Story {s_idx+1}"),
+                            "score": bp.get("score", 92),
+                            "duration": bp.get("total_duration", 30.0),
+                            "angle": bp.get("angle", "Narrative Story"),
+                            "rationale": bp.get("rationale", ""),
+                            "sub_segments": bp.get("segments", []),
+                            "is_synthesized": True
+                        })
+                meta_file = os.path.join(clips_output_dir, "metadata.json")
+                with open(meta_file, "w", encoding="utf-8") as f:
+                    json.dump(clips, f, indent=2)
+                print(f"[Pipeline] Added {len(blueprints)} synthesized micro-stories to {meta_file}")
+            except Exception as synth_err:
+                print(f"[Pipeline] Story synthesis notice: {synth_err}")
         
         if progress_callback:
             progress_callback("cleaning", 95, "Purging raw temporary downloads...")
