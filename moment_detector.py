@@ -18,6 +18,8 @@ if sys.platform == "win32":
         pass
 
 from youtube_heatmap import extract_heatmap, generate_clip_windows, get_window_intensity_score
+from visual_detector import VisualDynamicsAnalyzer
+from prosody_detector import ProsodyDynamicsAnalyzer
 
 load_dotenv()
 
@@ -109,8 +111,8 @@ def get_cached_whisper_model():
     if _CACHED_WHISPER_MODEL is None:
         try:
             from faster_whisper import WhisperModel
-            print("  -> Initializing and caching faster-whisper (tiny model, CPU)...")
-            _CACHED_WHISPER_MODEL = WhisperModel("tiny", device="cpu", compute_type="int8")
+            print("  -> Initializing and caching faster-whisper (base model, CPU)...")
+            _CACHED_WHISPER_MODEL = WhisperModel("base", device="cpu", compute_type="int8")
         except Exception as e:
             print(f"  -> Could not initialize faster-whisper: {e}")
             _CACHED_WHISPER_MODEL = False
@@ -129,7 +131,7 @@ def transcribe_video_audio(video_or_audio_path: str) -> List[Dict[str, Any]]:
     try:
         model = get_cached_whisper_model()
         if model is not None:
-            whisper_segments, _ = model.transcribe(video_or_audio_path, beam_size=1)
+            whisper_segments, _ = model.transcribe(video_or_audio_path, beam_size=2, vad_filter=True)
             for s in whisper_segments:
                 text_clean = s.text.strip()
                 if text_clean:
@@ -189,11 +191,17 @@ def transcribe_video_audio(video_or_audio_path: str) -> List[Dict[str, Any]]:
 DANGLING_END_WORDS = {
     "and", "or", "but", "so", "because", "that", "to", "with", "if", "when", 
     "like", "uh", "um", "the", "a", "an", "then", "which", "who", "whom", "where",
-    "as", "for", "of", "in", "on", "at", "by", "from", "about", "into"
+    "as", "for", "of", "in", "on", "at", "by", "from", "about", "into", "onto",
+    "just", "my", "your", "our", "their", "his", "her", "its", "this", "these",
+    "is", "are", "was", "were", "be", "been", "being", "have", "has", "had",
+    "will", "would", "shall", "should", "can", "could", "may", "might", "must",
+    "not", "no", "very", "too", "more", "most", "than", "up", "out", "off", "down"
 }
 
 DANGLING_START_WORDS = {
-    "and", "but", "or", "so", "because", "then", "which", "also", "plus"
+    "and", "but", "or", "so", "because", "then", "which", "also", "plus",
+    "yet", "however", "though", "well", "like", "actually", "basically",
+    "now", "furthermore", "moreover", "anyway"
 }
 
 def is_true_sentence_starter(segment: Dict[str, Any], prev_segment: Optional[Dict[str, Any]] = None) -> bool:
@@ -202,39 +210,96 @@ def is_true_sentence_starter(segment: Dict[str, Any], prev_segment: Optional[Dic
     if not text:
         return False
 
-    # Check 1: Previous segment ended with sentence-final punctuation
+    words = text.split()
+    if not words:
+        return False
+
+    first_word_raw = words[0].strip(".,!?;:\"'-()[]{}")
+    first_word = first_word_raw.lower()
+
+    # Rule 1: Never start on a dangling conjunction, preposition, or weak filler word
+    if first_word in DANGLING_START_WORDS or first_word in DANGLING_END_WORDS:
+        return False
+
+    # Rule 1B: Words ending in '-ing' (participial clauses) cannot start a standalone short
+    if first_word.endswith("ing") and len(first_word) > 4:
+        return False
+
+    # Rule 1C: Passive/past participle fragments without subject cannot start a clip
+    if first_word in {
+        "conjured", "fabricated", "given", "taken", "made", "done", "seen", "born",
+        "known", "called", "told", "asked", "forced", "left", "found", "built"
+    }:
+        return False
+
+    # Rule 1D: Dependent subordinate clauses (because, if, when, while) cannot start standalone clips
+    if first_word in {"because", "if", "when", "although", "while", "as", "since", "until", "unless"}:
+        return False
+
+    # Rule 1E: If prev_segment starts with a subordinate conjunction (because, if...) and has no final punctuation,
+    # current segment is its resolution and cannot be an isolated clip start
+    if prev_segment:
+        p_words = prev_segment.get("text", "").strip().split()
+        if p_words:
+            p_first = p_words[0].strip(".,!?;:\"'-()[]{}").lower()
+            if p_first in {"because", "if", "when", "although", "while", "since"}:
+                p_text = prev_segment.get("text", "").strip()
+                if not p_text.endswith((".", "!", "?")):
+                    return False
+
+    # Rule 2: Must begin with a capitalized letter (indicating new sentence)
+    if not first_word_raw or not first_word_raw[0].isupper():
+        return False
+
+    # Rule 3: If prev_segment exists, verify clean sentence end or silence break
     if prev_segment:
         prev_text = prev_segment.get("text", "").strip()
         if prev_text and prev_text[-1] in {".", "!", "?"}:
             return True
-        # Or there was a significant silence gap (> 0.5s)
-        if (segment["start"] - prev_segment["end"]) >= 0.5:
+        if (segment["start"] - prev_segment["end"]) >= 0.35:
             return True
+        # If no silence gap and prev segment didn't end with sentence punctuation, reject
+        return False
 
-    # Check 2: First word is capitalized and not a weak trailing conjunction
-    first_word = text.split()[0].strip().rstrip(",;:-")
-    if first_word and first_word[0].isupper() and first_word.lower() not in DANGLING_START_WORDS:
-        return True
+    return True
 
-    return False
-
-def is_clean_sentence_ender(segment: Dict[str, Any]) -> bool:
-    """Checks if segment ends with a complete thought, avoiding dangling prepositions/conjunctions."""
+def is_clean_sentence_ender(segment: Dict[str, Any], next_segment: Optional[Dict[str, Any]] = None) -> bool:
+    """Checks if segment ends with a complete thought, avoiding dangling prepositions/conjunctions/verbs."""
     text = segment.get("text", "").strip()
     if not text:
         return False
 
-    # Check terminal punctuation
-    if text[-1] in {".", "!", "?"}:
-        clean_words = re.findall(r'\b\w+\b', text)
-        if clean_words and clean_words[-1].lower() not in DANGLING_END_WORDS:
-            return True
-
     words = text.split()
-    if words:
-        last_word = words[-1].lower().strip(".,!?;:\"'")
-        if last_word in DANGLING_END_WORDS:
-            return False
+    if not words:
+        return False
+
+    last_word_raw = words[-1].strip(".,!?;:\"'-()[]{}")
+    last_word = last_word_raw.lower()
+
+    # Rule 1: Cannot end on a dangling word
+    if last_word in DANGLING_END_WORDS or last_word in DANGLING_START_WORDS:
+        return False
+
+    # Rule 1B: Dependent clauses starting with "because", "since", "although" cannot end without terminal punctuation
+    first_w = words[0].strip(".,!?;:\"'-()[]{}").lower()
+    if first_w in {"because", "since", "although"} and not text.endswith((".", "!", "?")):
+        return False
+
+    # Rule 2: If text ends with punctuation (. ! ?) and last word isn't dangling, it's clean
+    if text[-1] in {".", "!", "?"}:
+        return True
+
+    # Rule 3: If next segment begins with a capitalized letter (new sentence starter) and current last word is complete
+    if next_segment:
+        next_text = next_segment.get("text", "").strip()
+        next_words = next_text.split()
+        if next_words:
+            next_first = next_words[0].strip(".,!?;:\"'-()[]{}")
+            if next_first and next_first[0].isupper() and next_first.lower() not in DANGLING_START_WORDS:
+                return True
+
+    if next_segment is None:
+        return True
 
     return False
 
@@ -289,29 +354,29 @@ def trace_narrative_context_for_peak(
 
     # 2. Trace FORWARD from peak_idx to find a clean, punchy sentence resolution
     best_end_idx = peak_idx
-    found_clean_end = is_clean_sentence_ender(segments[peak_idx])
+    found_clean_end = False
     
     for idx in range(peak_idx, len(segments)):
         seg = segments[idx]
+        next_seg = segments[idx + 1] if idx + 1 < len(segments) else None
         current_dur = seg["end"] - start_time
         
         if current_dur > max_duration:
             break
             
-        if is_clean_sentence_ender(seg):
+        if is_clean_sentence_ender(seg, next_seg):
             best_end_idx = idx
             found_clean_end = True
             if current_dur >= (target_duration - 6.0):
                 break
-        elif not found_clean_end and current_dur <= target_duration:
-            best_end_idx = idx
 
     end_time = segments[best_end_idx]["end"]
 
     # Validate duration bounds without allowing dangling endings
     if (end_time - start_time) < min_duration:
         for idx in range(best_end_idx + 1, len(segments)):
-            if is_clean_sentence_ender(segments[idx]) and (segments[idx]["end"] - start_time) <= max_duration:
+            next_seg = segments[idx + 1] if idx + 1 < len(segments) else None
+            if is_clean_sentence_ender(segments[idx], next_seg) and (segments[idx]["end"] - start_time) <= max_duration:
                 best_end_idx = idx
                 end_time = segments[idx]["end"]
                 if (end_time - start_time) >= min_duration:
@@ -347,48 +412,68 @@ def snap_to_sentence_boundaries(
         e = min(total_duration, round(target_end, 2))
         return s, e
 
-    # Find the best sentence start near target_start
-    best_start = target_start
-    start_candidates = []
-    for idx, seg in enumerate(segments):
-        if abs(seg["start"] - target_start) <= 6.0 and seg["start"] < target_end:
-            prev_seg = segments[idx - 1] if idx > 0 else None
-            is_true_start = is_true_sentence_starter(seg, prev_seg)
-            # Give priority bonus to true sentence beginnings
-            distance = abs(seg["start"] - target_start) - (3.0 if is_true_start else 0.0)
-            start_candidates.append((distance, seg["start"]))
+    num_segs = len(segments)
 
-    if start_candidates:
-        start_candidates.sort(key=lambda x: x[0])
-        best_start = start_candidates[0][1]
+    # 1. Find the best sentence start near target_start that is a TRUE sentence starter
+    clean_starts = []
+    for idx in range(num_segs):
+        seg = segments[idx]
+        prev_seg = segments[idx - 1] if idx > 0 else None
+        if is_true_sentence_starter(seg, prev_seg):
+            dist = abs(seg["start"] - target_start)
+            clean_starts.append((dist, seg["start"], idx))
 
-    # Find the best sentence end near target_end
-    best_end = target_end
-    end_candidates = []
-    for seg in segments:
-        if abs(seg["end"] - target_end) <= 6.5 and seg["end"] > best_start:
-            is_clean_end = is_clean_sentence_ender(seg)
-            distance = abs(seg["end"] - target_end) - (3.0 if is_clean_end else 0.0)
-            end_candidates.append((distance, seg["end"]))
+    if clean_starts:
+        clean_starts.sort(key=lambda x: x[0])
+        best_start = clean_starts[0][1]
+        best_start_idx = clean_starts[0][2]
+    else:
+        closest = min(range(num_segs), key=lambda i: abs(segments[i]["start"] - target_start))
+        best_start = segments[closest]["start"]
+        best_start_idx = closest
 
-    if end_candidates:
-        end_candidates.sort(key=lambda x: x[0])
-        best_end = end_candidates[0][1]
+    # 2. Find clean sentence ends strictly within valid duration range
+    clean_ends = []
+    for idx in range(best_start_idx, num_segs):
+        seg = segments[idx]
+        next_seg = segments[idx + 1] if idx + 1 < num_segs else None
+        dur = seg["end"] - best_start
+        if min_duration <= dur <= max_duration:
+            if is_clean_sentence_ender(seg, next_seg):
+                dist = abs(seg["end"] - target_end)
+                clean_ends.append((dist, seg["end"]))
 
-    # Validate duration constraints
-    dur = best_end - best_start
-    if dur < min_duration:
-        extend_candidates = [seg["end"] for seg in segments if seg["end"] >= best_start + min_duration]
-        if extend_candidates:
-            best_end = min(extend_candidates)
+    if clean_ends:
+        clean_ends.sort(key=lambda x: x[0])
+        best_end = clean_ends[0][1]
+    else:
+        # Search slightly wider: [min_duration - 6.0, max_duration + 8.0]
+        wider_ends = []
+        for idx in range(best_start_idx, num_segs):
+            seg = segments[idx]
+            next_seg = segments[idx + 1] if idx + 1 < num_segs else None
+            dur = seg["end"] - best_start
+            if max(15.0, min_duration - 6.0) <= dur <= (max_duration + 8.0):
+                if is_clean_sentence_ender(seg, next_seg):
+                    dist = abs(seg["end"] - target_end)
+                    wider_ends.append((dist, seg["end"]))
+        if wider_ends:
+            wider_ends.sort(key=lambda x: x[0])
+            best_end = wider_ends[0][1]
         else:
-            best_end = min(total_duration, best_start + min_duration)
-    elif dur > max_duration:
-        shrink_candidates = [seg["end"] for seg in segments if best_start + min_duration <= seg["end"] <= best_start + max_duration]
-        if shrink_candidates:
-            best_end = max(shrink_candidates)
-        else:
-            best_end = min(total_duration, best_start + max_duration)
+            # Fallback to closest clean sentence ender after best_start
+            all_clean_after = []
+            for idx in range(best_start_idx, num_segs):
+                seg = segments[idx]
+                next_seg = segments[idx + 1] if idx + 1 < num_segs else None
+                dur = seg["end"] - best_start
+                if dur >= 15.0 and is_clean_sentence_ender(seg, next_seg):
+                    all_clean_after.append((abs(dur - (target_end - target_start)), seg["end"]))
+            if all_clean_after:
+                all_clean_after.sort(key=lambda x: x[0])
+                best_end = all_clean_after[0][1]
+            else:
+                best_end = min(total_duration, best_start + (target_end - target_start))
 
     best_start = max(0.0, round(best_start, 2))
     best_end = min(total_duration, round(best_end, 2))
@@ -513,6 +598,12 @@ def detect_relative_audio_surges(
 # ==============================================================================
 # CHANNEL 2: SEMANTIC STORY & VIRAL HOOK CANDIDATE DETECTOR
 # ==============================================================================
+PUNCHLINE_WORDS = {
+    "nothing", "done", "today", "now", "happen", "season", "truth", "you",
+    "go", "start", "stop", "win", "lose", "life", "choice", "yourself",
+    "it", "get", "live", "make", "die", "time", "succeed", "fail", "real"
+}
+
 def score_transcript_hook_and_story(
     text_slice: str,
     opener_slice: str,
@@ -569,12 +660,17 @@ def score_transcript_hook_and_story(
     # Bonus for clean terminal punctuation
     if clean_strip and clean_strip[-1] in {".", "!", "?"}:
         score += 8.0
-    # Penalty for dangling conjunctions at end
+    
+    # 5. Climax & Punchline Resolution (Ends on an emphatic resolution)
     words = clean_strip.split()
-    if words and words[-1].lower().strip(".,!?;:\"'") in DANGLING_END_WORDS:
-        score -= 14.0
+    if words:
+        last_clean = words[-1].lower().strip(".,!?;:\"'")
+        if last_clean in PUNCHLINE_WORDS:
+            score += 16.0
+        elif last_clean in DANGLING_END_WORDS or last_clean in DANGLING_START_WORDS:
+            score -= 22.0
 
-    score = max(40.0, min(99.0, score))
+    score = max(40.0, min(100.0, score))
 
     # Generate Smart Title from first sentence or strong topic clause
     clean_title = generate_smart_title_from_text(text_slice)
@@ -624,50 +720,63 @@ def detect_semantic_story_candidates(
 
     for i in range(num_segs):
         start_seg = segments[i]
+        prev_seg = segments[i - 1] if i > 0 else None
+        if not is_true_sentence_starter(start_seg, prev_seg):
+            continue
         c_start = start_seg["start"]
         
-        # Accumulate segments until reaching target_duration
-        accumulated_text = []
-        c_end = c_start
+        # Scan forward for complete, grammatically resolved story endings
+        candidate_arcs = []
         for j in range(i, num_segs):
             seg = segments[j]
-            accumulated_text.append(seg["text"])
-            c_end = seg["end"]
-            curr_dur = c_end - c_start
+            next_seg = segments[j + 1] if j + 1 < num_segs else None
+            curr_dur = seg["end"] - c_start
             
-            if curr_dur >= (target_duration - 5):
+            if curr_dur > MAX_CLIP_DURATION:
                 break
+                
+            if curr_dur >= MIN_CLIP_DURATION:
+                if is_clean_sentence_ender(seg, next_seg):
+                    accum_segs = segments[i:j+1]
+                    full_text = " ".join([s["text"] for s in accum_segs]).strip()
+                    opener_text = " ".join([s["text"] for s in accum_segs[:2]]).strip()
+                    words = full_text.split()
+                    
+                    hook_score, title = score_transcript_hook_and_story(
+                        text_slice=full_text,
+                        opener_slice=opener_text,
+                        word_count=len(words),
+                        duration=curr_dur
+                    )
+                    
+                    # Preference for target_duration sweet spot (between 22s and 60s)
+                    dur_bonus = 5.0 if 22.0 <= curr_dur <= 60.0 else 0.0
+                    candidate_arcs.append({
+                        "start": round(c_start, 2),
+                        "end": round(seg["end"], 2),
+                        "semantic_score": round(hook_score + dur_bonus, 1),
+                        "title": title,
+                        "text": full_text,
+                        "duration": round(curr_dur, 2),
+                        "source": "semantic_story"
+                    })
 
-        curr_dur = c_end - c_start
-        if curr_dur < MIN_CLIP_DURATION:
-            continue
+        if candidate_arcs:
+            candidate_arcs.sort(key=lambda x: x["semantic_score"], reverse=True)
+            candidates.append(candidate_arcs[0])
 
-        full_text = " ".join(accumulated_text).strip()
-        opener_text = " ".join(accumulated_text[:2]).strip()
-        words = full_text.split()
-        
-        hook_score, title = score_transcript_hook_and_story(
-            text_slice=full_text,
-            opener_slice=opener_text,
-            word_count=len(words),
-            duration=curr_dur
-        )
-
-        candidates.append({
-            "start": round(c_start, 2),
-            "end": round(c_end, 2),
-            "semantic_score": hook_score,
-            "title": title,
-            "text": full_text,
-            "source": "semantic_story"
-        })
-
-    # Sort candidates by semantic score and apply Non-Maximum Suppression
+    # Sort candidates by semantic score and apply strict Non-Maximum Suppression
     candidates.sort(key=lambda x: x["semantic_score"], reverse=True)
-    min_separation = target_duration * 0.4
     selected = []
     for cand in candidates:
-        if any(abs(cand["start"] - s["start"]) < min_separation for s in selected):
+        cand_s, cand_e = cand["start"], cand["end"]
+        has_overlap = False
+        for s in selected:
+            inter = max(0.0, min(cand_e, s["end"]) - max(cand_s, s["start"]))
+            if inter > 1.0:
+                has_overlap = True
+                break
+        if has_overlap:
             continue
         selected.append(cand)
         if len(selected) >= top_n:
@@ -802,7 +911,7 @@ def get_cached_groq_client():
     return _CACHED_GROQ_CLIENT if _CACHED_GROQ_CLIENT is not False else None
 
 
-def evaluate_context_with_llm(text: str, duration: float) -> Tuple[float, str]:
+def evaluate_context_with_llm(text: str, duration: float, opening_text: Optional[str] = None) -> Tuple[float, str]:
     """
     Pass candidate transcript to Groq Cloud LLM for viral hook rating (1-10) and title.
     Specially tuned for Hindi, Hinglish, and English conversational nuances.
@@ -811,22 +920,27 @@ def evaluate_context_with_llm(text: str, duration: float) -> Tuple[float, str]:
     if not text or len(text.split()) < 3:
         return 7.0, "Engaging Video Highlight"
 
+    words = text.split()
+    hook_slice = opening_text if opening_text else " ".join(words[:10])
+
     # 1. Try Groq Cloud LLM (Qwen 3.8 27B)
     client = get_cached_groq_client()
     if client:
         try:
             prompt = (
-                f"You are an expert viral short-form video editor specializing in Hindi, Hinglish, and English content (YouTube Shorts, Instagram Reels).\n\n"
-                f"Analyze this speech transcript segment (~{int(duration)}s):\n"
+                f"You are an expert viral short-form video editor specializing in YouTube Shorts and Instagram Reels.\n\n"
+                f"Opening Hook Zone (First 3-5s of speech):\n"
+                f"\"\"\"{hook_slice}\"\"\"\n\n"
+                f"Full Speech Segment Transcript (~{int(duration)}s):\n"
                 f"\"\"\"{text}\"\"\"\n\n"
                 f"Instructions:\n"
                 f"1. Rate viral potential on a scale of 1-10:\n"
-                f"   - Is there a strong curiosity hook or punchy opening in the first 3 seconds?\n"
-                f"   - Does it deliver a clear revelation, joke, insight, or emotional payoff?\n"
-                f"   - Does it feel complete as a standalone short without confusing the viewer?\n"
-                f"2. Generate an ultra-catchy, viral 3-6 word title in the natural language of the video (e.g. if Hinglish, write natural Hinglish like 'Sabse Badi Galti'; if English, write clicky English).\n\n"
+                f"   - Crucial: Does the opening hook ('{hook_slice}') instantly grab the viewer (curiosity gap, provocative statement, question, bold claim) without feeling cut mid-sentence?\n"
+                f"   - Does it deliver a satisfying revelation, emotional punch, or insight before ending?\n"
+                f"   - Is it completely coherent as a standalone clip?\n"
+                f"2. Generate an ultra-catchy, viral 3-6 word title summarizing this exact moment's hook/core insight (DO NOT use generic titles like 'Interesting Moment' or 'Video Highlight').\n\n"
                 f"Respond with JSON ONLY in this format:\n"
-                f"{{\"rating\": 8.5, \"title\": \"Catchy 3-6 Word Title\"}}"
+                f"{{\"rating\": 8.8, \"title\": \"Punchy 3-6 Word Title\"}}"
             )
             resp = client.chat.completions.create(
                 model="qwen/qwen3.8-27b",
@@ -842,7 +956,10 @@ def evaluate_context_with_llm(text: str, duration: float) -> Tuple[float, str]:
             data = json.loads(raw_content)
             rating = max(1.0, min(10.0, float(data.get("rating", 7.5))))
             raw_title = data.get("title", "").strip()
-            title = generate_smart_title_from_text(raw_title) if raw_title else generate_smart_title_from_text(text)
+            if raw_title and raw_title.lower() not in ["interesting moment", "top video moment", "best video highlight", "untitled"]:
+                title = raw_title
+            else:
+                title = generate_smart_title_from_text(text)
             return rating, title
         except Exception as err:
             print(f"  -> Groq LLM evaluation notice: {err}. Gracefully falling back to local heuristic.")
@@ -949,6 +1066,33 @@ def detect_best_moments(
                     print(f"[Channel 4: Heatmap] Successfully extracted {len(heatmap_markers)} viewer replay segments!")
         except Exception as e:
             print(f"[Channel 4 Notice] Could not extract heatmap: {e}. Gracefully falling back.")
+
+    # Channel E: Visual Dynamics & Face Motion (Vision-AI)
+    visual_timeline = None
+    try:
+        if progress_callback:
+            progress_callback("analyzing_visual", 80, "Stage 5/6: Scanning visual motion energy & face dynamics...")
+        visual_analyzer = VisualDynamicsAnalyzer(sample_fps=2.0)
+        visual_timeline = visual_analyzer.analyze_video(video_path)
+        print(f"[Channel 5: Vision-AI] Extracted {len(visual_timeline.get('timeline', []))} timeline frames for visual motion analysis.")
+    except Exception as e:
+        print(f"[Channel 5 Notice] Visual dynamics analysis failed: {e}. Gracefully falling back.")
+        visual_timeline = None
+
+    # Channel F: Prosodic Intonation, Pitch (F0) Modulation & Whisper Hooks (Phase 2)
+    prosody_analyzer = ProsodyDynamicsAnalyzer()
+    prosody_data = None
+    temp_prosody_wav = None
+    try:
+        if progress_callback:
+            progress_callback("analyzing_prosody", 85, "Stage 6/6: Scanning vocal prosody, pitch modulation & whisper hooks...")
+        temp_prosody_wav = os.path.join(tempfile.gettempdir(), f"prosody_{os.getpid()}_{int(duration)}.wav")
+        if extract_audio_pcm(video_path, temp_prosody_wav):
+            prosody_data = prosody_analyzer.analyze_audio_file(temp_prosody_wav)
+            print(f"[Channel 6: Prosody-AI] Extracted {len(prosody_data.get('timeline', []))} frames for pitch & vocal modulation.")
+    except Exception as e:
+        print(f"[Channel 6 Notice] Prosody analysis failed: {e}. Gracefully falling back.")
+        prosody_data = None
 
     # --------------------------------------------------------------------------
     # UNIFIED CANDIDATE POOL & SENTENCE BOUNDARY SNAPPING
@@ -1057,15 +1201,18 @@ def detect_best_moments(
 
         # Refresh text and hook score on the final snapped boundaries
         if transcript_segments:
-            final_text = " ".join([
+            cand_segs = [
                 s["text"] for s in transcript_segments
                 if not (s["end"] < snapped_s or s["start"] > snapped_e)
-            ]).strip()
+            ]
+            final_text = " ".join(cand_segs).strip()
             if final_text:
                 cand_copy["text"] = final_text
+                opener = cand_segs[0] if cand_segs else " ".join(final_text.split()[:10])
                 llm_rating, llm_title = evaluate_context_with_llm(
                     text=final_text,
-                    duration=cand_copy["duration"]
+                    duration=cand_copy["duration"],
+                    opening_text=opener
                 )
                 cand_copy["semantic_score"] = round(llm_rating * 10.0, 1)
                 cand_copy["title"] = llm_title
@@ -1098,37 +1245,131 @@ def detect_best_moments(
         elif wpm < 80:
             pacing_score = 60.0
 
-        # Multi-factor score computation
-        if has_heatmap:
-            hm_sc = cand.get("heatmap_score", 50.0)
-            if has_comments and c_score is not None:
+        # Visual Dynamics Scoring (Vision-AI)
+        v_score = 65.0
+        v_hook_score = 65.0
+        has_visual = visual_timeline is not None
+        if has_visual:
+            try:
+                v_metrics = visual_analyzer.score_window(visual_timeline, cand["start"], cand["end"])
+                v_score = v_metrics.get("visual_overall", 65.0)
+                v_hook_score = v_metrics.get("visual_hook", 65.0)
+                cand["visual_score"] = v_score
+                cand["visual_hook"] = v_hook_score
+                cand["face_score"] = v_metrics.get("face_score", 50.0)
+            except Exception:
+                has_visual = False
+
+        # Prosodic & Pitch Dynamics Scoring (Prosody-AI Phase 2)
+        p_overall = 75.0
+        p_hook = 75.0
+        has_prosody = prosody_data is not None
+        if has_prosody:
+            try:
+                p_metrics = prosody_analyzer.score_window(prosody_data, cand["start"], cand["end"])
+                p_overall = p_metrics.get("prosody_overall", 75.0)
+                p_hook = p_metrics.get("prosody_hook", 75.0)
+                cand["prosody_score"] = p_overall
+                cand["prosody_hook"] = p_hook
+                cand["pitch_variance"] = p_metrics.get("pitch_variance_score", 75.0)
+                cand["whisper_score"] = p_metrics.get("whisper_score", 50.0)
+            except Exception:
+                has_prosody = False
+
+        # Multi-factor score computation with Vision-AI + Prosody-AI integration
+        if has_visual and has_prosody:
+            if has_heatmap:
+                hm_sc = cand.get("heatmap_score", 50.0)
                 final_score = (
-                    (s_score * 0.30) +
-                    (a_score * 0.20) +
-                    (hm_sc * 0.25) +
-                    (c_score * 0.15) +
-                    (pacing_score * 0.10)
+                    (s_score * 0.45) +
+                    (v_hook_score * 0.12) +
+                    (v_score * 0.08) +
+                    (p_hook * 0.10) +
+                    (p_overall * 0.05) +
+                    (hm_sc * 0.12) +
+                    (a_score * 0.05) +
+                    (pacing_score * 0.03)
+                )
+            elif has_comments and c_score is not None:
+                final_score = (
+                    (s_score * 0.48) +
+                    (v_hook_score * 0.12) +
+                    (v_score * 0.08) +
+                    (p_hook * 0.12) +
+                    (p_overall * 0.06) +
+                    (a_score * 0.06) +
+                    (c_score * 0.05) +
+                    (pacing_score * 0.03)
                 )
             else:
                 final_score = (
-                    (s_score * WEIGHT_SEMANTIC_WITH_HEATMAP) +
-                    (a_score * WEIGHT_AUDIO_WITH_HEATMAP) +
-                    (hm_sc * WEIGHT_HEATMAP_ACTIVE) +
-                    (pacing_score * WEIGHT_PACING_WITH_HEATMAP)
+                    (s_score * 0.50) +
+                    (v_hook_score * 0.14) +
+                    (v_score * 0.08) +
+                    (p_hook * 0.12) +
+                    (p_overall * 0.06) +
+                    (a_score * 0.06) +
+                    (pacing_score * 0.04)
                 )
-        elif has_comments and c_score is not None:
-            final_score = (
-                (s_score * WEIGHT_SEMANTIC_HOOK) +
-                (a_score * WEIGHT_DYNAMIC_AUDIO) +
-                (c_score * WEIGHT_SOCIAL_COMMENTS) +
-                (pacing_score * WEIGHT_SPEECH_PACING)
-            )
+        elif has_visual:
+            if has_heatmap:
+                hm_sc = cand.get("heatmap_score", 50.0)
+                final_score = (
+                    (s_score * 0.50) +
+                    (v_hook_score * 0.12) +
+                    (v_score * 0.08) +
+                    (hm_sc * 0.15) +
+                    (a_score * 0.10) +
+                    (pacing_score * 0.05)
+                )
+            elif has_comments and c_score is not None:
+                final_score = (
+                    (s_score * 0.55) +
+                    (v_hook_score * 0.12) +
+                    (v_score * 0.08) +
+                    (a_score * 0.12) +
+                    (c_score * 0.08) +
+                    (pacing_score * 0.05)
+                )
+            else:
+                final_score = (
+                    (s_score * 0.60) +
+                    (v_hook_score * 0.14) +
+                    (v_score * 0.08) +
+                    (a_score * 0.12) +
+                    (pacing_score * 0.06)
+                )
         else:
-            final_score = (
-                (s_score * WEIGHT_SEMANTIC_NO_COMMENTS) +
-                (a_score * WEIGHT_AUDIO_NO_COMMENTS) +
-                (pacing_score * WEIGHT_PACING_NO_COMMENTS)
-            )
+            if has_heatmap:
+                hm_sc = cand.get("heatmap_score", 50.0)
+                if has_comments and c_score is not None:
+                    final_score = (
+                        (s_score * 0.60) +
+                        (hm_sc * 0.20) +
+                        (a_score * 0.10) +
+                        (c_score * 0.05) +
+                        (pacing_score * 0.05)
+                    )
+                else:
+                    final_score = (
+                        (s_score * 0.65) +
+                        (hm_sc * 0.20) +
+                        (a_score * 0.10) +
+                        (pacing_score * 0.05)
+                    )
+            elif has_comments and c_score is not None:
+                final_score = (
+                    (s_score * 0.65) +
+                    (a_score * 0.15) +
+                    (c_score * 0.15) +
+                    (pacing_score * 0.05)
+                )
+            else:
+                final_score = (
+                    (s_score * 0.75) +
+                    (a_score * 0.15) +
+                    (pacing_score * 0.10)
+                )
 
         cand["score"] = int(round(max(40.0, min(99.0, final_score))))
         scored_candidates.append(cand)
@@ -1142,7 +1383,16 @@ def detect_best_moments(
     min_separation = target_duration * 0.45
     
     for cand in scored_candidates:
-        if any(abs(cand["start"] - exist["start"]) < min_separation for exist in final_moments):
+        cand_s, cand_e = cand["start"], cand["end"]
+        # Strictly reject candidate if it overlaps more than 1.0s with any already selected moment
+        has_overlap = False
+        for exist in final_moments:
+            ex_s, ex_e = exist["start"], exist["end"]
+            overlap = max(0.0, min(cand_e, ex_e) - max(cand_s, ex_s))
+            if overlap > 1.0:
+                has_overlap = True
+                break
+        if has_overlap:
             continue
         
         moment_dict = {
@@ -1153,6 +1403,15 @@ def detect_best_moments(
         }
         if cand.get("heatmap_score") is not None:
             moment_dict["heatmap_score"] = cand["heatmap_score"]
+        if cand.get("visual_score") is not None:
+            moment_dict["visual_score"] = cand["visual_score"]
+            moment_dict["visual_hook"] = cand.get("visual_hook")
+            moment_dict["face_score"] = cand.get("face_score")
+        if cand.get("prosody_score") is not None:
+            moment_dict["prosody_score"] = cand["prosody_score"]
+            moment_dict["prosody_hook"] = cand.get("prosody_hook")
+            moment_dict["pitch_variance"] = cand.get("pitch_variance")
+            moment_dict["whisper_score"] = cand.get("whisper_score")
         final_moments.append(moment_dict)
 
         if len(final_moments) >= top_k:
@@ -1165,6 +1424,12 @@ def detect_best_moments(
             "title": "Top Moment Highlight",
             "score": 85
         }]
+
+    if temp_prosody_wav and os.path.exists(temp_prosody_wav):
+        try:
+            os.remove(temp_prosody_wav)
+        except Exception:
+            pass
 
     print(f"[Smart Moment Detector 2.0] Selected Top {len(final_moments)} Moments:")
     print(json.dumps(final_moments, indent=2))
