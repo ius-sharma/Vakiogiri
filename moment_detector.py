@@ -985,6 +985,7 @@ def detect_best_moments(
     duration: Optional[float] = None,
     target_duration: int = DEFAULT_CLIP_DURATION,
     top_k: int = FINAL_TOP_MOMENTS,
+    ai_enabled: bool = False,
     progress_callback: Optional[Callable[[str, int, str], None]] = None
 ) -> List[Dict[str, Any]]:
     """
@@ -1209,13 +1210,24 @@ def detect_best_moments(
             if final_text:
                 cand_copy["text"] = final_text
                 opener = cand_segs[0] if cand_segs else " ".join(final_text.split()[:10])
-                llm_rating, llm_title = evaluate_context_with_llm(
-                    text=final_text,
-                    duration=cand_copy["duration"],
-                    opening_text=opener
-                )
-                cand_copy["semantic_score"] = round(llm_rating * 10.0, 1)
-                cand_copy["title"] = llm_title
+                if ai_enabled:
+                    llm_rating, llm_title = evaluate_context_with_llm(
+                        text=final_text,
+                        duration=cand_copy["duration"],
+                        opening_text=opener
+                    )
+                    cand_copy["semantic_score"] = round(llm_rating * 10.0, 1)
+                    cand_copy["title"] = llm_title
+                else:
+                    # Pure Heuristic Mode: 0 API cost, zero cloud latency
+                    h_score, h_title = score_transcript_hook_and_story(
+                        text_slice=final_text,
+                        opener_slice=opener,
+                        word_count=len(final_text.split()),
+                        duration=cand_copy["duration"]
+                    )
+                    cand_copy["semantic_score"] = h_score
+                    cand_copy["title"] = h_title
 
         snapped_candidates.append(cand_copy)
 

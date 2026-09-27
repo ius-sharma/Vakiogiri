@@ -230,21 +230,25 @@ def run_pipeline(
     segment_duration: int = DEFAULT_SEGMENT_DURATION,
     max_clips: int = MAX_CLIPS_PER_VIDEO,
     synthesize_stories: bool = False,
+    mode: str = "heuristic",
     progress_callback: Optional[Callable[[str, int, str], None]] = None
 ) -> List[Dict[str, Any]]:
     """
-    Run complete AI video clipping pipeline:
+    Run complete AI / Heuristic video clipping pipeline:
     1. Download YouTube video
     2. Extract duration
-    3. Run 3-Stage Smart Best Moment Detector
+    3. Run Best Moment Detector (Heuristic or AI-Enhanced)
     4. Render dynamic 9:16 center-cropped clips
-    5. Clean up temporary download artifacts
+    5. Optional Non-Linear Story Synthesis
+    6. Clean up temporary download artifacts
     """
     check_ffmpeg_installed()
+    ai_enabled = (mode == "ai_enhanced")
     
     try:
         if progress_callback:
-            progress_callback("initializing", 5, "Initializing pipeline...")
+            mode_label = "AI Storytelling" if ai_enabled else "Fast Highlights"
+            progress_callback("initializing", 5, f"Initializing {mode_label} pipeline...")
 
         # 1. Download YouTube video
         video_path = download_video(youtube_url, download_dir, progress_callback)
@@ -252,13 +256,14 @@ def run_pipeline(
         # 2. Extract Duration
         duration = get_video_duration(video_path)
         
-        # 3. Detect Best Moments using 3-Stage Scoring
+        # 3. Detect Best Moments
         moments = detect_best_moments(
             video_path=video_path,
             youtube_url=youtube_url,
             duration=duration,
             target_duration=segment_duration,
             top_k=max_clips,
+            ai_enabled=ai_enabled,
             progress_callback=progress_callback
         )
         
@@ -272,9 +277,12 @@ def run_pipeline(
             max_clips=max_clips,
             progress_callback=progress_callback
         )
+        
+        for c in clips:
+            c["mode"] = mode
 
-        # 5. Optional Non-Linear Story Synthesis (Franken-Editing)
-        if synthesize_stories:
+        # 5. Optional Non-Linear Story Synthesis (Franken-Editing for AI mode)
+        if synthesize_stories and ai_enabled:
             try:
                 if progress_callback:
                     progress_callback("synthesizing_stories", 88, "Synthesizing non-linear narrative micro-stories...")
@@ -292,7 +300,8 @@ def run_pipeline(
                             "angle": bp.get("angle", "Narrative Story"),
                             "rationale": bp.get("rationale", ""),
                             "sub_segments": bp.get("segments", []),
-                            "is_synthesized": True
+                            "is_synthesized": True,
+                            "mode": mode
                         })
                 meta_file = os.path.join(clips_output_dir, "metadata.json")
                 with open(meta_file, "w", encoding="utf-8") as f:
