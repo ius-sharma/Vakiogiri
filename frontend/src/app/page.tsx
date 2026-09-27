@@ -18,7 +18,12 @@ interface ClipItem {
   end?: number;
   duration?: number;
   mode?: string;
+  aspect_ratio?: string;
+  content_type?: string;
   is_synthesized?: boolean;
+  is_compilation?: boolean;
+  chapters?: Array<{ timestamp: string; title: string; duration: number }>;
+  chapter_description?: string;
 }
 
 interface JobStatusResponse {
@@ -72,6 +77,8 @@ export default function Home() {
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [segmentDuration, setSegmentDuration] = useState<number>(45);
   const [clippingMode, setClippingMode] = useState<"heuristic" | "ai_enhanced">("heuristic");
+  const [aspectRatio, setAspectRatio] = useState<"9:16" | "16:9">("9:16");
+  const [contentType, setContentType] = useState<"shorts" | "stream">("shorts");
   const [jobId, setJobId] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "processing" | "completed" | "failed">("idle");
   const [progress, setProgress] = useState<number>(5);
@@ -409,6 +416,8 @@ export default function Home() {
           youtube_url: youtubeUrl.trim(),
           segment_duration: segmentDuration,
           mode: clippingMode,
+          aspect_ratio: aspectRatio,
+          content_type: contentType,
           synthesize_stories: clippingMode === "ai_enhanced"
         }),
       });
@@ -862,17 +871,52 @@ export default function Home() {
                     </button>
                   </div>
 
-                  {/* Options & Duration Selector */}
-                  <div className="flex flex-wrap items-center justify-between gap-3 px-2 text-xs">
+                  {/* Format & Aspect Ratio Selector */}
+                  <div className="flex flex-wrap items-center justify-between gap-3 px-1 text-xs">
+                    {/* Format Pills: 9:16 Shorts vs 16:9 Stream */}
+                    <div className="flex items-center gap-1.5 bg-surface-container-low p-1 rounded-xl border border-outline-variant/50">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAspectRatio("9:16");
+                          setContentType("shorts");
+                        }}
+                        className={`px-3 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                          aspectRatio === "9:16"
+                            ? "bg-surface-container-lowest text-primary shadow-xs border border-outline-variant/40"
+                            : "text-secondary hover:text-on-surface"
+                        }`}
+                      >
+                        <span className="material-symbols-outlined text-[15px]">smartphone</span>
+                        <span>9:16 Shorts</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAspectRatio("16:9");
+                          setContentType("stream");
+                        }}
+                        className={`px-3 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                          aspectRatio === "16:9"
+                            ? "bg-surface-container-lowest text-primary shadow-xs border border-outline-variant/40"
+                            : "text-secondary hover:text-on-surface"
+                        }`}
+                      >
+                        <span className="material-symbols-outlined text-[15px]">sports_esports</span>
+                        <span>16:9 Stream Highlights</span>
+                      </button>
+                    </div>
+
                     {/* Duration Pills */}
                     <div className="flex items-center gap-2">
-                      <span className="text-secondary font-medium">Moment Length:</span>
-                      {[30, 45, 60].map((dur) => (
+                      <span className="text-secondary font-medium">Clip Len:</span>
+                      {(aspectRatio === "16:9" ? [45, 60, 90] : [30, 45, 60]).map((dur) => (
                         <button
                           key={dur}
                           type="button"
                           onClick={() => setSegmentDuration(dur)}
-                          className={`px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+                          className={`px-2.5 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer ${
                             segmentDuration === dur
                               ? "bg-primary text-on-primary shadow-sm"
                               : "bg-surface-container-low text-secondary hover:text-on-surface border border-outline-variant/60"
@@ -883,8 +927,9 @@ export default function Home() {
                       ))}
                     </div>
 
-                    <span className="text-outline font-label-sm">
-                      Max 1080p • Auto 9:16 Center Crop
+                    <span className="text-secondary font-medium text-[11px] flex items-center gap-1 bg-surface-container-low px-2 py-0.5 rounded-full border border-outline-variant/40" title="Streams up to 5 hours (18,000s) supported in beta">
+                      <span className="material-symbols-outlined text-[13px] text-amber-500">verified_user</span>
+                      <span>Max 5-Hour Streams</span>
                     </span>
                   </div>
 
@@ -1143,7 +1188,9 @@ export default function Home() {
                     <span className="font-semibold text-sm text-on-surface">
                       {clips.length} clip{clips.length !== 1 ? "s" : ""} ready for export
                     </span>
-                    <span className="text-xs text-secondary">• 1080x1920 Vertical</span>
+                    <span className="text-xs text-secondary">
+                      • {aspectRatio === "16:9" ? "1920x1080 Widescreen (Stream)" : "1080x1920 Vertical (Shorts)"}
+                    </span>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
@@ -1179,6 +1226,7 @@ export default function Home() {
                     const heatmapScore = getClipHeatmapScore(clip);
                     const timeRange = getClipTimeRange(clip);
                     const downloadState = downloadingClips[filename];
+                    const isLandscape = (typeof clip === "object" && (clip as any)?.aspect_ratio === "16:9") || aspectRatio === "16:9";
 
                     return (
                       <article 
@@ -1186,7 +1234,7 @@ export default function Home() {
                         className="bg-surface-container-lowest border border-outline-variant/50 rounded-2xl overflow-hidden flex flex-col shadow-sm hover:shadow-md transition-all group"
                       >
                         {/* Video Player */}
-                        <div className="relative aspect-[9/16] bg-black/95 dark:bg-black overflow-hidden flex items-center justify-center border-b border-outline-variant/30">
+                        <div className={`relative ${isLandscape ? "aspect-[16/9]" : "aspect-[9/16]"} bg-black/95 dark:bg-black overflow-hidden flex items-center justify-center border-b border-outline-variant/30`}>
                           <video
                             src={clipUrl}
                             controls
@@ -1238,6 +1286,12 @@ export default function Home() {
                                   CDN
                                 </span>
                               )}
+                              {typeof clip === "object" && (clip as any).is_compilation && (
+                                <span className="text-[10px] px-2 py-0.5 rounded-md font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex items-center gap-1">
+                                  <span>🏆</span>
+                                  <span>Full Stream Reel</span>
+                                </span>
+                              )}
                               {typeof clip === "object" && (clip as any).mode && (
                                 <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-semibold flex items-center gap-0.5 ${
                                   (clip as any).mode === "heuristic" ? "bg-amber-500/10 text-amber-600 dark:text-amber-400" : "bg-primary/10 text-primary"
@@ -1246,6 +1300,20 @@ export default function Home() {
                                 </span>
                               )}
                             </div>
+
+                            {typeof clip === "object" && (clip as any).chapter_description && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  navigator.clipboard.writeText((clip as any).chapter_description);
+                                  alert("YouTube chapters copied to clipboard! Paste them directly into your video description.");
+                                }}
+                                className="w-full py-1 px-2 text-[11px] font-medium rounded-lg bg-surface-container-low hover:bg-surface-container text-secondary hover:text-on-surface border border-outline-variant/40 flex items-center justify-center gap-1 transition-all cursor-pointer"
+                              >
+                                <span className="material-symbols-outlined text-[13px]">content_copy</span>
+                                <span>Copy YouTube Chapters</span>
+                              </button>
+                            )}
                           </div>
 
                           <button
