@@ -4,6 +4,7 @@ import shutil
 import subprocess
 import math
 import json
+import re
 from typing import List, Callable, Optional, Dict, Any
 
 if sys.platform == "win32":
@@ -21,14 +22,23 @@ from stream_detector import detect_stream_audio_peaks, stitch_highlight_compilat
 # ==============================================================================
 # CONFIGURATION CONSTANTS
 # ==============================================================================
-DEFAULT_SEGMENT_DURATION = 45  # seconds
+DEFAULT_SEGMENT_DURATION = 45  # seconds (for shorts)
+DEFAULT_STREAM_SEGMENT_DURATION = 180  # seconds (3 minutes for long-form stream highlights)
 TARGET_WIDTH = 1080
 TARGET_HEIGHT = 1920
 MAX_CLIPS_PER_VIDEO = 3
+MAX_STREAM_CLIPS = 5
 
 # Safety Guardrails for Stream & Video Length
 MAX_STREAM_DURATION_HOURS = 5.0
 MAX_STREAM_DURATION_SECONDS = int(MAX_STREAM_DURATION_HOURS * 3600)  # 18,000s = 5 hours
+
+
+def strip_ansi(text: str) -> str:
+    """Remove ANSI escape codes (e.g. \x1b[0;31m, [0;31m) from strings."""
+    if not text:
+        return ""
+    return re.sub(r'\x1b\[[0-9;]*[a-zA-Z]|\[[0-9;]+m', '', str(text)).strip()
 
 
 def format_duration(seconds: float) -> str:
@@ -54,24 +64,30 @@ def probe_stream_metadata(url: str) -> Dict[str, Any]:
         'no_warnings': True,
         'extract_flat': True,
         'nocheckcertificate': True,
+        'no_color': True,
     }
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             if not info:
-                return {"duration": 0.0, "title": "YouTube Video", "is_live": False}
+                return {"duration": 0.0, "title": "YouTube Video", "is_live": False, "live_status": "unknown"}
             duration = float(info.get("duration") or 0.0)
             title = info.get("title") or "YouTube Video"
-            is_live = bool(info.get("is_live") or info.get("was_live"))
+            live_status = str(info.get("live_status") or ("is_live" if info.get("is_live") else "not_live"))
+            is_live_now = bool(info.get("is_live") or live_status == "is_live")
+            was_live = bool(info.get("was_live") or live_status in ["post_live", "was_live"])
             return {
                 "duration": duration,
                 "title": title,
-                "is_live": is_live,
+                "is_live": is_live_now,
+                "live_status": live_status,
+                "was_live": was_live,
                 "uploader": info.get("uploader") or "",
             }
     except Exception as e:
-        print(f"[Probe Notice] Fast probe encountered notice: {e}")
-        return {"duration": 0.0, "title": "YouTube Video", "is_live": False}
+        clean_msg = strip_ansi(str(e))
+        print(f"[Probe Notice] Fast probe encountered notice: {clean_msg}")
+        return {"duration": 0.0, "title": "YouTube Video", "is_live": False, "live_status": "unknown"}
 
 
 def check_ffmpeg_installed() -> bool:
@@ -115,35 +131,53 @@ def download_video(url: str, output_dir: str, progress_callback: Optional[Callab
         'no_warnings': False,
         'nocheckcertificate': True,
         'geo_bypass': True,
+        'no_color': True,
+        'retries': 10,
+        'fragment_retries': 10,
         'progress_hooks': [ytdl_hook],
         'extractor_args': {
             'youtube': {
-                'player_client': ['android', 'ios'],
+                'player_client': ['android', 'ios', 'mweb'],
             }
         },
     }
     
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=True)
-        filename = ydl.prepare_filename(info)
-        
-        base, _ = os.path.splitext(filename)
-        mp4_filename = base + ".mp4"
-        
-        if os.path.exists(mp4_filename):
-            final_path = mp4_filename
-        elif os.path.exists(filename):
-            final_path = filename
-        else:
-            files = [os.path.join(output_dir, f) for f in os.listdir(output_dir)]
-            if not files:
-                raise FileNotFoundError("Downloaded file could not be found.")
-            final_path = max(files, key=os.path.getmtime)
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            filename = ydl.prepare_filename(info)
+            
+            base, _ = os.path.splitext(filename)
+            mp4_filename = base + ".mp4"
+            
+            if os.path.exists(mp4_filename) and os.path.getsize(mp4_filename) > 1024:
+                final_path = mp4_filename
+            elif os.path.exists(filename) and os.path.getsize(filename) > 1024:
+                final_path = filename
+            else:
+                valid_files = [
+                    os.path.join(output_dir, f) for f in os.listdir(output_dir)
+                    if os.path.isfile(os.path.join(output_dir, f)) and os.path.getsize(os.path.join(output_dir, f)) > 1024
+                ]
+                if not valid_files:
+                    raise FileNotFoundError(
+                        "The downloaded file is empty (0 bytes). If this is a recently ended stream, "
+                        "YouTube is still processing the recording into a playable VOD. Please wait 15-30 minutes."
+                    )
+                final_path = max(valid_files, key=os.path.getmtime)
 
-    print(f"[1/4] Download complete: {os.path.basename(final_path)}")
-    if progress_callback:
-        progress_callback("analyzing", 35, "Download complete. Reading video duration...")
-    return final_path
+        print(f"[1/4] Download complete: {os.path.basename(final_path)}")
+        if progress_callback:
+            progress_callback("analyzing", 35, "Download complete. Reading video duration...")
+        return final_path
+    except Exception as e:
+        clean_err = strip_ansi(str(e))
+        if any(msg in clean_err.lower() for msg in ["live event has ended", "file is empty", "fragments: 0", "post_live"]):
+            raise RuntimeError(
+                "Yeh stream YouTube ke encoding queue me hai (Post-Live). Lambi streams (3+ ghante) ko YouTube apne server par finalize aur encode karne me 4 se 8+ ghante leta hai. "
+                "YouTube par abhi is video ka player 'This live event has ended' dikha raha hai aur video play nahi ho raha hai. Jaise hi YouTube par video playback normal ho jaye, tab aap isse 1 click me clip kar sakte hain!"
+            )
+        raise RuntimeError(f"Download failed: {clean_err}")
 
 
 def get_video_duration(video_path: str) -> float:
@@ -305,6 +339,13 @@ def run_pipeline(
     """
     check_ffmpeg_installed()
     ai_enabled = (mode == "ai_enhanced")
+
+    # For gaming / long-form stream highlights: default to 3 minutes (180s) and 5 clips
+    if content_type == "stream":
+        if segment_duration <= 60:
+            segment_duration = DEFAULT_STREAM_SEGMENT_DURATION
+        if max_clips <= 3:
+            max_clips = MAX_STREAM_CLIPS
     
     try:
         if progress_callback:
@@ -312,8 +353,14 @@ def run_pipeline(
             type_label = "Stream Highlights" if content_type == "stream" else "Shorts"
             progress_callback("probing", 5, f"Verifying {type_label} duration & metadata ({mode_label})...")
 
-        # 0. Pre-Flight Duration Safety Guardrail (Cap at 5 hours)
+        # 0. Pre-Flight Duration & Live Status Safety Guardrail (Cap at 5 hours)
         meta = probe_stream_metadata(youtube_url)
+        live_status = meta.get("live_status", "")
+        if live_status == "is_live" or meta.get("is_live"):
+            raise ValueError("Yeh live stream abhi chal rahi hai (Live). Stream khatam hone ke baad hi highlight clips banaye ja sakte hain!")
+        elif live_status == "is_upcoming":
+            raise ValueError("Yeh stream abhi shuru nahi hui hai (Upcoming). Stream broadcast complete hone ke baad try karein!")
+
         stream_dur = meta.get("duration", 0.0)
         if stream_dur > MAX_STREAM_DURATION_SECONDS:
             dur_str = format_duration(stream_dur)
