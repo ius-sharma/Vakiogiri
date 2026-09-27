@@ -26,7 +26,8 @@ from pipeline import (
     probe_stream_metadata,
     format_duration,
     MAX_STREAM_DURATION_HOURS,
-    MAX_STREAM_DURATION_SECONDS
+    MAX_STREAM_DURATION_SECONDS,
+    strip_ansi
 )
 from db import (
     init_db,
@@ -61,7 +62,8 @@ jobs: Dict[str, Dict[str, Any]] = {}
 
 class ProcessRequest(BaseModel):
     youtube_url: str
-    segment_duration: Optional[int] = Field(default=DEFAULT_SEGMENT_DURATION, ge=15, le=180)
+    segment_duration: Optional[int] = Field(default=None, ge=15, le=600)  # Up to 600s (10 min) for stream highlights
+    max_clips: Optional[int] = Field(default=None, ge=1, le=10)
     synthesize_stories: Optional[bool] = Field(default=None)
     mode: Optional[str] = Field(default="heuristic")  # "heuristic" (Free / Fast) or "ai_enhanced" (AI Storytelling)
     aspect_ratio: Optional[str] = Field(default="9:16")  # "9:16" (Vertical) | "16:9" (Landscape Gaming Stream)
@@ -77,7 +79,8 @@ def process_video_task(
     synthesize_stories: bool = False,
     credit_deducted: bool = False,
     aspect_ratio: str = "9:16",
-    content_type: str = "shorts"
+    content_type: str = "shorts",
+    max_clips: int = 3
 ):
     """Background task to run video processing pipeline with progress callback and job recording."""
     clips_output_dir = os.path.join("clips", job_id)
@@ -95,6 +98,7 @@ def process_video_task(
             clips_output_dir=clips_output_dir,
             download_dir=download_dir,
             segment_duration=segment_duration,
+            max_clips=max_clips,
             synthesize_stories=synthesize_stories,
             mode=mode,
             aspect_ratio=aspect_ratio,
@@ -121,11 +125,12 @@ def process_video_task(
         print(f"[Job {job_id}] Processing completed successfully ({mode} mode). Stored {len(uploaded_clips)} clip(s).")
         
     except Exception as e:
-        print(f"[Job {job_id}] Processing failed with error: {e}")
+        clean_err = strip_ansi(str(e))
+        print(f"[Job {job_id}] Processing failed with error: {clean_err}")
         jobs[job_id]["status"] = "failed"
         jobs[job_id]["step"] = "failed"
-        jobs[job_id]["error"] = str(e)
-        jobs[job_id]["message"] = f"Failed: {str(e)}"
+        jobs[job_id]["error"] = clean_err
+        jobs[job_id]["message"] = f"Failed: {clean_err}"
         
         # Refund credit to user on failure if it was deducted
         if credit_deducted:
@@ -220,6 +225,18 @@ def process_video(
 
     # Pre-Flight Fast Metadata Inspection & 5-Hour Duration Cap (Runs before any download)
     meta = probe_stream_metadata(raw_url)
+    live_status = meta.get("live_status", "")
+    if live_status == "is_live" or meta.get("is_live"):
+        raise HTTPException(
+            status_code=400,
+            detail="Yeh live stream abhi chal rahi hai (Live). Stream khatam hone ke baad hi highlight clips banaye ja sakte hain!"
+        )
+    elif live_status == "is_upcoming":
+        raise HTTPException(
+            status_code=400,
+            detail="Yeh stream abhi shuru nahi hui hai (Upcoming). Stream broadcast complete hone ke baad try karein!"
+        )
+
     stream_dur = meta.get("duration", 0.0)
     if stream_dur > MAX_STREAM_DURATION_SECONDS:
         dur_str = format_duration(stream_dur)
@@ -240,7 +257,13 @@ def process_video(
         credit_deducted = True
 
     job_id = str(uuid.uuid4())
-    segment_duration = request.segment_duration or DEFAULT_SEGMENT_DURATION
+    if content_type == "stream":
+        segment_duration = request.segment_duration if (request.segment_duration and request.segment_duration >= 60) else 180
+        max_clips = request.max_clips or 5
+    else:
+        segment_duration = request.segment_duration or DEFAULT_SEGMENT_DURATION
+        max_clips = request.max_clips or 3
+
     mode_label = "AI Smart Moments" if mode == "ai_enhanced" else "Fast Highlights (Free)"
     type_label = "Stream Highlights" if content_type == "stream" else "Shorts"
     ratio_label = "16:9 Widescreen" if aspect_ratio == "16:9" else "9:16 Vertical"
@@ -251,6 +274,7 @@ def process_video(
         "progress": 5,
         "message": f"Initializing {mode_label} for {type_label} ({ratio_label})...",
         "segment_duration": segment_duration,
+        "max_clips": max_clips,
         "mode": mode,
         "aspect_ratio": aspect_ratio,
         "content_type": content_type,
@@ -274,7 +298,8 @@ def process_video(
         synth,
         credit_deducted,
         aspect_ratio,
-        content_type
+        content_type,
+        max_clips
     )
     
     current_credits = (user["credits_remaining"] - 1) if credit_deducted else user["credits_remaining"]
