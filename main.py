@@ -68,6 +68,7 @@ class ProcessRequest(BaseModel):
     mode: Optional[str] = Field(default="heuristic")  # "heuristic" (Free / Fast) or "ai_enhanced" (AI Storytelling)
     aspect_ratio: Optional[str] = Field(default="9:16")  # "9:16" (Vertical) | "16:9" (Landscape Gaming Stream)
     content_type: Optional[str] = Field(default="shorts")  # "shorts" | "stream"
+    stream_output_mode: Optional[str] = Field(default="single_reel")  # "single_reel" | "both" | "clips"
 
 
 def process_video_task(
@@ -80,7 +81,8 @@ def process_video_task(
     credit_deducted: bool = False,
     aspect_ratio: str = "9:16",
     content_type: str = "shorts",
-    max_clips: int = 3
+    max_clips: int = 3,
+    stream_output_mode: str = "single_reel"
 ):
     """Background task to run video processing pipeline with progress callback and job recording."""
     clips_output_dir = os.path.join("clips", job_id)
@@ -103,6 +105,7 @@ def process_video_task(
             mode=mode,
             aspect_ratio=aspect_ratio,
             content_type=content_type,
+            stream_output_mode=stream_output_mode,
             progress_callback=progress_callback
         )
 
@@ -223,6 +226,10 @@ def process_video(
     if content_type not in ["shorts", "stream"]:
         content_type = "shorts"
 
+    stream_output_mode = (request.stream_output_mode or "single_reel").lower()
+    if stream_output_mode not in ["single_reel", "both", "clips"]:
+        stream_output_mode = "single_reel"
+
     # Pre-Flight Fast Metadata Inspection & 5-Hour Duration Cap (Runs before any download)
     meta = probe_stream_metadata(raw_url)
     live_status = meta.get("live_status", "")
@@ -278,6 +285,7 @@ def process_video(
         "mode": mode,
         "aspect_ratio": aspect_ratio,
         "content_type": content_type,
+        "stream_output_mode": stream_output_mode,
         "stream_title": meta.get("title", ""),
         "stream_duration": stream_dur,
         "clips": [],
@@ -299,7 +307,8 @@ def process_video(
         credit_deducted,
         aspect_ratio,
         content_type,
-        max_clips
+        max_clips,
+        stream_output_mode
     )
     
     current_credits = (user["credits_remaining"] - 1) if credit_deducted else user["credits_remaining"]
