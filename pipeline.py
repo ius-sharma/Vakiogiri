@@ -325,6 +325,7 @@ def run_pipeline(
     mode: str = "heuristic",
     aspect_ratio: str = "9:16",
     content_type: str = "shorts",
+    stream_output_mode: str = "single_reel",
     progress_callback: Optional[Callable[[str, int, str], None]] = None
 ) -> List[Dict[str, Any]]:
     """
@@ -378,23 +379,28 @@ def run_pipeline(
         # 3. Detect Best Moments
         if content_type == "stream":
             if progress_callback:
-                progress_callback("analyzing_stream", 50, "Analyzing gaming screams, decibel surges & reaction peaks...")
+                progress_callback("analyzing_stream", 50, "Analyzing gaming screams, decibel surges & reaction peaks across entire stream...")
             temp_wav = os.path.join(download_dir, "temp_stream_audio.wav")
             from moment_detector import extract_audio_pcm
             has_wav = extract_audio_pcm(video_path, temp_wav)
             stream_moments = []
+            detector_mode = "clips" if stream_output_mode == "clips" else "supercut"
             if has_wav and os.path.exists(temp_wav):
                 try:
                     stream_moments = detect_stream_audio_peaks(
                         wav_path=temp_wav,
                         target_duration=segment_duration,
-                        top_k=max_clips
+                        top_k=max_clips,
+                        mode=detector_mode
                     )
                 except Exception as stream_err:
                     print(f"[Stream Detector Notice] Audio peak scan notice: {stream_err}")
 
             if stream_moments and len(stream_moments) >= 2:
                 moments = stream_moments
+                if detector_mode == "supercut":
+                    # Ensure all key moments of the supercut are rendered so they can be stitched into the full reel
+                    max_clips = max(max_clips, len(stream_moments))
             else:
                 moments = detect_best_moments(
                     video_path=video_path,
@@ -463,10 +469,10 @@ def run_pipeline(
                 print(f"[Pipeline] Story synthesis notice: {synth_err}")
 
         # 6. Stream Compilation Reel Stitcher
-        if content_type == "stream" and len(clips) >= 2:
+        if content_type == "stream" and stream_output_mode in ["single_reel", "both"] and len(clips) >= 2:
             try:
                 if progress_callback:
-                    progress_callback("stitching_compilation", 92, "Merging highlight clips into single continuous stream reel...")
+                    progress_callback("stitching_compilation", 92, "Merging highlight clips into single cohesive stream reel...")
                 clip_file_paths = [os.path.join(clips_output_dir, c["filename"]) for c in clips if not c.get("is_synthesized")]
                 compilation_file = "compilation_highlights.mp4"
                 compilation_path = os.path.join(clips_output_dir, compilation_file)
@@ -476,10 +482,11 @@ def run_pipeline(
                     titles=[c.get("title", "Highlight") for c in clips if not c.get("is_synthesized")],
                     aspect_ratio=aspect_ratio
                 )
-                clips.insert(0, {
+                reel_dur_min = max(1, int(round(compilation_info["total_duration"] / 60.0)))
+                compilation_record = {
                     "filename": compilation_file,
-                    "title": "Full Stream Highlights Compilation",
-                    "score": 98,
+                    "title": f"Master Stream Highlights Reel ({reel_dur_min}m Supercut)",
+                    "score": 99,
                     "duration": compilation_info["total_duration"],
                     "aspect_ratio": aspect_ratio,
                     "content_type": content_type,
@@ -487,11 +494,25 @@ def run_pipeline(
                     "is_compilation": True,
                     "chapters": compilation_info["chapters"],
                     "chapter_description": compilation_info["chapter_description"]
-                })
+                }
+
+                if stream_output_mode == "single_reel":
+                    # Clean up intermediate clips so user receives exactly the 1 master highlight reel
+                    for c in clips:
+                        c_file = os.path.join(clips_output_dir, c["filename"])
+                        if os.path.exists(c_file) and c["filename"] != compilation_file:
+                            try:
+                                os.remove(c_file)
+                            except Exception:
+                                pass
+                    clips = [compilation_record]
+                else:  # "both"
+                    clips.insert(0, compilation_record)
+
                 meta_file = os.path.join(clips_output_dir, "metadata.json")
                 with open(meta_file, "w", encoding="utf-8") as f:
                     json.dump(clips, f, indent=2)
-                print(f"[Pipeline] Successfully generated stream compilation reel: {compilation_file}")
+                print(f"[Pipeline] Successfully generated stream compilation reel: {compilation_file} (mode: {stream_output_mode})")
             except Exception as stitch_err:
                 print(f"[Pipeline Warning] Compilation stitching notice: {stitch_err}")
         
