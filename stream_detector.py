@@ -25,14 +25,20 @@ if sys.platform == "win32":
 
 def detect_stream_audio_peaks(
     wav_path: str,
-    target_duration: int = 180,
+    target_duration: int = 300,
     min_peak_distance: Optional[float] = None,
-    top_k: int = 5
+    top_k: int = 5,
+    mode: str = "supercut"
 ) -> List[Dict[str, Any]]:
     """
     Scans a 16kHz mono audio WAV for gaming scream, shout, and clutch reaction peaks.
     Uses an adaptive rolling baseline to distinguish player screams from continuous game audio/music.
-    Supports long-form highlight scenes (2 to 10 minutes) with natural build-up and celebration.
+    
+    Modes:
+    - 'supercut': target_duration represents the TOTAL runtime of the stitched highlight reel (e.g. 3m, 5m, 10m).
+      Identifies the top N punchy, high-energy micro-moments across the entire 3-4 hour stream so they assemble
+      into 1 single master compilation of exactly target_duration.
+    - 'clips': target_duration represents the length of each individual highlight clip.
     """
     if not os.path.exists(wav_path):
         raise FileNotFoundError(f"Audio file not found: {wav_path}")
@@ -47,9 +53,26 @@ def detect_stream_audio_peaks(
     if duration < 10.0:
         return []
 
-    # Dynamic minimum spacing between highlights so 3-5 minute clips do not overlap
-    if min_peak_distance is None:
-        min_peak_distance = max(60.0, float(target_duration) * 0.85)
+    # In supercut mode, divide target_duration into N punchy moments across the stream
+    if mode == "supercut":
+        if target_duration <= 180:
+            num_moments = 5
+        elif target_duration <= 300:
+            num_moments = 7
+        elif target_duration <= 480:
+            num_moments = 10
+        else:
+            num_moments = 12
+        clip_len = round(float(target_duration) / num_moments, 1)
+        needed_clips = num_moments
+        # Space moments across the full stream length
+        if min_peak_distance is None:
+            min_peak_distance = max(90.0, duration / (num_moments * 1.5))
+    else:
+        clip_len = float(target_duration)
+        needed_clips = top_k
+        if min_peak_distance is None:
+            min_peak_distance = max(60.0, clip_len * 0.85)
 
     # 100ms analysis frames
     hop_sec = 0.1
@@ -106,12 +129,11 @@ def detect_stream_audio_peaks(
             relative_surge[i] = 0.0
 
     # Peak candidate finding
-    # Minimum peak threshold: at least 8dB above local floor
     peak_indices = np.where(relative_surge > 8.0)[0]
     
     if len(peak_indices) == 0:
         # Fallback to absolute highest RMS frames if no high-surge peaks found
-        peak_indices = np.argsort(rms_db)[-25:]
+        peak_indices = np.argsort(rms_db)[-30:]
 
     # Sort peak indices by surge strength descending
     sorted_peaks = sorted(peak_indices, key=lambda idx: relative_surge[idx], reverse=True)
@@ -123,17 +145,16 @@ def detect_stream_audio_peaks(
         surge_val = float(relative_surge[p_idx])
         abs_db = float(rms_db[p_idx])
 
-        # Ensure candidates are spaced out (avoid duplicate cuts of the same scream)
+        # Ensure candidates are spaced out across the stream
         if any(abs(t_peak - st) < min_peak_distance for st in selected_times):
             continue
 
         selected_times.append(t_peak)
 
-        # Proportional lead-in (~35% of total clip duration for build-up before the climax)
-        # e.g., for a 3-minute (180s) clip: ~63s build-up, peak moment, and ~117s aftermath
-        lead_in = min(float(target_duration) * 0.35, 120.0)
+        # Proportional lead-in: ~35% build-up before the climax
+        lead_in = min(15.0 if mode == "supercut" else 120.0, float(clip_len) * 0.35)
         start_time = max(0.0, t_peak - lead_in)
-        end_time = min(duration, start_time + target_duration)
+        end_time = min(duration, start_time + clip_len)
 
         score = float(np.clip(70.0 + (surge_val * 1.5), 72.0, 98.0))
 
@@ -158,7 +179,7 @@ def detect_stream_audio_peaks(
             "title": f"{prefix} @ {format_timestamp_short(t_peak)}"
         })
 
-        if len(candidates) >= top_k:
+        if len(candidates) >= needed_clips:
             break
 
     # Sort candidates chronologically for natural video flow
