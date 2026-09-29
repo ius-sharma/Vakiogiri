@@ -79,6 +79,7 @@ export default function Home() {
   const [clippingMode, setClippingMode] = useState<"heuristic" | "ai_enhanced">("heuristic");
   const [aspectRatio, setAspectRatio] = useState<"9:16" | "16:9">("9:16");
   const [contentType, setContentType] = useState<"shorts" | "stream">("shorts");
+  const [streamOutputMode, setStreamOutputMode] = useState<"single_reel" | "both" | "clips">("single_reel");
   const [jobId, setJobId] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "processing" | "completed" | "failed">("idle");
   const [progress, setProgress] = useState<number>(5);
@@ -418,6 +419,7 @@ export default function Home() {
           mode: clippingMode,
           aspect_ratio: aspectRatio,
           content_type: contentType,
+          stream_output_mode: streamOutputMode,
           synthesize_stories: clippingMode === "ai_enhanced"
         }),
       });
@@ -919,9 +921,9 @@ export default function Home() {
                     {/* Duration Pills */}
                     <div className="flex items-center gap-2">
                       <span className="text-secondary font-medium">
-                        {aspectRatio === "16:9" ? "Highlight Scene:" : "Clip Len:"}
+                        {aspectRatio === "16:9" ? "Total Highlight Runtime:" : "Clip Len:"}
                       </span>
-                      {(aspectRatio === "16:9" ? [120, 180, 300, 480, 600] : [30, 45, 60, 90]).map((dur) => (
+                      {(aspectRatio === "16:9" ? [180, 300, 600] : [30, 45, 60, 90]).map((dur) => (
                         <button
                           key={dur}
                           type="button"
@@ -942,6 +944,56 @@ export default function Home() {
                       <span>Max 5-Hour Streams</span>
                     </span>
                   </div>
+
+                  {/* Stream Output Mode: 1 Single Supercut vs Master+Clips vs Clips Only */}
+                  {contentType === "stream" && (
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5 p-2.5 bg-surface-container-low/90 border border-outline-variant/60 rounded-xl text-xs transition-all">
+                      <div className="flex items-center gap-1.5 text-secondary font-medium">
+                        <span className="material-symbols-outlined text-[16px] text-primary">movie_filter</span>
+                        <span>Stream Output Mode:</span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto">
+                        <button
+                          type="button"
+                          onClick={() => setStreamOutputMode("single_reel")}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                            streamOutputMode === "single_reel"
+                              ? "bg-primary text-on-primary shadow-xs"
+                              : "bg-surface-container-lowest text-secondary hover:text-on-surface border border-outline-variant/40"
+                          }`}
+                          title="Combines top stream moments from across the entire stream into 1 single high-energy highlight video"
+                        >
+                          <span>🎬 1 Single Video (Supercut)</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setStreamOutputMode("both")}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                            streamOutputMode === "both"
+                              ? "bg-primary text-on-primary shadow-xs"
+                              : "bg-surface-container-lowest text-secondary hover:text-on-surface border border-outline-variant/40"
+                          }`}
+                          title="Generates 1 Master Highlight Reel plus all individual moment cuts"
+                        >
+                          <span>✨ Master Reel + Clips</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setStreamOutputMode("clips")}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                            streamOutputMode === "clips"
+                              ? "bg-primary text-on-primary shadow-xs"
+                              : "bg-surface-container-lowest text-secondary hover:text-on-surface border border-outline-variant/40"
+                          }`}
+                          title="Generates separate individual highlight clips"
+                        >
+                          <span>✂️ Separate Clips Only</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
                   {userProfile.credits_remaining <= 0 && clippingMode === "ai_enhanced" && (
                     <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-600 dark:text-amber-400 text-center flex flex-col sm:flex-row items-center justify-center gap-2">
@@ -1185,9 +1237,19 @@ export default function Home() {
                 
                 {/* Header */}
                 <header className="flex flex-col gap-stack-sm md:items-center text-left md:text-center">
-                  <h1 className="font-display-lg text-[40px] md:text-[56px] text-on-background font-bold">Your Clips are Ready</h1>
+                  <h1 className="font-display-lg text-[40px] md:text-[56px] text-on-background font-bold">
+                    {aspectRatio === "16:9" 
+                      ? (clips.length === 1 && typeof clips[0] === "object" && (clips[0] as any).is_compilation 
+                          ? "Your Master Highlight Reel is Ready" 
+                          : "Your Stream Highlights are Ready")
+                      : "Your Clips are Ready"}
+                  </h1>
                   <p className="font-body-lg text-body-lg text-secondary max-w-[600px] mx-auto">
-                    We've auto-framed and rendered {clips.length} vertical short(s) for your video.
+                    {aspectRatio === "16:9"
+                      ? (clips.length === 1 && typeof clips[0] === "object" && (clips[0] as any).is_compilation
+                          ? "Top clutches, screams, and epic gameplay moments compiled into 1 continuous YouTube-ready video with chapter markers."
+                          : `Identified and rendered ${clips.length} high-energy highlight cut(s) across your entire stream.`)
+                      : `We've auto-framed and rendered ${clips.length} vertical short(s) for your video.`}
                   </p>
                 </header>
 
