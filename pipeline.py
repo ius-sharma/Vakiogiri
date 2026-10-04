@@ -106,11 +106,16 @@ def check_ffmpeg_installed() -> bool:
     return True
 
 
-def download_video(url: str, output_dir: str, progress_callback: Optional[Callable[[str, int, str], None]] = None) -> str:
-    """Download video from YouTube using yt-dlp in max 1080p quality into output_dir."""
-    print(f"[1/4] Starting download for: {url}")
+def download_video(
+    url: str,
+    output_dir: str,
+    quality: str = "1080p",
+    progress_callback: Optional[Callable[[str, int, str], None]] = None
+) -> str:
+    """Download video from YouTube using yt-dlp in requested quality (1080p, 720p, 480p, best) into output_dir."""
+    print(f"[1/4] Starting download for: {url} (Quality: {quality})")
     if progress_callback:
-        progress_callback("downloading", 10, "Connecting to YouTube and downloading video...")
+        progress_callback("downloading", 10, f"Connecting to YouTube and downloading video ({quality})...")
 
     os.makedirs(output_dir, exist_ok=True)
     
@@ -120,10 +125,22 @@ def download_video(url: str, output_dir: str, progress_callback: Optional[Callab
             downloaded = d.get('downloaded_bytes', 0)
             if total > 0:
                 percent = int(10 + (downloaded / total) * 20)  # 10% to 30%
-                progress_callback("downloading", percent, f"Downloading video ({percent}%)...")
+                progress_callback("downloading", percent, f"Downloading video ({quality} - {percent}%)...")
+
+    # Determine maximum height based on quality preference
+    try:
+        max_h = int(quality.lower().rstrip("p")) if quality and quality.lower() != "best" else 1080
+    except Exception:
+        max_h = 1080
+
+    format_selector = (
+        f"bestvideo[height<={max_h}]+bestaudio/"
+        f"best[height<={max_h}]/"
+        f"bestvideo+bestaudio/best"
+    )
 
     ydl_opts = {
-        'format': 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/best[height<=1080]/best',
+        'format': format_selector,
         'outtmpl': os.path.join(output_dir, '%(id)s.%(ext)s'),
         'merge_output_format': 'mp4',
         'windowsfilenames': True,
@@ -134,6 +151,7 @@ def download_video(url: str, output_dir: str, progress_callback: Optional[Callab
         'no_color': True,
         'retries': 10,
         'fragment_retries': 10,
+        'concurrent_fragment_downloads': 8,
         'progress_hooks': [ytdl_hook],
         'extractor_args': {
             'youtube': {
@@ -200,6 +218,34 @@ def get_video_duration(video_path: str) -> float:
         raise ValueError("Parsing video duration from ffprobe output failed.")
 
 
+def get_render_dimensions(aspect_ratio: str, quality: str = "1080p") -> tuple[int, int]:
+    """Calculate rendering dimensions matching aspect ratio and user quality setting."""
+    try:
+        req_h = int(quality.lower().rstrip("p")) if quality and quality.lower() != "best" else 1080
+    except Exception:
+        req_h = 1080
+
+    if aspect_ratio == "16:9":
+        if req_h <= 480:
+            return 854, 480
+        elif req_h <= 720:
+            return 1280, 720
+        elif req_h <= 1080:
+            return 1920, 1080
+        else:
+            return 2560, 1440
+    else:
+        # 9:16 Vertical
+        if req_h <= 480:
+            return 480, 854
+        elif req_h <= 720:
+            return 720, 1280
+        elif req_h <= 1080:
+            return 1080, 1920
+        else:
+            return 1440, 2560
+
+
 def split_and_crop_video(
     video_path: str,
     output_dir: str,
@@ -208,21 +254,24 @@ def split_and_crop_video(
     segment_len: int = DEFAULT_SEGMENT_DURATION,
     max_clips: int = MAX_CLIPS_PER_VIDEO,
     aspect_ratio: str = "9:16",
+    quality: str = "1080p",
     progress_callback: Optional[Callable[[str, int, str], None]] = None
 ) -> List[Dict[str, Any]]:
     """
     Split and render video clips based on dynamic best moments.
     Supports:
-    - '9:16': Vertical center crop for mobile Shorts / Reels (1080x1920)
-    - '16:9': Landscape widescreen for gaming & stream highlights (1920x1080)
+    - '9:16': Vertical center crop for mobile Shorts / Reels
+    - '16:9': Landscape widescreen for gaming & stream highlights
+    Quality options: '1080p', '720p', '480p', 'best'
     """
     os.makedirs(output_dir, exist_ok=True)
+    target_w, target_h = get_render_dimensions(aspect_ratio, quality)
     if aspect_ratio == "16:9":
         # 16:9 Landscape - Perfect for gaming streams, preserves HUD, killfeed, minimap
-        vf_filter = "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2"
+        vf_filter = f"scale={target_w}:{target_h}:force_original_aspect_ratio=decrease,pad={target_w}:{target_h}:(ow-iw)/2:(oh-ih)/2"
     else:
         # 9:16 Vertical - Center-cropped for Shorts / Reels / TikTok
-        vf_filter = f"scale={TARGET_WIDTH}:{TARGET_HEIGHT}:force_original_aspect_ratio=increase,crop={TARGET_WIDTH}:{TARGET_HEIGHT}"
+        vf_filter = f"scale={target_w}:{target_h}:force_original_aspect_ratio=increase,crop={target_w}:{target_h}"
 
     # Use dynamically detected moments if provided; otherwise fallback to uniform split
     clip_targets = []
@@ -279,10 +328,13 @@ def split_and_crop_video(
             "-i", video_path,
             "-vf", vf_filter,
             "-c:v", "libx264",
-            "-preset", "fast",
-            "-crf", "23",
+            "-preset", "veryfast",
+            "-crf", "18",
+            "-pix_fmt", "yuv420p",
             "-c:a", "aac",
-            "-b:a", "128k",
+            "-b:a", "192k",
+            "-ar", "44100",
+            "-movflags", "+faststart",
             clip_path
         ]
         
@@ -298,7 +350,9 @@ def split_and_crop_video(
                 "start": round(start_time, 2),
                 "end": round(start_time + clip_dur, 2),
                 "duration": round(clip_dur, 2),
-                "aspect_ratio": aspect_ratio
+                "aspect_ratio": aspect_ratio,
+                "quality": quality,
+                "resolution": f"{target_w}x{target_h}"
             })
         except subprocess.CalledProcessError as e:
             raise RuntimeError(f"Failed creating clip {clip_name}: {e.stderr}")
@@ -326,24 +380,26 @@ def run_pipeline(
     aspect_ratio: str = "9:16",
     content_type: str = "shorts",
     stream_output_mode: str = "single_reel",
+    quality: str = "1080p",
     progress_callback: Optional[Callable[[str, int, str], None]] = None
 ) -> List[Dict[str, Any]]:
     """
     Run complete AI / Heuristic video clipping pipeline:
     1. Pre-flight duration check (5-Hour max guardrail)
-    2. Download YouTube video
+    2. Download YouTube video in selected quality
     3. Extract duration
     4. Run Best Moment Detector (Heuristic or AI-Enhanced)
-    5. Render dynamic clips (9:16 vertical or 16:9 widescreen)
+    5. Render dynamic clips (9:16 vertical or 16:9 widescreen in target quality)
     6. Optional Non-Linear Story Synthesis
     7. Clean up temporary download artifacts
     """
     check_ffmpeg_installed()
     ai_enabled = (mode == "ai_enhanced")
 
-    # For gaming / long-form stream highlights: default to 3 minutes (180s) and 5 clips
-    if content_type == "stream":
-        if segment_duration <= 60:
+    # For gaming / long-form stream highlights or supercuts:
+    is_supercut = (content_type == "stream") or (stream_output_mode in ["single_reel", "both"])
+    if is_supercut:
+        if segment_duration is None or segment_duration < 60:
             segment_duration = DEFAULT_STREAM_SEGMENT_DURATION
         if max_clips <= 3:
             max_clips = MAX_STREAM_CLIPS
@@ -351,8 +407,8 @@ def run_pipeline(
     try:
         if progress_callback:
             mode_label = "AI Storytelling" if ai_enabled else "Fast Highlights"
-            type_label = "Stream Highlights" if content_type == "stream" else "Shorts"
-            progress_callback("probing", 5, f"Verifying {type_label} duration & metadata ({mode_label})...")
+            type_label = "Stream Highlights" if content_type == "stream" else "Highlights Supercut" if is_supercut else "Shorts"
+            progress_callback("probing", 5, f"Verifying {type_label} duration & metadata ({quality}, {mode_label})...")
 
         # 0. Pre-Flight Duration & Live Status Safety Guardrail (Cap at 5 hours)
         meta = probe_stream_metadata(youtube_url)
@@ -370,16 +426,16 @@ def run_pipeline(
                 f"Please choose a stream under {int(MAX_STREAM_DURATION_HOURS)} hours to avoid system overload."
             )
 
-        # 1. Download YouTube video
-        video_path = download_video(youtube_url, download_dir, progress_callback)
+        # 1. Download YouTube video in requested quality
+        video_path = download_video(youtube_url, download_dir, quality=quality, progress_callback=progress_callback)
         
         # 2. Extract Duration
         duration = get_video_duration(video_path)
         
         # 3. Detect Best Moments
-        if content_type == "stream":
+        if is_supercut:
             if progress_callback:
-                progress_callback("analyzing_stream", 50, "Analyzing gaming screams, decibel surges & reaction peaks across entire stream...")
+                progress_callback("analyzing_stream", 50, "Analyzing audio energy spikes, screams & reaction peaks across entire video...")
             temp_wav = os.path.join(download_dir, "temp_stream_audio.wav")
             from moment_detector import extract_audio_pcm
             has_wav = extract_audio_pcm(video_path, temp_wav)
@@ -422,7 +478,7 @@ def run_pipeline(
                 progress_callback=progress_callback
             )
         
-        # 4. Crop & Split dynamically identified moments (9:16 or 16:9)
+        # 4. Crop & Split dynamically identified moments (9:16 or 16:9 in target quality)
         clips = split_and_crop_video(
             video_path=video_path,
             output_dir=clips_output_dir,
@@ -431,6 +487,7 @@ def run_pipeline(
             segment_len=segment_duration,
             max_clips=max_clips,
             aspect_ratio=aspect_ratio,
+            quality=quality,
             progress_callback=progress_callback
         )
         
@@ -438,6 +495,7 @@ def run_pipeline(
             c["mode"] = mode
             c["aspect_ratio"] = aspect_ratio
             c["content_type"] = content_type
+            c["quality"] = quality
 
         # 5. Optional Non-Linear Story Synthesis (Franken-Editing for AI mode)
         if synthesize_stories and ai_enabled:
@@ -468,11 +526,11 @@ def run_pipeline(
             except Exception as synth_err:
                 print(f"[Pipeline] Story synthesis notice: {synth_err}")
 
-        # 6. Stream Compilation Reel Stitcher
-        if content_type == "stream" and stream_output_mode in ["single_reel", "both"] and len(clips) >= 2:
+        # 6. Stream / Video Compilation Reel Stitcher
+        if is_supercut and stream_output_mode in ["single_reel", "both"] and len(clips) >= 2:
             try:
                 if progress_callback:
-                    progress_callback("stitching_compilation", 92, "Merging highlight clips into single cohesive stream reel...")
+                    progress_callback("stitching_compilation", 92, "Merging highlight clips into single cohesive reel...")
                 clip_file_paths = [os.path.join(clips_output_dir, c["filename"]) for c in clips if not c.get("is_synthesized")]
                 compilation_file = "compilation_highlights.mp4"
                 compilation_path = os.path.join(clips_output_dir, compilation_file)
@@ -483,14 +541,17 @@ def run_pipeline(
                     aspect_ratio=aspect_ratio
                 )
                 reel_dur_min = max(1, int(round(compilation_info["total_duration"] / 60.0)))
+                target_w, target_h = get_render_dimensions(aspect_ratio, quality)
                 compilation_record = {
                     "filename": compilation_file,
-                    "title": f"Master Stream Highlights Reel ({reel_dur_min}m Supercut)",
+                    "title": f"Master Highlights Reel ({reel_dur_min}m Supercut)",
                     "score": 99,
                     "duration": compilation_info["total_duration"],
                     "aspect_ratio": aspect_ratio,
                     "content_type": content_type,
                     "mode": mode,
+                    "quality": quality,
+                    "resolution": f"{target_w}x{target_h}",
                     "is_compilation": True,
                     "chapters": compilation_info["chapters"],
                     "chapter_description": compilation_info["chapter_description"]
