@@ -80,6 +80,7 @@ export default function Home() {
   const [aspectRatio, setAspectRatio] = useState<"9:16" | "16:9">("9:16");
   const [contentType, setContentType] = useState<"shorts" | "stream">("shorts");
   const [streamOutputMode, setStreamOutputMode] = useState<"single_reel" | "both" | "clips">("single_reel");
+  const [quality, setQuality] = useState<"1080p" | "720p" | "480p">("1080p");
   const [jobId, setJobId] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "processing" | "completed" | "failed">("idle");
   const [progress, setProgress] = useState<number>(5);
@@ -420,6 +421,7 @@ export default function Home() {
           aspect_ratio: aspectRatio,
           content_type: contentType,
           stream_output_mode: streamOutputMode,
+          quality: quality,
           synthesize_stories: clippingMode === "ai_enhanced"
         }),
       });
@@ -921,9 +923,9 @@ export default function Home() {
                     {/* Duration Pills */}
                     <div className="flex items-center gap-2">
                       <span className="text-secondary font-medium">
-                        {aspectRatio === "16:9" ? "Total Highlight Runtime:" : "Clip Len:"}
+                        {streamOutputMode !== "clips" ? "Target Reel Duration:" : aspectRatio === "16:9" ? "Highlight Scene:" : "Clip Len:"}
                       </span>
-                      {(aspectRatio === "16:9" ? [180, 300, 600] : [30, 45, 60, 90]).map((dur) => (
+                      {(streamOutputMode !== "clips" ? [120, 180, 300, 600] : aspectRatio === "16:9" ? [120, 180, 300] : [30, 45, 60, 90]).map((dur) => (
                         <button
                           key={dur}
                           type="button"
@@ -939,61 +941,93 @@ export default function Home() {
                       ))}
                     </div>
 
-                    <span className="text-secondary font-medium text-[11px] flex items-center gap-1 bg-surface-container-low px-2 py-0.5 rounded-full border border-outline-variant/40" title="Streams up to 5 hours (18,000s) supported in beta">
+                    <span className="text-secondary font-medium text-[11px] flex items-center gap-1 bg-surface-container-low px-2 py-0.5 rounded-full border border-outline-variant/40" title="Videos up to 5 hours (18,000s) supported in beta">
                       <span className="material-symbols-outlined text-[13px] text-amber-500">verified_user</span>
                       <span>Max 5-Hour Streams</span>
                     </span>
                   </div>
 
-                  {/* Stream Output Mode: 1 Single Supercut vs Master+Clips vs Clips Only */}
-                  {contentType === "stream" && (
-                    <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5 p-2.5 bg-surface-container-low/90 border border-outline-variant/60 rounded-xl text-xs transition-all">
-                      <div className="flex items-center gap-1.5 text-secondary font-medium">
-                        <span className="material-symbols-outlined text-[16px] text-primary">movie_filter</span>
-                        <span>Stream Output Mode:</span>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto">
-                        <button
-                          type="button"
-                          onClick={() => setStreamOutputMode("single_reel")}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                            streamOutputMode === "single_reel"
-                              ? "bg-primary text-on-primary shadow-xs"
-                              : "bg-surface-container-lowest text-secondary hover:text-on-surface border border-outline-variant/40"
-                          }`}
-                          title="Combines top stream moments from across the entire stream into 1 single high-energy highlight video"
-                        >
-                          <span>🎬 1 Single Video (Supercut)</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => setStreamOutputMode("both")}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                            streamOutputMode === "both"
-                              ? "bg-primary text-on-primary shadow-xs"
-                              : "bg-surface-container-lowest text-secondary hover:text-on-surface border border-outline-variant/40"
-                          }`}
-                          title="Generates 1 Master Highlight Reel plus all individual moment cuts"
-                        >
-                          <span>✨ Master Reel + Clips</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => setStreamOutputMode("clips")}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                            streamOutputMode === "clips"
-                              ? "bg-primary text-on-primary shadow-xs"
-                              : "bg-surface-container-lowest text-secondary hover:text-on-surface border border-outline-variant/40"
-                          }`}
-                          title="Generates separate individual highlight clips"
-                        >
-                          <span>✂️ Separate Clips Only</span>
-                        </button>
-                      </div>
+                  {/* Output Format Mode: 1 Single Highlights Reel vs Master+Clips vs Clips Only */}
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5 p-2.5 bg-surface-container-low/90 border border-outline-variant/60 rounded-xl text-xs transition-all">
+                    <div className="flex items-center gap-1.5 text-secondary font-medium">
+                      <span className="material-symbols-outlined text-[16px] text-primary">movie_filter</span>
+                      <span>Output Format:</span>
                     </div>
-                  )}
+                    <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStreamOutputMode("single_reel");
+                          if (segmentDuration < 120) setSegmentDuration(120);
+                        }}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                          streamOutputMode === "single_reel"
+                            ? "bg-primary text-on-primary shadow-xs"
+                            : "bg-surface-container-lowest text-secondary hover:text-on-surface border border-outline-variant/40"
+                        }`}
+                        title="Combines top moments across the entire video into 1 continuous highlight video"
+                      >
+                        <span>🎬 1 Single Video (Highlights Reel)</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStreamOutputMode("both");
+                          if (segmentDuration < 120) setSegmentDuration(180);
+                        }}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                          streamOutputMode === "both"
+                            ? "bg-primary text-on-primary shadow-xs"
+                            : "bg-surface-container-lowest text-secondary hover:text-on-surface border border-outline-variant/40"
+                        }`}
+                        title="Generates 1 Master Highlight Reel plus all individual moment cuts"
+                      >
+                        <span>✨ Master Reel + Clips</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStreamOutputMode("clips");
+                          if (aspectRatio === "9:16") setSegmentDuration(45);
+                        }}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                          streamOutputMode === "clips"
+                            ? "bg-primary text-on-primary shadow-xs"
+                            : "bg-surface-container-lowest text-secondary hover:text-on-surface border border-outline-variant/40"
+                        }`}
+                        title="Generates separate individual highlight clips"
+                      >
+                        <span>✂️ Separate Clips Only</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Video Quality Selector */}
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5 p-2.5 bg-surface-container-low/90 border border-outline-variant/60 rounded-xl text-xs transition-all">
+                    <div className="flex items-center gap-1.5 text-secondary font-medium">
+                      <span className="material-symbols-outlined text-[16px] text-primary">high_quality</span>
+                      <span>Video Quality:</span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto">
+                      {(["1080p", "720p", "480p"] as const).map((q) => (
+                        <button
+                          key={q}
+                          type="button"
+                          onClick={() => setQuality(q)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                            quality === q
+                              ? "bg-primary text-on-primary shadow-xs"
+                              : "bg-surface-container-lowest text-secondary hover:text-on-surface border border-outline-variant/40"
+                          }`}
+                          title={`Downloads and renders in ${q} if available on YouTube (otherwise auto-downloads best available quality)`}
+                        >
+                          <span>{q === "1080p" ? "🎬 1080p (Full HD)" : q === "720p" ? "⚡ 720p (Fast HD)" : "📱 480p (Fastest)"}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
                   {userProfile.credits_remaining <= 0 && clippingMode === "ai_enhanced" && (
                     <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-600 dark:text-amber-400 text-center flex flex-col sm:flex-row items-center justify-center gap-2">
@@ -1369,6 +1403,12 @@ export default function Home() {
                                   (clip as any).mode === "heuristic" ? "bg-amber-500/10 text-amber-600 dark:text-amber-400" : "bg-primary/10 text-primary"
                                 }`}>
                                   <span>{(clip as any).mode === "heuristic" ? "⚡ Fast" : "🧠 AI"}</span>
+                                </span>
+                              )}
+                              {typeof clip === "object" && ((clip as any).quality || (clip as any).resolution) && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded-md font-semibold bg-primary/10 text-primary border border-primary/20 flex items-center gap-0.5">
+                                  <span>📺</span>
+                                  <span>{(clip as any).quality || "1080p"}</span>
                                 </span>
                               )}
                             </div>
