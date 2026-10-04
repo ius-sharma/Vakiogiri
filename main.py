@@ -46,10 +46,10 @@ app = FastAPI(title="AI Video Clipping Platform Backend")
 # Initialize database schema on startup
 init_db()
 
-# CORS middleware for Next.js frontend running on localhost:3000
+# CORS middleware supporting all local/network dev origins (localhost:3000, 3001, 127.0.0.1, etc.)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origin_regex=r"^https?://.*$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -69,6 +69,7 @@ class ProcessRequest(BaseModel):
     aspect_ratio: Optional[str] = Field(default="9:16")  # "9:16" (Vertical) | "16:9" (Landscape Gaming Stream)
     content_type: Optional[str] = Field(default="shorts")  # "shorts" | "stream"
     stream_output_mode: Optional[str] = Field(default="single_reel")  # "single_reel" | "both" | "clips"
+    quality: Optional[str] = Field(default="1080p")  # "1080p" | "720p" | "480p" | "best"
 
 
 def process_video_task(
@@ -82,7 +83,8 @@ def process_video_task(
     aspect_ratio: str = "9:16",
     content_type: str = "shorts",
     max_clips: int = 3,
-    stream_output_mode: str = "single_reel"
+    stream_output_mode: str = "single_reel",
+    quality: str = "1080p"
 ):
     """Background task to run video processing pipeline with progress callback and job recording."""
     clips_output_dir = os.path.join("clips", job_id)
@@ -106,6 +108,7 @@ def process_video_task(
             aspect_ratio=aspect_ratio,
             content_type=content_type,
             stream_output_mode=stream_output_mode,
+            quality=quality,
             progress_callback=progress_callback
         )
 
@@ -264,12 +267,16 @@ def process_video(
         credit_deducted = True
 
     job_id = str(uuid.uuid4())
-    if content_type == "stream":
+    if content_type == "stream" or stream_output_mode in ["single_reel", "both"]:
         segment_duration = request.segment_duration if (request.segment_duration and request.segment_duration >= 60) else 180
         max_clips = request.max_clips or 5
     else:
         segment_duration = request.segment_duration or DEFAULT_SEGMENT_DURATION
         max_clips = request.max_clips or 3
+
+    quality = (request.quality or "1080p").lower()
+    if quality not in ["1080p", "720p", "480p", "best"]:
+        quality = "1080p"
 
     mode_label = "AI Smart Moments" if mode == "ai_enhanced" else "Fast Highlights (Free)"
     type_label = "Stream Highlights" if content_type == "stream" else "Shorts"
@@ -279,13 +286,14 @@ def process_video(
         "status": "processing",
         "step": "initializing",
         "progress": 5,
-        "message": f"Initializing {mode_label} for {type_label} ({ratio_label})...",
+        "message": f"Initializing {mode_label} for {type_label} ({quality}, {ratio_label})...",
         "segment_duration": segment_duration,
         "max_clips": max_clips,
         "mode": mode,
         "aspect_ratio": aspect_ratio,
         "content_type": content_type,
         "stream_output_mode": stream_output_mode,
+        "quality": quality,
         "stream_title": meta.get("title", ""),
         "stream_duration": stream_dur,
         "clips": [],
@@ -308,7 +316,8 @@ def process_video(
         aspect_ratio,
         content_type,
         max_clips,
-        stream_output_mode
+        stream_output_mode,
+        quality
     )
     
     current_credits = (user["credits_remaining"] - 1) if credit_deducted else user["credits_remaining"]
