@@ -259,11 +259,13 @@ def stitch_highlight_compilation(
             "-safe", "0",
             "-i", manifest_path,
             "-c:v", "libx264",
-            "-preset", "veryfast",
-            "-crf", "18",
+            "-preset", "faster",
+            "-crf", "15",
+            "-tune", "film",
             "-pix_fmt", "yuv420p",
             "-c:a", "aac",
-            "-b:a", "192k",
+            "-b:a", "256k",
+            "-ar", "48000",
             "-movflags", "+faststart",
             output_compilation_path
         ]
