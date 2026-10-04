@@ -141,6 +141,7 @@ def download_video(
 
     ydl_opts = {
         'format': format_selector,
+        'format_sort': ['res', 'fps', 'tbr', 'vbr'],
         'outtmpl': os.path.join(output_dir, '%(id)s.%(ext)s'),
         'merge_output_format': 'mp4',
         'windowsfilenames': True,
@@ -153,11 +154,6 @@ def download_video(
         'fragment_retries': 10,
         'concurrent_fragment_downloads': 8,
         'progress_hooks': [ytdl_hook],
-        'extractor_args': {
-            'youtube': {
-                'player_client': ['android', 'ios', 'mweb'],
-            }
-        },
     }
     
     try:
@@ -268,10 +264,20 @@ def split_and_crop_video(
     target_w, target_h = get_render_dimensions(aspect_ratio, quality)
     if aspect_ratio == "16:9":
         # 16:9 Landscape - Perfect for gaming streams, preserves HUD, killfeed, minimap
-        vf_filter = f"scale={target_w}:{target_h}:force_original_aspect_ratio=decrease,pad={target_w}:{target_h}:(ow-iw)/2:(oh-ih)/2"
+        # Lanczos sharp sinc scaling + subtle unsharp mask for pristine HUD/killfeed sharpness
+        vf_filter = (
+            f"scale={target_w}:{target_h}:force_original_aspect_ratio=decrease:flags=lanczos,"
+            f"pad={target_w}:{target_h}:(ow-iw)/2:(oh-ih)/2,"
+            f"unsharp=5:5:0.5:5:5:0.0"
+        )
     else:
         # 9:16 Vertical - Center-cropped for Shorts / Reels / TikTok
-        vf_filter = f"scale={target_w}:{target_h}:force_original_aspect_ratio=increase,crop={target_w}:{target_h}"
+        # Lanczos high-order scaling + adaptive sharpening to counter zoom softness
+        vf_filter = (
+            f"scale={target_w}:{target_h}:force_original_aspect_ratio=increase:flags=lanczos,"
+            f"crop={target_w}:{target_h},"
+            f"unsharp=5:5:0.6:5:5:0.0"
+        )
 
     # Use dynamically detected moments if provided; otherwise fallback to uniform split
     clip_targets = []
@@ -328,12 +334,13 @@ def split_and_crop_video(
             "-i", video_path,
             "-vf", vf_filter,
             "-c:v", "libx264",
-            "-preset", "veryfast",
-            "-crf", "18",
+            "-preset", "faster",
+            "-crf", "15",
+            "-tune", "film",
             "-pix_fmt", "yuv420p",
             "-c:a", "aac",
-            "-b:a", "192k",
-            "-ar", "44100",
+            "-b:a", "256k",
+            "-ar", "48000",
             "-movflags", "+faststart",
             clip_path
         ]
