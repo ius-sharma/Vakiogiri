@@ -30,7 +30,8 @@ def detect_stream_audio_peaks(
     top_k: int = 5,
     mode: str = "supercut",
     start_offset: float = 0.0,
-    end_offset: Optional[float] = None
+    end_offset: Optional[float] = None,
+    stream_time_shift: float = 0.0
 ) -> List[Dict[str, Any]]:
     """
     Scans a 16kHz mono audio WAV for gaming scream, shout, and clutch reaction peaks.
@@ -196,7 +197,7 @@ def detect_stream_audio_peaks(
             "surge_db": round(surge_val, 1),
             "peak_db": round(abs_db, 1),
             "score": round(score, 1),
-            "title": f"{prefix} @ {format_timestamp_short(t_peak)}"
+            "title": f"{prefix} @ {format_timestamp_short(t_peak + stream_time_shift)}"
         })
 
         if len(candidates) >= needed_clips:
