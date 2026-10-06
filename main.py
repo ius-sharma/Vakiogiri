@@ -49,6 +49,12 @@ init_db()
 # CORS middleware supporting all local/network dev origins (localhost:3000, 3001, 127.0.0.1, etc.)
 app.add_middleware(
     CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+    ],
     allow_origin_regex=r"^https?://.*$",
     allow_credentials=True,
     allow_methods=["*"],
@@ -58,6 +64,10 @@ app.add_middleware(
 # In-memory dictionary to track live job state
 # Schema: { job_id: {"status": str, "step": str, "progress": int, "message": str, "clips": [...], "error": str | None} }
 jobs: Dict[str, Dict[str, Any]] = {}
+
+
+class ProbeRequest(BaseModel):
+    youtube_url: str
 
 
 class ProcessRequest(BaseModel):
@@ -203,6 +213,21 @@ def is_valid_youtube_url(url: str) -> bool:
         "m.youtube.com/watch",
         "youtube.com/clip/",
     ])
+
+
+@app.post("/stream/probe")
+def probe_stream_endpoint(request: ProbeRequest):
+    """Fast pre-flight stream inspection: returns duration, title, channel name, and live status in ~1-2 seconds."""
+    raw_url = request.youtube_url.strip() if request.youtube_url else ""
+    if not raw_url:
+        raise HTTPException(status_code=400, detail="YouTube URL must be provided.")
+    if not is_valid_youtube_url(raw_url):
+        raise HTTPException(
+            status_code=400,
+            detail=f"'{raw_url}' is not a valid YouTube video URL. Please enter a valid YouTube link."
+        )
+    meta = probe_stream_metadata(raw_url)
+    return meta
 
 
 @app.post("/process")
