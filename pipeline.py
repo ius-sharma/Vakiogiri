@@ -115,12 +115,25 @@ def download_video(
     url: str,
     output_dir: str,
     quality: str = "1080p",
+    start_sec: float = 0.0,
+    end_sec: Optional[float] = None,
     progress_callback: Optional[Callable[[str, int, str], None]] = None
 ) -> str:
-    """Download video from YouTube using yt-dlp in requested quality (1080p, 720p, 480p, best) into output_dir."""
-    print(f"[1/4] Starting download for: {url} (Quality: {quality})")
-    if progress_callback:
-        progress_callback("downloading", 10, f"Connecting to YouTube and downloading video ({quality})...")
+    """
+    Download video from YouTube using yt-dlp in requested quality (1080p, 720p, 480p, best) into output_dir.
+    If start_sec or end_sec are specified, downloads ONLY that time-slice via HTTP Range requests.
+    """
+    has_slice = (start_sec > 0 or (end_sec is not None and end_sec > 0))
+    if has_slice:
+        effective_end = end_sec if (end_sec and end_sec > start_sec) else float("inf")
+        slice_label = f"{format_duration(start_sec)} ➔ {format_duration(effective_end) if effective_end < float('inf') else 'End'}"
+        print(f"[1/4] Starting time-sliced download: {url} [{slice_label}] (Quality: {quality})")
+        if progress_callback:
+            progress_callback("downloading", 10, f"Downloading stream slice ({slice_label}) in {quality}...")
+    else:
+        print(f"[1/4] Starting download for: {url} (Quality: {quality})")
+        if progress_callback:
+            progress_callback("downloading", 10, f"Connecting to YouTube and downloading video ({quality})...")
 
     os.makedirs(output_dir, exist_ok=True)
     
@@ -130,7 +143,8 @@ def download_video(
             downloaded = d.get('downloaded_bytes', 0)
             if total > 0:
                 percent = int(10 + (downloaded / total) * 20)  # 10% to 30%
-                progress_callback("downloading", percent, f"Downloading video ({quality} - {percent}%)...")
+                msg = f"Downloading slice ({slice_label} - {percent}%)..." if has_slice else f"Downloading video ({quality} - {percent}%)..."
+                progress_callback("downloading", percent, msg)
 
     # Determine maximum height based on quality preference
     try:
@@ -160,7 +174,20 @@ def download_video(
         'http_chunk_size': 10 * 1024 * 1024,  # 10MB chunking prevents YouTube 250KiB/s throttle & 403 token expiration
         'concurrent_fragment_downloads': 4,
         'progress_hooks': [ytdl_hook],
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'mweb', 'web'],
+            }
+        },
+        'postprocessor_args': {
+            'ffmpeg': ['-nostdin']
+        }
     }
+
+    if has_slice:
+        effective_end = end_sec if (end_sec and end_sec > start_sec) else float("inf")
+        base_ydl_opts['download_ranges'] = yt_dlp.utils.download_range_func(None, [(start_sec, effective_end)])
+        base_ydl_opts['force_keyframes_at_cuts'] = True
 
     try:
         try:
@@ -184,6 +211,10 @@ def download_video(
                         'player_client': ['mweb', 'android', 'web'],
                     }
                 }
+                if has_slice:
+                    fallback_opts['download_ranges'] = base_ydl_opts['download_ranges']
+                    fallback_opts['force_keyframes_at_cuts'] = True
+
                 with yt_dlp.YoutubeDL(fallback_opts) as ydl_fb:
                     info = ydl_fb.extract_info(url, download=True)
                     filename = ydl_fb.prepare_filename(info)
@@ -464,16 +495,28 @@ def run_pipeline(
                 f"Please choose a stream under {int(MAX_STREAM_DURATION_HOURS)} hours to avoid system overload."
             )
 
-        # 1. Download YouTube video in requested quality
-        video_path = download_video(youtube_url, download_dir, quality=quality, progress_callback=progress_callback)
+        # Determine slice bounds for stream mode if active
+        stream_slice_start = max(0.0, float(stream_start_min or 0.0) * 60.0) if content_type == "stream" else 0.0
+        stream_slice_end = (float(stream_end_min) * 60.0) if (content_type == "stream" and stream_end_min and float(stream_end_min) > 0) else None
+        is_partial_stream = content_type == "stream" and (stream_slice_start > 0 or (stream_slice_end and stream_slice_end < stream_dur))
+
+        # 1. Download YouTube video in requested quality (partial range download if stream slice active)
+        video_path = download_video(
+            url=youtube_url,
+            output_dir=download_dir,
+            quality=quality,
+            start_sec=stream_slice_start if is_partial_stream else 0.0,
+            end_sec=stream_slice_end if is_partial_stream else None,
+            progress_callback=progress_callback
+        )
         
-        # 2. Extract Duration
+        # 2. Extract Duration of downloaded media
         duration = get_video_duration(video_path)
         
         # 3. Detect Best Moments
         if is_supercut:
             if progress_callback:
-                progress_callback("analyzing_stream", 50, "Analyzing audio energy spikes, screams & reaction peaks across entire video...")
+                progress_callback("analyzing_stream", 50, "Analyzing audio energy spikes, screams & reaction peaks across video...")
             temp_wav = os.path.join(download_dir, "temp_stream_audio.wav")
             from moment_detector import extract_audio_pcm
             has_wav = extract_audio_pcm(video_path, temp_wav)
@@ -481,18 +524,31 @@ def run_pipeline(
             detector_mode = "clips" if stream_output_mode == "clips" else "supercut"
             if has_wav and os.path.exists(temp_wav):
                 try:
-                    start_sec = max(0.0, float(stream_start_min or 0.0) * 60.0)
-                    end_sec = (float(stream_end_min) * 60.0) if stream_end_min and float(stream_end_min) > 0 else None
-                    if start_sec > 0:
-                        print(f"[Pipeline] Stream Intro Skip active: ignoring first {stream_start_min:.1f} mins ({start_sec:.0f}s)")
-                    stream_moments = detect_stream_audio_peaks(
-                        wav_path=temp_wav,
-                        target_duration=segment_duration,
-                        top_k=max_clips,
-                        mode=detector_mode,
-                        start_offset=start_sec,
-                        end_offset=end_sec
-                    )
+                    if is_partial_stream:
+                        print(f"[Pipeline] Sliced Download Active: scan range 0.0s to {duration:.1f}s (Stream time shift: +{stream_slice_start:.1f}s)")
+                        stream_moments = detect_stream_audio_peaks(
+                            wav_path=temp_wav,
+                            target_duration=segment_duration,
+                            top_k=max_clips,
+                            mode=detector_mode,
+                            start_offset=0.0,
+                            end_offset=duration,
+                            stream_time_shift=stream_slice_start
+                        )
+                    else:
+                        start_sec = stream_slice_start
+                        end_sec = stream_slice_end
+                        if start_sec > 0:
+                            print(f"[Pipeline] Stream Intro Skip active: ignoring first {stream_start_min:.1f} mins ({start_sec:.0f}s)")
+                        stream_moments = detect_stream_audio_peaks(
+                            wav_path=temp_wav,
+                            target_duration=segment_duration,
+                            top_k=max_clips,
+                            mode=detector_mode,
+                            start_offset=start_sec,
+                            end_offset=end_sec,
+                            stream_time_shift=0.0
+                        )
                 except Exception as stream_err:
                     print(f"[Stream Detector Notice] Audio peak scan notice: {stream_err}")
 
