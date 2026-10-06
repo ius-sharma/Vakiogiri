@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import AuthModal from "../components/AuthModal";
 import TopNavBar, { NavItem } from "../components/TopNavBar";
 import { supabase, signOut } from "../lib/supabase";
@@ -78,8 +79,8 @@ export default function Home() {
   const [segmentDuration, setSegmentDuration] = useState<number>(45);
   const [clippingMode, setClippingMode] = useState<"heuristic" | "ai_enhanced">("heuristic");
   const [aspectRatio, setAspectRatio] = useState<"9:16" | "16:9">("9:16");
-  const [contentType, setContentType] = useState<"shorts" | "stream">("shorts");
-  const [streamOutputMode, setStreamOutputMode] = useState<"single_reel" | "both" | "clips">("single_reel");
+  const [contentType] = useState<"shorts">("shorts");
+  const [streamOutputMode] = useState<"clips">("clips");
   const [quality, setQuality] = useState<"1080p" | "720p" | "480p">("1080p");
   const [jobId, setJobId] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "processing" | "completed" | "failed">("idle");
@@ -541,10 +542,16 @@ export default function Home() {
         navItems={[
           {
             id: "studio",
-            label: "Studio",
+            label: "Shorts Studio",
             icon: "auto_fix_high",
             isActive: activeView === "studio",
             onClick: () => setActiveView("studio"),
+          },
+          {
+            id: "stream",
+            label: "Stream Studio",
+            icon: "sports_esports",
+            href: "/stream",
           },
           {
             id: "history",
@@ -881,51 +888,41 @@ export default function Home() {
                     </button>
                   </div>
 
-                  {/* Format & Aspect Ratio Selector */}
+                  {/* Clip Format & Duration Selector */}
                   <div className="flex flex-wrap items-center justify-between gap-3 px-1 text-xs">
-                    {/* Format Pills: 9:16 Shorts vs 16:9 Stream */}
+                    {/* Format Pills: 9:16 Shorts vs 16:9 Landscape */}
                     <div className="flex items-center gap-1.5 bg-surface-container-low p-1 rounded-xl border border-outline-variant/50">
                       <button
                         type="button"
-                        onClick={() => {
-                          setAspectRatio("9:16");
-                          setContentType("shorts");
-                          if (segmentDuration > 90) setSegmentDuration(45);
-                        }}
-                        className={`px-3 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                        onClick={() => setAspectRatio("9:16")}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
                           aspectRatio === "9:16"
                             ? "bg-surface-container-lowest text-primary shadow-xs border border-outline-variant/40"
                             : "text-secondary hover:text-on-surface"
                         }`}
                       >
                         <span className="material-symbols-outlined text-[15px]">smartphone</span>
-                        <span>9:16 Shorts</span>
+                        <span>📱 9:16 Shorts / Reels</span>
                       </button>
 
                       <button
                         type="button"
-                        onClick={() => {
-                          setAspectRatio("16:9");
-                          setContentType("stream");
-                          if (segmentDuration < 120) setSegmentDuration(180);
-                        }}
-                        className={`px-3 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                        onClick={() => setAspectRatio("16:9")}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
                           aspectRatio === "16:9"
                             ? "bg-surface-container-lowest text-primary shadow-xs border border-outline-variant/40"
                             : "text-secondary hover:text-on-surface"
                         }`}
                       >
-                        <span className="material-symbols-outlined text-[15px]">sports_esports</span>
-                        <span>16:9 Stream Highlights</span>
+                        <span className="material-symbols-outlined text-[15px]">crop_16_9</span>
+                        <span>🎬 16:9 Landscape Clip</span>
                       </button>
                     </div>
 
-                    {/* Duration Pills */}
+                    {/* Clip Duration Pills */}
                     <div className="flex items-center gap-2">
-                      <span className="text-secondary font-medium">
-                        {streamOutputMode !== "clips" ? "Target Reel Duration:" : aspectRatio === "16:9" ? "Highlight Scene:" : "Clip Len:"}
-                      </span>
-                      {(streamOutputMode !== "clips" ? [120, 180, 300, 600] : aspectRatio === "16:9" ? [120, 180, 300] : [30, 45, 60, 90]).map((dur) => (
+                      <span className="text-secondary font-medium">Clip Length:</span>
+                      {[30, 45, 60, 90].map((dur) => (
                         <button
                           key={dur}
                           type="button"
@@ -936,72 +933,30 @@ export default function Home() {
                               : "bg-surface-container-low text-secondary hover:text-on-surface border border-outline-variant/60"
                           }`}
                         >
-                          {dur >= 60 ? `${Math.floor(dur / 60)} Min` : `${dur}s`}
+                          {dur}s
                         </button>
                       ))}
                     </div>
-
-                    <span className="text-secondary font-medium text-[11px] flex items-center gap-1 bg-surface-container-low px-2 py-0.5 rounded-full border border-outline-variant/40" title="Videos up to 5 hours (18,000s) supported in beta">
-                      <span className="material-symbols-outlined text-[13px] text-amber-500">verified_user</span>
-                      <span>Max 5-Hour Streams</span>
-                    </span>
                   </div>
 
-                  {/* Output Format Mode: 1 Single Highlights Reel vs Master+Clips vs Clips Only */}
-                  <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5 p-2.5 bg-surface-container-low/90 border border-outline-variant/60 rounded-xl text-xs transition-all">
-                    <div className="flex items-center gap-1.5 text-secondary font-medium">
-                      <span className="material-symbols-outlined text-[16px] text-primary">movie_filter</span>
-                      <span>Output Format:</span>
+                  {/* Dedicated Stream Studio Callout Banner */}
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3 bg-primary/5 border border-primary/20 rounded-xl text-xs transition-all">
+                    <div className="flex items-center gap-2.5 text-on-surface text-left">
+                      <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                        <span className="material-symbols-outlined text-[17px] text-primary">sports_esports</span>
+                      </div>
+                      <div>
+                        <div className="font-semibold text-on-surface">Need long gaming stream highlights?</div>
+                        <div className="text-secondary text-[11px]">Skip streamer intros, extract custom stream sections & combine into 1 cinema reel with auto-chapters.</div>
+                      </div>
                     </div>
-                    <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setStreamOutputMode("single_reel");
-                          if (segmentDuration < 120) setSegmentDuration(120);
-                        }}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                          streamOutputMode === "single_reel"
-                            ? "bg-primary text-on-primary shadow-xs"
-                            : "bg-surface-container-lowest text-secondary hover:text-on-surface border border-outline-variant/40"
-                        }`}
-                        title="Combines top moments across the entire video into 1 continuous highlight video"
-                      >
-                        <span>🎬 1 Single Video (Highlights Reel)</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setStreamOutputMode("both");
-                          if (segmentDuration < 120) setSegmentDuration(180);
-                        }}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                          streamOutputMode === "both"
-                            ? "bg-primary text-on-primary shadow-xs"
-                            : "bg-surface-container-lowest text-secondary hover:text-on-surface border border-outline-variant/40"
-                        }`}
-                        title="Generates 1 Master Highlight Reel plus all individual moment cuts"
-                      >
-                        <span>✨ Master Reel + Clips</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setStreamOutputMode("clips");
-                          if (aspectRatio === "9:16") setSegmentDuration(45);
-                        }}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                          streamOutputMode === "clips"
-                            ? "bg-primary text-on-primary shadow-xs"
-                            : "bg-surface-container-lowest text-secondary hover:text-on-surface border border-outline-variant/40"
-                        }`}
-                        title="Generates separate individual highlight clips"
-                      >
-                        <span>✂️ Separate Clips Only</span>
-                      </button>
-                    </div>
+                    <Link
+                      href="/stream"
+                      className="px-3.5 py-1.5 bg-primary text-on-primary rounded-lg font-semibold text-xs hover:bg-surface-tint transition-all shrink-0 flex items-center gap-1.5 shadow-xs cursor-pointer"
+                    >
+                      <span>Open Stream Studio</span>
+                      <span className="material-symbols-outlined text-[15px]">arrow_forward</span>
+                    </Link>
                   </div>
 
                   {/* Video Quality Selector */}
