@@ -28,7 +28,9 @@ def detect_stream_audio_peaks(
     target_duration: int = 300,
     min_peak_distance: Optional[float] = None,
     top_k: int = 5,
-    mode: str = "supercut"
+    mode: str = "supercut",
+    start_offset: float = 0.0,
+    end_offset: Optional[float] = None
 ) -> List[Dict[str, Any]]:
     """
     Scans a 16kHz mono audio WAV for gaming scream, shout, and clutch reaction peaks.
@@ -155,6 +157,12 @@ def detect_stream_audio_peaks(
         surge_val = float(relative_surge[p_idx])
         abs_db = float(rms_db[p_idx])
 
+        # Ensure candidate is strictly within user's requested stream range (skip intro chit-chat)
+        if t_peak < start_offset:
+            continue
+        if end_offset and t_peak > end_offset:
+            continue
+
         # Ensure candidates are spaced out across the stream
         if any(abs(t_peak - st) < min_peak_distance for st in selected_times):
             continue
@@ -163,8 +171,10 @@ def detect_stream_audio_peaks(
 
         # Proportional lead-in: ~35% build-up before the climax
         lead_in = min(15.0 if mode == "supercut" else 120.0, float(clip_len) * 0.35)
-        start_time = max(0.0, t_peak - lead_in)
+        start_time = max(start_offset, t_peak - lead_in)
         end_time = min(duration, start_time + clip_len)
+        if end_offset and end_time > end_offset:
+            end_time = end_offset
 
         score = float(np.clip(70.0 + (surge_val * 1.5), 72.0, 98.0))
 
