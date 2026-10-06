@@ -76,13 +76,18 @@ def probe_stream_metadata(url: str) -> Dict[str, Any]:
             live_status = str(info.get("live_status") or ("is_live" if info.get("is_live") else "not_live"))
             is_live_now = bool(info.get("is_live") or live_status == "is_live")
             was_live = bool(info.get("was_live") or live_status in ["post_live", "was_live"])
+            video_id = info.get("id") or ""
+            thumbnail = info.get("thumbnail") or (f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg" if video_id else "")
             return {
                 "duration": duration,
+                "duration_formatted": format_duration(duration),
                 "title": title,
                 "is_live": is_live_now,
                 "live_status": live_status,
                 "was_live": was_live,
-                "uploader": info.get("uploader") or "",
+                "uploader": info.get("uploader") or info.get("channel") or "",
+                "video_id": video_id,
+                "thumbnail": thumbnail,
             }
     except Exception as e:
         clean_msg = strip_ansi(str(e))
