@@ -139,7 +139,7 @@ def download_video(
         f"bestvideo+bestaudio/best"
     )
 
-    ydl_opts = {
+    base_ydl_opts = {
         'format': format_selector,
         'format_sort': ['res', 'fps', 'tbr', 'vbr'],
         'outtmpl': os.path.join(output_dir, '%(id)s.%(ext)s'),
@@ -150,35 +150,59 @@ def download_video(
         'nocheckcertificate': True,
         'geo_bypass': True,
         'no_color': True,
-        'retries': 10,
-        'fragment_retries': 10,
-        'concurrent_fragment_downloads': 8,
+        'retries': 20,
+        'fragment_retries': 20,
+        'http_chunk_size': 10 * 1024 * 1024,  # 10MB chunking prevents YouTube 250KiB/s throttle & 403 token expiration
+        'concurrent_fragment_downloads': 4,
         'progress_hooks': [ytdl_hook],
     }
-    
+
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            filename = ydl.prepare_filename(info)
-            
-            base, _ = os.path.splitext(filename)
-            mp4_filename = base + ".mp4"
-            
-            if os.path.exists(mp4_filename) and os.path.getsize(mp4_filename) > 1024:
-                final_path = mp4_filename
-            elif os.path.exists(filename) and os.path.getsize(filename) > 1024:
-                final_path = filename
+        try:
+            with yt_dlp.YoutubeDL(base_ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+                filename = ydl.prepare_filename(info)
+        except Exception as primary_err:
+            err_text = str(primary_err).lower()
+            if "403" in err_text or "forbidden" in err_text or "unable to download video data" in err_text:
+                print(f"[Downloader Notice] 403 Forbidden detected. Engaging resilient HLS/DASH fallback...")
+                if progress_callback:
+                    progress_callback("downloading", 12, "Re-routing via resilient HLS/DASH stream to bypass 403...")
+                fallback_opts = dict(base_ydl_opts)
+                fallback_opts['format'] = (
+                    f"bestvideo[height<={max_h}][protocol*=_dash]+bestaudio/"
+                    f"bestvideo[height<={max_h}][protocol*=m3u8]+bestaudio/"
+                    f"bestvideo[height<={max_h}]+bestaudio/best"
+                )
+                fallback_opts['extractor_args'] = {
+                    'youtube': {
+                        'player_client': ['mweb', 'android', 'web'],
+                    }
+                }
+                with yt_dlp.YoutubeDL(fallback_opts) as ydl_fb:
+                    info = ydl_fb.extract_info(url, download=True)
+                    filename = ydl_fb.prepare_filename(info)
             else:
-                valid_files = [
-                    os.path.join(output_dir, f) for f in os.listdir(output_dir)
-                    if os.path.isfile(os.path.join(output_dir, f)) and os.path.getsize(os.path.join(output_dir, f)) > 1024
-                ]
-                if not valid_files:
-                    raise FileNotFoundError(
-                        "The downloaded file is empty (0 bytes). If this is a recently ended stream, "
-                        "YouTube is still processing the recording into a playable VOD. Please wait 15-30 minutes."
-                    )
-                final_path = max(valid_files, key=os.path.getmtime)
+                raise primary_err
+
+        base, _ = os.path.splitext(filename)
+        mp4_filename = base + ".mp4"
+        
+        if os.path.exists(mp4_filename) and os.path.getsize(mp4_filename) > 1024:
+            final_path = mp4_filename
+        elif os.path.exists(filename) and os.path.getsize(filename) > 1024:
+            final_path = filename
+        else:
+            valid_files = [
+                os.path.join(output_dir, f) for f in os.listdir(output_dir)
+                if os.path.isfile(os.path.join(output_dir, f)) and os.path.getsize(os.path.join(output_dir, f)) > 1024
+            ]
+            if not valid_files:
+                raise FileNotFoundError(
+                    "The downloaded file is empty (0 bytes). If this is a recently ended stream, "
+                    "YouTube is still processing the recording into a playable VOD. Please wait 15-30 minutes."
+                )
+            final_path = max(valid_files, key=os.path.getmtime)
 
         print(f"[1/4] Download complete: {os.path.basename(final_path)}")
         if progress_callback:
