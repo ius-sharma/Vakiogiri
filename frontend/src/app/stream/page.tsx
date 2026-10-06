@@ -345,7 +345,15 @@ export default function StreamStudio() {
     isPollingRef.current = true;
     try {
       const res = await fetch(`${BACKEND_URL}/status/${currentJobId}`);
-      if (!res.ok) throw new Error("Status check failed");
+      if (!res.ok) {
+        if (res.status === 404) {
+          stopPolling();
+          setStatus("failed");
+          setErrorMsg("Pichla job server restart ya cancel hone ki wajah se band ho gaya tha. Kripya neeche 'Try Again' par click karke dobara shuru karein.");
+          return;
+        }
+        throw new Error(`Status check failed (${res.status})`);
+      }
       const data = await res.json();
 
       setStep(data.step || "processing");
@@ -826,6 +834,13 @@ export default function StreamStudio() {
 
                   {/* Submit Action */}
                   <div className="flex flex-col gap-3 pt-2 border-t border-outline-variant/40">
+                    <div className="flex items-center gap-2 text-xs text-emerald-600 dark:text-emerald-400 font-semibold bg-emerald-500/10 px-3.5 py-2 rounded-xl border border-emerald-500/25">
+                      <span className="material-symbols-outlined text-[17px] shrink-0 text-emerald-500">bolt</span>
+                      <span>
+                        ⚡ <strong>Smart Partial Download:</strong> YouTube se sirf selected time-slice ({rangeMode === "skip_intro" ? `${skipIntroMin}m ke baad ka part` : `${startMin}m ➔ ${endMin}m (${endMin - startMin} mins)`}) download hoga! Poora 4-5 GB stream download nahi hoga.
+                      </span>
+                    </div>
+
                     <button
                       type="submit"
                       disabled={status === "processing"}
