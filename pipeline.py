@@ -412,6 +412,8 @@ def run_pipeline(
     content_type: str = "shorts",
     stream_output_mode: str = "single_reel",
     quality: str = "1080p",
+    stream_start_min: float = 0.0,
+    stream_end_min: Optional[float] = None,
     progress_callback: Optional[Callable[[str, int, str], None]] = None
 ) -> List[Dict[str, Any]]:
     """
@@ -474,11 +476,17 @@ def run_pipeline(
             detector_mode = "clips" if stream_output_mode == "clips" else "supercut"
             if has_wav and os.path.exists(temp_wav):
                 try:
+                    start_sec = max(0.0, float(stream_start_min or 0.0) * 60.0)
+                    end_sec = (float(stream_end_min) * 60.0) if stream_end_min and float(stream_end_min) > 0 else None
+                    if start_sec > 0:
+                        print(f"[Pipeline] Stream Intro Skip active: ignoring first {stream_start_min:.1f} mins ({start_sec:.0f}s)")
                     stream_moments = detect_stream_audio_peaks(
                         wav_path=temp_wav,
                         target_duration=segment_duration,
                         top_k=max_clips,
-                        mode=detector_mode
+                        mode=detector_mode,
+                        start_offset=start_sec,
+                        end_offset=end_sec
                     )
                 except Exception as stream_err:
                     print(f"[Stream Detector Notice] Audio peak scan notice: {stream_err}")

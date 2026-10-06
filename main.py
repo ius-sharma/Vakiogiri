@@ -70,6 +70,8 @@ class ProcessRequest(BaseModel):
     content_type: Optional[str] = Field(default="shorts")  # "shorts" | "stream"
     stream_output_mode: Optional[str] = Field(default="single_reel")  # "single_reel" | "both" | "clips"
     quality: Optional[str] = Field(default="1080p")  # "1080p" | "720p" | "480p" | "best"
+    stream_start_min: Optional[float] = Field(default=0.0)  # Skip first N minutes (e.g. 15 min intro)
+    stream_end_min: Optional[float] = Field(default=None)  # Optional end boundary in minutes
 
 
 def process_video_task(
@@ -84,7 +86,9 @@ def process_video_task(
     content_type: str = "shorts",
     max_clips: int = 3,
     stream_output_mode: str = "single_reel",
-    quality: str = "1080p"
+    quality: str = "1080p",
+    stream_start_min: float = 0.0,
+    stream_end_min: Optional[float] = None
 ):
     """Background task to run video processing pipeline with progress callback and job recording."""
     clips_output_dir = os.path.join("clips", job_id)
@@ -109,6 +113,8 @@ def process_video_task(
             content_type=content_type,
             stream_output_mode=stream_output_mode,
             quality=quality,
+            stream_start_min=stream_start_min,
+            stream_end_min=stream_end_min,
             progress_callback=progress_callback
         )
 
@@ -294,6 +300,8 @@ def process_video(
         "content_type": content_type,
         "stream_output_mode": stream_output_mode,
         "quality": quality,
+        "stream_start_min": float(request.stream_start_min or 0.0),
+        "stream_end_min": float(request.stream_end_min) if request.stream_end_min else None,
         "stream_title": meta.get("title", ""),
         "stream_duration": stream_dur,
         "clips": [],
@@ -317,7 +325,9 @@ def process_video(
         content_type,
         max_clips,
         stream_output_mode,
-        quality
+        quality,
+        float(request.stream_start_min or 0.0),
+        float(request.stream_end_min) if request.stream_end_min else None
     )
     
     current_credits = (user["credits_remaining"] - 1) if credit_deducted else user["credits_remaining"]
