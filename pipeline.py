@@ -219,9 +219,10 @@ def download_video(
 
     if has_slice:
         # Time-sliced stream downloads REQUIRE segmented HLS (m3u8) streams!
-        # HLS streams are pre-split into 5-second segments, allowing FFmpeg to seek directly to any minute
-        # without hanging or reading monolithic 5GB files over raw HTTPS.
+        # Prioritize lightweight, hardware-accelerated AVC1 (H.264) streams over bloated 16Mbps VP9 master streams
         format_selector = (
+            f"bestvideo[protocol*=m3u8][vcodec^=avc1][height<={max_h}]+bestaudio[protocol*=m3u8]/"
+            f"bestvideo[protocol*=m3u8][height<={max_h}][tbr<7500]+bestaudio[protocol*=m3u8]/"
             f"bestvideo[protocol*=m3u8][height<={max_h}]+bestaudio[protocol*=m3u8]/"
             f"bestvideo[height<={max_h}][ext=mp4]+bestaudio[ext=m4a]/"
             f"bestvideo[height<={max_h}]+bestaudio/"
@@ -253,7 +254,12 @@ def download_video(
         'progress_hooks': [ytdl_hook],
         'downloader_args': {
             'ffmpeg': ['-nostdin'],
-            'ffmpeg_i': ['-nostdin']
+            'ffmpeg_i': [
+                '-nostdin',
+                '-reconnect', '1',
+                '-reconnect_streamed', '1',
+                '-reconnect_delay_max', '5'
+            ]
         },
         'postprocessor_args': {
             'ffmpeg': ['-nostdin']
@@ -271,6 +277,10 @@ def download_video(
             slice_start_t = time.time()
             last_size = -1
             print(f"[🔍 Step 1/2] Connecting to YouTube HLS servers & resolving slice segments...", flush=True)
+            # Estimate expected size: slice duration * ~400 KB/s for 1080p, 200 KB/s for 720p
+            slice_dur = max(30.0, float(effective_end - start_sec)) if effective_end < float('inf') else 1800.0
+            expected_bytes = max(1024 * 1024, slice_dur * (400_000 if '1080' in quality else 200_000))
+
             while not stop_slice_monitor.is_set():
                 time.sleep(0.4)
                 if not os.path.exists(output_dir):
@@ -287,13 +297,23 @@ def download_video(
                         spd = cur_size / elapsed
                         spd_str = f"{format_bytes(spd)}/s"
                         size_str = format_bytes(cur_size)
+
+                        # Dynamically advance frontend progress from 10% to 35%
+                        ratio = min(0.98, cur_size / expected_bytes)
+                        dyn_pct = int(10 + ratio * 25)
+                        pct_label = int(ratio * 100)
+
                         print(
-                            f"\r[⬇️ Step 2/2 - Streaming Slice] Downloaded: {size_str} | Speed: ~{spd_str} | Range: {slice_label}   ",
+                            f"\r[⬇️ Step 2/2 - Streaming Slice] Downloaded: {size_str} ({pct_label}%) | Speed: ~{spd_str} | Range: {slice_label}   ",
                             end="",
                             flush=True
                         )
                         if progress_callback:
-                            progress_callback("downloading", 20, f"Downloading stream slice ({size_str} downloaded)...")
+                            progress_callback(
+                                "downloading",
+                                dyn_pct,
+                                f"Downloading stream slice ({size_str} / ~{format_bytes(expected_bytes)} - {pct_label}%)..."
+                            )
 
         monitor_thread = threading.Thread(target=slice_monitor_worker, daemon=True)
         monitor_thread.start()
@@ -614,7 +634,8 @@ def run_pipeline(
         # Determine slice bounds for stream mode if active
         stream_slice_start = max(0.0, float(stream_start_min or 0.0) * 60.0) if content_type == "stream" else 0.0
         stream_slice_end = (float(stream_end_min) * 60.0) if (content_type == "stream" and stream_end_min and float(stream_end_min) > 0) else None
-        is_partial_stream = content_type == "stream" and (stream_slice_start > 0 or (stream_slice_end and stream_slice_end < stream_dur))
+        # Only perform time-sliced download when an explicit, bounded end timestamp is provided
+        is_partial_stream = content_type == "stream" and (stream_slice_end is not None and stream_slice_end > stream_slice_start)
 
         # 1. Download YouTube video in requested quality (partial range download if stream slice active)
         video_path = download_video(
