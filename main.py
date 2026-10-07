@@ -61,6 +61,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+import logging
+
+class StatusPollingLogFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        # Hide repetitive status polling lines to keep terminal progress output clean and readable
+        return "/status/" not in record.getMessage()
+
+logging.getLogger("uvicorn.access").addFilter(StatusPollingLogFilter())
+
 # In-memory dictionary to track live job state
 # Schema: { job_id: {"status": str, "step": str, "progress": int, "message": str, "clips": [...], "error": str | None} }
 jobs: Dict[str, Dict[str, Any]] = {}
