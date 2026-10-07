@@ -31,6 +31,8 @@ Thumbs.db
 
 # Logs
 *.log
+*_log.txt
+hook_log.txt
 npm-debug.log*
 yarn-debug.log*
 
