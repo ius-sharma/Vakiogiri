@@ -5,6 +5,8 @@ import subprocess
 import math
 import json
 import re
+import time
+import threading
 from typing import List, Callable, Optional, Dict, Any
 
 if sys.platform == "win32":
@@ -51,6 +53,25 @@ def format_duration(seconds: float) -> str:
     if minutes > 0:
         return f"{minutes}m {secs}s"
     return f"{secs}s"
+
+
+def format_bytes(num_bytes: float) -> str:
+    """Format bytes into human-readable string (e.g. 14.5 MB, 1.2 GB)."""
+    if not num_bytes or num_bytes <= 0:
+        return "0 B"
+    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+        if num_bytes < 1024.0:
+            return f"{num_bytes:.1f} {unit}"
+        num_bytes /= 1024.0
+    return f"{num_bytes:.1f} PB"
+
+
+def format_progress_bar(percent: float, width: int = 24) -> str:
+    """Render a clean unicode progress bar."""
+    clamped = max(0.0, min(100.0, float(percent)))
+    filled = int(round(width * (clamped / 100.0)))
+    bar = "█" * filled + "░" * (width - filled)
+    return f"[{bar}] {clamped:5.1f}%"
 
 
 def probe_stream_metadata(url: str) -> Dict[str, Any]:
@@ -127,24 +148,68 @@ def download_video(
     if has_slice:
         effective_end = end_sec if (end_sec and end_sec > start_sec) else float("inf")
         slice_label = f"{format_duration(start_sec)} ➔ {format_duration(effective_end) if effective_end < float('inf') else 'End'}"
-        print(f"[1/4] Starting time-sliced download: {url} [{slice_label}] (Quality: {quality})")
+        print(f"\n=================================================================")
+        print(f"[⬇️ Downloader] Starting Time-Sliced Stream Download")
+        print(f"    URL     : {url}")
+        print(f"    Range   : {slice_label}")
+        print(f"    Quality : {quality}")
+        print(f"=================================================================\n", flush=True)
         if progress_callback:
             progress_callback("downloading", 10, f"Downloading stream slice ({slice_label}) in {quality}...")
     else:
-        print(f"[1/4] Starting download for: {url} (Quality: {quality})")
+        print(f"\n=================================================================")
+        print(f"[⬇️ Downloader] Starting Video Download")
+        print(f"    URL     : {url}")
+        print(f"    Quality : {quality}")
+        print(f"=================================================================\n", flush=True)
         if progress_callback:
             progress_callback("downloading", 10, f"Connecting to YouTube and downloading video ({quality})...")
 
     os.makedirs(output_dir, exist_ok=True)
+    download_start_time = time.time()
+    last_print_time = [0.0]
     
     def ytdl_hook(d):
-        if d.get('status') == 'downloading' and progress_callback:
+        now = time.time()
+        status = d.get('status')
+        if status == 'downloading':
             total = d.get('total_bytes') or d.get('total_bytes_estimate') or 0
             downloaded = d.get('downloaded_bytes', 0)
-            if total > 0:
-                percent = int(10 + (downloaded / total) * 20)  # 10% to 30%
-                msg = f"Downloading slice ({slice_label} - {percent}%)..." if has_slice else f"Downloading video ({quality} - {percent}%)..."
-                progress_callback("downloading", percent, msg)
+            speed = d.get('speed') or 0
+            eta = d.get('eta')
+            
+            # Throttle terminal updates to every ~0.3s so terminal remains clean and readable
+            if now - last_print_time[0] >= 0.3 or (total > 0 and downloaded >= total):
+                last_print_time[0] = now
+                speed_str = f"{format_bytes(speed)}/s" if speed else "-- MB/s"
+                
+                if total > 0:
+                    pct = (downloaded / total) * 100.0
+                    bar = format_progress_bar(pct)
+                    eta_str = f"ETA: {int(eta)}s" if eta is not None else "ETA: --"
+                    print(
+                        f"\r[⬇️ Downloading] {format_bytes(downloaded)} / {format_bytes(total)} {bar} | Speed: {speed_str} | {eta_str}   ",
+                        end="",
+                        flush=True
+                    )
+                else:
+                    print(
+                        f"\r[⬇️ Downloading] {format_bytes(downloaded)} received | Speed: {speed_str}   ",
+                        end="",
+                        flush=True
+                    )
+
+            if progress_callback and total > 0:
+                frontend_pct = int(10 + (downloaded / total) * 20)  # 10% to 30%
+                msg = f"Downloading slice ({slice_label} - {frontend_pct}%)..." if has_slice else f"Downloading video ({quality} - {frontend_pct}%)..."
+                progress_callback("downloading", frontend_pct, msg)
+
+        elif status == 'finished':
+            total = d.get('total_bytes') or d.get('downloaded_bytes') or 0
+            print(
+                f"\n[📦 Stream Saved] Received {format_bytes(total)}. Finalizing media container...",
+                flush=True
+            )
 
     # Determine maximum height based on quality preference
     try:
@@ -152,11 +217,23 @@ def download_video(
     except Exception:
         max_h = 1080
 
-    format_selector = (
-        f"bestvideo[height<={max_h}]+bestaudio/"
-        f"best[height<={max_h}]/"
-        f"bestvideo+bestaudio/best"
-    )
+    if has_slice:
+        # Time-sliced stream downloads REQUIRE segmented HLS (m3u8) streams!
+        # HLS streams are pre-split into 5-second segments, allowing FFmpeg to seek directly to any minute
+        # without hanging or reading monolithic 5GB files over raw HTTPS.
+        format_selector = (
+            f"bestvideo[protocol*=m3u8][height<={max_h}]+bestaudio[protocol*=m3u8]/"
+            f"bestvideo[height<={max_h}][ext=mp4]+bestaudio[ext=m4a]/"
+            f"bestvideo[height<={max_h}]+bestaudio/"
+            f"best[height<={max_h}]/best"
+        )
+    else:
+        format_selector = (
+            f"bestvideo[height<={max_h}][vcodec!*=none]+bestaudio[acodec!*=none]/"
+            f"bestvideo[height<={max_h}]+bestaudio/"
+            f"best[height<={max_h}]/"
+            f"best"
+        )
 
     base_ydl_opts = {
         'format': format_selector,
@@ -164,8 +241,8 @@ def download_video(
         'outtmpl': os.path.join(output_dir, '%(id)s.%(ext)s'),
         'merge_output_format': 'mp4',
         'windowsfilenames': True,
-        'quiet': False,
-        'no_warnings': False,
+        'quiet': True,
+        'no_warnings': True,
         'nocheckcertificate': True,
         'geo_bypass': True,
         'no_color': True,
@@ -174,20 +251,54 @@ def download_video(
         'http_chunk_size': 10 * 1024 * 1024,  # 10MB chunking prevents YouTube 250KiB/s throttle & 403 token expiration
         'concurrent_fragment_downloads': 4,
         'progress_hooks': [ytdl_hook],
-        'extractor_args': {
-            'youtube': {
-                'player_client': ['android', 'mweb', 'web'],
-            }
+        'downloader_args': {
+            'ffmpeg': ['-nostdin'],
+            'ffmpeg_i': ['-nostdin']
         },
         'postprocessor_args': {
             'ffmpeg': ['-nostdin']
         }
     }
 
+    stop_slice_monitor = threading.Event()
+
     if has_slice:
         effective_end = end_sec if (end_sec and end_sec > start_sec) else float("inf")
         base_ydl_opts['download_ranges'] = yt_dlp.utils.download_range_func(None, [(start_sec, effective_end)])
         base_ydl_opts['force_keyframes_at_cuts'] = True
+
+        def slice_monitor_worker():
+            slice_start_t = time.time()
+            last_size = -1
+            print(f"[🔍 Step 1/2] Connecting to YouTube HLS servers & resolving slice segments...", flush=True)
+            while not stop_slice_monitor.is_set():
+                time.sleep(0.4)
+                if not os.path.exists(output_dir):
+                    continue
+                part_files = [
+                    os.path.join(output_dir, f) for f in os.listdir(output_dir)
+                    if f.endswith('.part') or f.endswith('.ytdl') or f.endswith('.mp4') or f.endswith('.webm')
+                ]
+                if part_files:
+                    cur_size = sum(os.path.getsize(p) for p in part_files if os.path.exists(p))
+                    if cur_size > 0 and cur_size != last_size:
+                        last_size = cur_size
+                        elapsed = max(0.1, time.time() - slice_start_t)
+                        spd = cur_size / elapsed
+                        spd_str = f"{format_bytes(spd)}/s"
+                        size_str = format_bytes(cur_size)
+                        print(
+                            f"\r[⬇️ Step 2/2 - Streaming Slice] Downloaded: {size_str} | Speed: ~{spd_str} | Range: {slice_label}   ",
+                            end="",
+                            flush=True
+                        )
+                        if progress_callback:
+                            progress_callback("downloading", 20, f"Downloading stream slice ({size_str} downloaded)...")
+
+        monitor_thread = threading.Thread(target=slice_monitor_worker, daemon=True)
+        monitor_thread.start()
+    else:
+        print(f"[🔍 Step 1/2] Fetching video metadata and resolving {quality} streams...", flush=True)
 
     try:
         try:
@@ -197,20 +308,21 @@ def download_video(
         except Exception as primary_err:
             err_text = str(primary_err).lower()
             if "403" in err_text or "forbidden" in err_text or "unable to download video data" in err_text:
-                print(f"[Downloader Notice] 403 Forbidden detected. Engaging resilient HLS/DASH fallback...")
+                print(f"\n[Downloader Notice] 403 Forbidden detected. Engaging resilient HLS/DASH fallback...", flush=True)
                 if progress_callback:
                     progress_callback("downloading", 12, "Re-routing via resilient HLS/DASH stream to bypass 403...")
                 fallback_opts = dict(base_ydl_opts)
-                fallback_opts['format'] = (
-                    f"bestvideo[height<={max_h}][protocol*=_dash]+bestaudio/"
-                    f"bestvideo[height<={max_h}][protocol*=m3u8]+bestaudio/"
-                    f"bestvideo[height<={max_h}]+bestaudio/best"
-                )
-                fallback_opts['extractor_args'] = {
-                    'youtube': {
-                        'player_client': ['mweb', 'android', 'web'],
-                    }
-                }
+                if has_slice:
+                    fallback_opts['format'] = (
+                        f"bestvideo[protocol*=m3u8][height<={max_h}]+bestaudio[protocol*=m3u8]/"
+                        f"bestvideo[height<={max_h}]+bestaudio/best"
+                    )
+                else:
+                    fallback_opts['format'] = (
+                        f"bestvideo[height<={max_h}][protocol*=_dash]+bestaudio/"
+                        f"bestvideo[height<={max_h}][protocol*=m3u8]+bestaudio/"
+                        f"bestvideo[height<={max_h}]+bestaudio/best"
+                    )
                 if has_slice:
                     fallback_opts['download_ranges'] = base_ydl_opts['download_ranges']
                     fallback_opts['force_keyframes_at_cuts'] = True
@@ -220,6 +332,8 @@ def download_video(
                     filename = ydl_fb.prepare_filename(info)
             else:
                 raise primary_err
+        finally:
+            stop_slice_monitor.set()
 
         base, _ = os.path.splitext(filename)
         mp4_filename = base + ".mp4"
@@ -240,7 +354,9 @@ def download_video(
                 )
             final_path = max(valid_files, key=os.path.getmtime)
 
-        print(f"[1/4] Download complete: {os.path.basename(final_path)}")
+        elapsed_sec = int(time.time() - download_start_time)
+        file_size_str = format_bytes(os.path.getsize(final_path)) if os.path.exists(final_path) else "Unknown size"
+        print(f"\n\n[✅ Download Complete] File: {os.path.basename(final_path)} ({file_size_str}) in {elapsed_sec}s\n", flush=True)
         if progress_callback:
             progress_callback("analyzing", 35, "Download complete. Reading video duration...")
         return final_path
