@@ -1,41 +1,20 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import Link from "next/link";
-import AuthModal from "../components/AuthModal";
-import TopNavBar, { NavItem } from "../components/TopNavBar";
-import { supabase, signOut } from "../lib/supabase";
+import React, { useState, useEffect, useRef } from "react";
+import TopNavBar from "@/components/TopNavBar";
+import HeroInputBar from "@/components/studio/HeroInputBar";
+import QuickPresetBar from "@/components/studio/QuickPresetBar";
+import AdvancedDrawer from "@/components/studio/AdvancedDrawer";
+import LivePipelineTracker from "@/components/studio/LivePipelineTracker";
+import ClipShowcaseGrid from "@/components/studio/ClipShowcaseGrid";
+import HistoryView, { HistoryProject } from "@/components/studio/HistoryView";
+import AuthModal from "@/components/AuthModal";
+import { useUIFeedback } from "@/components/UIFeedback";
+import { supabase, signOut } from "@/lib/supabase";
+import { Sparkles, AlertTriangle, RefreshCw, Flame } from "lucide-react";
+import { ClipItemData } from "@/components/studio/ClipCard";
 
 const BACKEND_URL = "http://localhost:8000";
-
-interface ClipItem {
-  filename: string;
-  url: string;
-  is_cloud?: boolean;
-  title?: string;
-  score?: number;
-  heatmap_score?: number;
-  start?: number;
-  end?: number;
-  duration?: number;
-  mode?: string;
-  aspect_ratio?: string;
-  content_type?: string;
-  is_synthesized?: boolean;
-  is_compilation?: boolean;
-  chapters?: Array<{ timestamp: string; title: string; duration: number }>;
-  chapter_description?: string;
-}
-
-interface JobStatusResponse {
-  job_id: string;
-  status: "processing" | "completed" | "failed";
-  step?: string;
-  progress?: number;
-  message?: string;
-  clips?: (string | ClipItem)[];
-  error?: string;
-}
 
 interface UserProfile {
   id: string;
@@ -44,19 +23,10 @@ interface UserProfile {
   max_daily_credits: number;
 }
 
-interface HistoryProject {
-  id: string;
-  youtube_url: string;
-  status: string;
-  segment_duration: number;
-  clips_count: number;
-  clips: (string | ClipItem)[];
-  created_at: string;
-}
-
 export default function Home() {
+  const { showToast, showConfirm } = useUIFeedback();
   const [mounted, setMounted] = useState(false);
-  const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [theme, setTheme] = useState<"light" | "dark">("dark");
   
   // Navigation view
   const [activeView, setActiveView] = useState<"studio" | "history">("studio");
@@ -77,68 +47,60 @@ export default function Home() {
   // Video generation state
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [segmentDuration, setSegmentDuration] = useState<number>(45);
-  const [clippingMode, setClippingMode] = useState<"heuristic" | "ai_enhanced">("heuristic");
+  const [clippingMode, setClippingMode] = useState<"heuristic" | "ai_enhanced">("ai_enhanced");
   const [aspectRatio, setAspectRatio] = useState<"9:16" | "16:9">("9:16");
-  const [contentType] = useState<"shorts">("shorts");
-  const [streamOutputMode] = useState<"clips">("clips");
   const [quality, setQuality] = useState<"1080p" | "720p" | "480p">("1080p");
+  const [captionStyle, setCaptionStyle] = useState<"hormozi" | "beast" | "karaoke" | "minimal" | "none">("hormozi");
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  // Job processing state
   const [jobId, setJobId] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "processing" | "completed" | "failed">("idle");
   const [progress, setProgress] = useState<number>(5);
-  const [progressMessage, setProgressMessage] = useState<string>("Initializing...");
+  const [progressMessage, setProgressMessage] = useState<string>("Initializing AI engine...");
   const [step, setStep] = useState<string>("initializing");
-  const [clips, setClips] = useState<(string | ClipItem)[]>([]);
+  const [clips, setClips] = useState<(string | ClipItemData)[]>([]);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Micro-interaction & download states
-  const [pasted, setPasted] = useState(false);
+  // Download feedback states
   const [downloadingClips, setDownloadingClips] = useState<Record<string, "downloading" | "done">>({});
   const [isDownloadingAll, setIsDownloadingAll] = useState(false);
 
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isPollingRef = useRef<boolean>(false);
 
-  const handlePasteFromClipboard = async () => {
-    try {
-      const text = await navigator.clipboard.readText();
-      if (text) {
-        setYoutubeUrl(text.trim());
-        setPasted(true);
-        setTimeout(() => setPasted(false), 2000);
-      }
-    } catch (err) {
-      console.warn("Clipboard access denied or unavailable", err);
-    }
-  };
-
-  // Load theme and auth session
+  // Initialize theme & auth
   useEffect(() => {
     setMounted(true);
     const savedTheme = localStorage.getItem("theme") as "light" | "dark" | null;
-    if (savedTheme) {
-      setTheme(savedTheme);
-      document.documentElement.classList.toggle("dark", savedTheme === "dark");
-    } else {
-      document.documentElement.classList.remove("dark");
+    const initialTheme = savedTheme || "dark";
+    setTheme(initialTheme);
+    document.documentElement.classList.toggle("dark", initialTheme === "dark");
+    document.documentElement.classList.toggle("light", initialTheme === "light");
+
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("view") === "history") {
+        setActiveView("history");
+      }
     }
 
-    // Check initial Supabase session
     supabase.auth.getSession().then((res: any) => {
-      const session = res?.data?.session;
-      setSession(session);
-      if (session?.access_token) {
-        fetchUserProfile(session.access_token);
-        fetchUserHistory(session.access_token);
+      const activeSession = res?.data?.session;
+      setSession(activeSession);
+      if (activeSession?.access_token) {
+        fetchUserProfile(activeSession.access_token);
+        fetchUserHistory(activeSession.access_token);
       }
     });
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event: any, session: any) => {
-      setSession(session);
-      if (session?.access_token) {
-        fetchUserProfile(session.access_token);
-        fetchUserHistory(session.access_token);
+    } = supabase.auth.onAuthStateChange((_event: any, activeSession: any) => {
+      setSession(activeSession);
+      if (activeSession?.access_token) {
+        fetchUserProfile(activeSession.access_token);
+        fetchUserHistory(activeSession.access_token);
       } else {
         setHistory([]);
         setUserProfile({
@@ -156,30 +118,36 @@ export default function Home() {
     };
   }, []);
 
+  const toggleTheme = () => {
+    const nextTheme = theme === "dark" ? "light" : "dark";
+    setTheme(nextTheme);
+    localStorage.setItem("theme", nextTheme);
+    document.documentElement.classList.toggle("dark", nextTheme === "dark");
+    document.documentElement.classList.toggle("light", nextTheme === "light");
+  };
+
+  const stopPolling = () => {
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
+    isPollingRef.current = false;
+  };
+
   const fetchUserProfile = async (token?: string) => {
     const activeToken = token || session?.access_token;
-    if (!activeToken) {
-      setUserProfile({
-        id: "guest",
-        email: "guest@vakiogiri.ai",
-        credits_remaining: 3,
-        max_daily_credits: 3,
-      });
-      return;
-    }
+    if (!activeToken) return;
 
     try {
       const res = await fetch(`${BACKEND_URL}/user/me`, {
-        headers: {
-          "Authorization": `Bearer ${activeToken}`,
-        },
+        headers: { Authorization: `Bearer ${activeToken}` },
       });
       if (res.ok) {
         const data = await res.json();
         setUserProfile(data);
       }
     } catch (err) {
-      console.warn("Could not fetch user profile from backend:", err);
+      console.warn("Could not fetch profile:", err);
     }
   };
 
@@ -190,9 +158,7 @@ export default function Home() {
     setLoadingHistory(true);
     try {
       const res = await fetch(`${BACKEND_URL}/user/clips`, {
-        headers: {
-          "Authorization": `Bearer ${activeToken}`
-        }
+        headers: { Authorization: `Bearer ${activeToken}` },
       });
       if (res.ok) {
         const data = await res.json();
@@ -203,25 +169,6 @@ export default function Home() {
     } finally {
       setLoadingHistory(false);
     }
-  };
-
-  const toggleTheme = () => {
-    const nextTheme = theme === "dark" ? "light" : "dark";
-    setTheme(nextTheme);
-    localStorage.setItem("theme", nextTheme);
-    document.documentElement.classList.toggle("dark", nextTheme === "dark");
-  };
-
-  const stopPolling = () => {
-    if (pollIntervalRef.current) {
-      clearInterval(pollIntervalRef.current);
-      pollIntervalRef.current = null;
-    }
-  };
-
-  const handleOpenAuth = (mode: "login" | "signup") => {
-    setAuthModalMode(mode);
-    setIsAuthModalOpen(true);
   };
 
   const handleSignOut = async () => {
@@ -235,81 +182,145 @@ export default function Home() {
       credits_remaining: 3,
       max_daily_credits: 3,
     });
+    showToast("Signed out successfully.", "info");
   };
 
-  const getClipUrl = (clip: any, targetJobId?: string) => {
+  const handleReset = () => {
+    stopPolling();
+    setStatus("idle");
+    setClips([]);
+    setErrorMsg(null);
+    setProgress(5);
+  };
+
+  const handleGenerate = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+
+    if (!youtubeUrl.trim()) {
+      showToast("Please enter a YouTube video URL", "warning");
+      return;
+    }
+
+    const trimmedUrl = youtubeUrl.trim();
+    const isYouTube = /^(https?:\/\/)?(www\.|m\.)?(youtube\.com\/(watch\?v=|shorts\/|live\/)|youtu\.be\/)/i.test(trimmedUrl);
+    if (!isYouTube) {
+      setErrorMsg(`"${trimmedUrl}" is not a valid YouTube link. Please paste a link like https://www.youtube.com/watch?v=... or https://youtu.be/...`);
+      setStatus("failed");
+      return;
+    }
+
+    if (userProfile.credits_remaining <= 0) {
+      showToast("You have reached your daily quota (0/3 remaining). Resets at midnight UTC!", "error");
+      return;
+    }
+
+    setErrorMsg(null);
+    setClips([]);
+    setProgress(6);
+    setProgressMessage("Starting 3-stage AI best moment pipeline...");
+    setStatus("processing");
+    stopPolling();
+
+    try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (session?.access_token) {
+        headers["Authorization"] = `Bearer ${session.access_token}`;
+      }
+
+      const res = await fetch(`${BACKEND_URL}/process`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          youtube_url: trimmedUrl,
+          segment_duration: segmentDuration,
+          mode: clippingMode,
+          aspect_ratio: aspectRatio,
+          content_type: "shorts",
+          stream_output_mode: "clips",
+          quality: quality,
+          caption_style: captionStyle,
+          synthesize_stories: clippingMode === "ai_enhanced",
+        }),
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.detail || `Server responded with ${res.status}`);
+      }
+
+      const data = await res.json();
+      const currentJobId = data.job_id;
+      setJobId(currentJobId);
+      setProgress(data.progress || 12);
+      setProgressMessage(data.message || "Downloading audio & video stream...");
+
+      if (data.credits_remaining !== undefined) {
+        setUserProfile((prev) => ({ ...prev, credits_remaining: data.credits_remaining }));
+      }
+
+      pollIntervalRef.current = setInterval(() => {
+        checkStatus(currentJobId);
+      }, 1200);
+
+      checkStatus(currentJobId);
+    } catch (err: any) {
+      setStatus("failed");
+      const cleanErr = (err.message || "Could not process this video. Please verify the URL and retry.")
+        .replace(/\x1b\[[0-9;]*[a-zA-Z]|\[[0-9;]+m/g, "");
+      setErrorMsg(cleanErr);
+    }
+  };
+
+  const checkStatus = async (currentJobId: string) => {
+    if (isPollingRef.current) return;
+    isPollingRef.current = true;
+    try {
+      const res = await fetch(`${BACKEND_URL}/status/${currentJobId}`);
+      if (!res.ok) throw new Error("Could not check pipeline status.");
+
+      const data = await res.json();
+      if (data.progress !== undefined) setProgress(data.progress);
+      if (data.message) setProgressMessage(data.message);
+      if (data.step) setStep(data.step);
+
+      if (data.status === "completed") {
+        stopPolling();
+        setProgress(100);
+        setStatus("completed");
+        setClips(data.clips || []);
+        showToast("Viral clips extracted successfully!", "success");
+        fetchUserProfile();
+        fetchUserHistory();
+      } else if (data.status === "failed") {
+        stopPolling();
+        setStatus("failed");
+        const cleanErr = (data.error || "Processing failed.")
+          .replace(/\x1b\[[0-9;]*[a-zA-Z]|\[[0-9;]+m/g, "");
+        setErrorMsg(cleanErr);
+      }
+    } catch (err) {
+      console.warn("Polling error:", err);
+    } finally {
+      isPollingRef.current = false;
+    }
+  };
+
+  // Download handling
+  const getClipUrl = (clip: string | ClipItemData, targetJobId?: string) => {
     const activeJobId = targetJobId || jobId;
-    if (!clip) return "";
     if (typeof clip === "string") {
-      if (clip.startsWith("http://") || clip.startsWith("https://")) return clip;
+      if (clip.startsWith("http")) return clip;
       if (clip.startsWith("/clips/")) return `${BACKEND_URL}${clip}`;
       return `${BACKEND_URL}/clips/${activeJobId}/${clip}`;
     }
-    if (typeof clip === "object") {
-      if (clip.url) {
-        if (clip.url.startsWith("http://") || clip.url.startsWith("https://")) return clip.url;
-        if (clip.url.startsWith("/clips/")) return `${BACKEND_URL}${clip.url}`;
-        return `${BACKEND_URL}/clips/${activeJobId}/${clip.url}`;
-      }
-      if (clip.filename) {
-        return `${BACKEND_URL}/clips/${activeJobId}/${clip.filename}`;
-      }
+    if (clip?.url) {
+      if (clip.url.startsWith("http")) return clip.url;
+      if (clip.url.startsWith("/clips/")) return `${BACKEND_URL}${clip.url}`;
+      return `${BACKEND_URL}/clips/${activeJobId}/${clip.url}`;
     }
-    return "";
+    return `${BACKEND_URL}/clips/${activeJobId}/${clip?.filename || "clip.mp4"}`;
   };
 
-  const getClipFilename = (clip: any) => {
-    if (!clip) return "clip.mp4";
-    if (typeof clip === "string") {
-      return clip.split("/").pop() || clip;
-    }
-    if (typeof clip === "object") {
-      return clip.filename || "clip.mp4";
-    }
-    return "clip.mp4";
-  };
-
-  const isClipCloudHosted = (clip: any) => {
-    return typeof clip === "object" && clip.is_cloud === true;
-  };
-
-  const formatSeconds = (sec?: number) => {
-    if (sec === undefined || sec === null || isNaN(sec)) return "";
-    const totalSeconds = Math.max(0, Math.floor(sec));
-    const m = Math.floor(totalSeconds / 60);
-    const s = totalSeconds % 60;
-    return `${m}:${s.toString().padStart(2, "0")}`;
-  };
-
-  const getClipTitle = (clip: any, index: number) => {
-    if (typeof clip === "object" && clip.title) {
-      return clip.title;
-    }
-    return `Best Moment #${index + 1}`;
-  };
-
-  const getClipScore = (clip: any) => {
-    if (typeof clip === "object" && typeof clip.score === "number") {
-      return clip.score;
-    }
-    return 85;
-  };
-
-  const getClipHeatmapScore = (clip: any): number | null => {
-    if (typeof clip === "object" && typeof clip.heatmap_score === "number") {
-      return clip.heatmap_score;
-    }
-    return null;
-  };
-
-  const getClipTimeRange = (clip: any) => {
-    if (typeof clip === "object" && clip.start !== undefined && clip.end !== undefined) {
-      return `${formatSeconds(clip.start)} - ${formatSeconds(clip.end)}`;
-    }
-    return null;
-  };
-
-  // Direct forced MP4 file download (solves browser popup / XML issues)
   const downloadClipFile = (clipUrl: string, filename: string) => {
     const downloadEndpoint = clipUrl.startsWith("http")
       ? `${BACKEND_URL}/download/proxy?url=${encodeURIComponent(clipUrl)}&filename=${encodeURIComponent(filename)}`
@@ -323,10 +334,10 @@ export default function Home() {
     document.body.removeChild(link);
   };
 
-  const handleDownloadSingle = (clip: string | ClipItem, targetJobId?: string) => {
+  const handleDownloadSingle = (clip: string | ClipItemData, targetJobId?: string) => {
+    const filename = typeof clip === "object" ? clip.filename : clip;
     const clipUrl = getClipUrl(clip, targetJobId);
-    const filename = getClipFilename(clip);
-    
+
     setDownloadingClips((prev) => ({ ...prev, [filename]: "downloading" }));
     downloadClipFile(clipUrl, filename);
 
@@ -342,197 +353,60 @@ export default function Home() {
     }, 600);
   };
 
-  const handleDownloadAll = (targetClips = clips, targetJobId = jobId) => {
-    if (targetClips.length === 0) return;
+  const handleDownloadAll = () => {
+    if (clips.length === 0) return;
     setIsDownloadingAll(true);
-    targetClips.forEach((clip, index) => {
+    clips.forEach((clip, index) => {
       setTimeout(() => {
-        handleDownloadSingle(clip, targetJobId || undefined);
-        if (index === targetClips.length - 1) {
+        handleDownloadSingle(clip);
+        if (index === clips.length - 1) {
           setTimeout(() => setIsDownloadingAll(false), 2000);
         }
       }, index * 400);
     });
   };
 
-  const handleDeleteProject = async (projectId: string) => {
+  const handleDeleteProject = (projectId: string) => {
     if (!session?.access_token) return;
-    if (!window.confirm("Are you sure you want to delete this project and its clips?")) return;
 
-    try {
-      const res = await fetch(`${BACKEND_URL}/user/clips/${projectId}`, {
-        method: "DELETE",
-        headers: {
-          "Authorization": `Bearer ${session.access_token}`
+    showConfirm({
+      title: "Delete Project",
+      message: "Are you sure you want to delete this project and all its generated clips?",
+      confirmText: "Delete Project",
+      cancelText: "Keep",
+      isDanger: true,
+      onConfirm: async () => {
+        try {
+          const res = await fetch(`${BACKEND_URL}/projects/${projectId}`, {
+            method: "DELETE",
+            headers: { Authorization: `Bearer ${session.access_token}` },
+          });
+          if (res.ok) {
+            setHistory((prev) => prev.filter((p) => p.id !== projectId));
+            showToast("Project deleted.", "info");
+          }
+        } catch (err) {
+          showToast("Failed to delete project.", "error");
         }
-      });
-      if (res.ok) {
-        setHistory((prev) => prev.filter((p) => p.id !== projectId));
-      } else {
-        alert("Could not delete project. Please try again.");
-      }
-    } catch (err) {
-      console.error("Delete error:", err);
-    }
-  };
-
-  const handleGenerate = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-
-    if (!youtubeUrl.trim()) {
-      setErrorMsg("Please paste a YouTube URL first.");
-      return;
-    }
-
-    const trimmedUrl = youtubeUrl.trim();
-    const isYouTube = /^(https?:\/\/)?(www\.|m\.)?(youtube\.com\/(watch\?v=|shorts\/|live\/)|youtu\.be\/)/i.test(trimmedUrl);
-    if (!isYouTube) {
-      setErrorMsg(`"${trimmedUrl}" is not a valid YouTube video link. Please enter a valid link like https://www.youtube.com/watch?v=... or https://youtu.be/...`);
-      setStatus("failed");
-      return;
-    }
-
-    if (userProfile.credits_remaining <= 0) {
-      setErrorMsg("You have reached your daily quota (0/3 video generations remaining). Quota resets at midnight UTC!");
-      return;
-    }
-
-    setErrorMsg(null);
-    setClips([]);
-    setProgress(5);
-    setProgressMessage("Starting video processing...");
-    setStatus("processing");
-    stopPolling();
-
-    try {
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
-      if (session?.access_token) {
-        headers["Authorization"] = `Bearer ${session.access_token}`;
-      }
-
-      const res = await fetch(`${BACKEND_URL}/process`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ 
-          youtube_url: youtubeUrl.trim(),
-          segment_duration: segmentDuration,
-          mode: clippingMode,
-          aspect_ratio: aspectRatio,
-          content_type: contentType,
-          stream_output_mode: streamOutputMode,
-          quality: quality,
-          synthesize_stories: clippingMode === "ai_enhanced"
-        }),
-      });
-
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.detail || `Server error (${res.status})`);
-      }
-
-      const data = await res.json();
-      const currentJobId = data.job_id;
-      setJobId(currentJobId);
-      setProgress(data.progress || 10);
-      setProgressMessage(data.message || "Downloading video...");
-
-      if (data.credits_remaining !== undefined) {
-        setUserProfile((prev) => ({ ...prev, credits_remaining: data.credits_remaining }));
-      }
-
-      pollIntervalRef.current = setInterval(() => {
-        checkStatus(currentJobId);
-      }, 1200);
-
-      checkStatus(currentJobId);
-    } catch (err: any) {
-      setStatus("failed");
-      const cleanError = (err.message || "We couldn't process that link. Please check if the video is public and try again.")
-        .replace(/\x1b\[[0-9;]*[a-zA-Z]|\[[0-9;]+m/g, '');
-      setErrorMsg(cleanError);
-    }
-  };
-
-  const checkStatus = async (currentJobId: string) => {
-    if (isPollingRef.current) return;
-    isPollingRef.current = true;
-    try {
-      const res = await fetch(`${BACKEND_URL}/status/${currentJobId}`);
-      if (!res.ok) {
-        throw new Error("Failed to read job status from backend.");
-      }
-
-      const data: JobStatusResponse = await res.json();
-
-      if (data.progress !== undefined) {
-        setProgress(data.progress);
-      }
-      if (data.message) {
-        setProgressMessage(data.message);
-      }
-      if (data.step) {
-        setStep(data.step);
-      }
-
-      if (data.status === "completed") {
-        stopPolling();
-        setProgress(100);
-        setStatus("completed");
-        setClips(data.clips || []);
-        fetchUserProfile(session?.access_token);
-        fetchUserHistory(session?.access_token);
-      } else if (data.status === "failed") {
-        stopPolling();
-        setStatus("failed");
-        const cleanError = (data.error || "We couldn't process that video. Please check if the link is valid.")
-          .replace(/\x1b\[[0-9;]*[a-zA-Z]|\[[0-9;]+m/g, '');
-        setErrorMsg(cleanError);
-        fetchUserProfile(session?.access_token);
-        fetchUserHistory(session?.access_token);
-      }
-    } catch (err: any) {
-      stopPolling();
-      setStatus("failed");
-      const cleanError = (err.message || "Error polling backend status.")
-        .replace(/\x1b\[[0-9;]*[a-zA-Z]|\[[0-9;]+m/g, '');
-      setErrorMsg(cleanError);
-    } finally {
-      isPollingRef.current = false;
-    }
-  };
-
-  const handleReset = () => {
-    stopPolling();
-    isPollingRef.current = false;
-    setIsDownloadingAll(false);
-    setDownloadingClips({});
-    setStatus("idle");
-    setJobId(null);
-    setProgress(5);
-    setProgressMessage("");
-    setClips([]);
-    setErrorMsg(null);
-    setYoutubeUrl("");
-    setActiveView("studio");
+      },
+    });
   };
 
   if (!mounted) {
     return (
-      <div className="min-h-screen bg-background text-on-background flex items-center justify-center">
-        <span className="material-symbols-outlined text-4xl text-primary animate-spin">sync</span>
+      <div className="min-h-screen bg-[#08080c] flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className={`min-h-screen flex flex-col font-body-md antialiased relative ${theme === "dark" ? "dark bg-[#0a0a0d] text-[#f8fafc]" : "bg-background text-on-background"}`}>
+    <div className={`min-h-screen flex flex-col font-sans antialiased relative selection:bg-indigo-500/30 selection:text-white ${theme === "dark" ? "dark bg-[#08080c] text-[#f8fafc]" : "light bg-[#f8fafc] text-[#0f172a]"}`}>
       
-      {/* Background radial glow */}
-      <div className="absolute inset-0 premium-bg pointer-events-none -z-10"></div>
+      {/* Ambient Studio Spotlight Backdrop */}
+      <div className="fixed inset-0 ambient-spotlight pointer-events-none -z-10" />
 
-      {/* TopNavBar */}
+      {/* Modern Top Navigation Bar */}
       <TopNavBar
         logo={{
           name: "Vakiogiri",
@@ -543,25 +417,23 @@ export default function Home() {
           {
             id: "studio",
             label: "Shorts Studio",
-            icon: "auto_fix_high",
             isActive: activeView === "studio",
             onClick: () => setActiveView("studio"),
           },
           {
             id: "stream",
             label: "Stream Studio",
-            icon: "sports_esports",
             href: "/stream",
           },
           {
             id: "history",
             label: "My Clips",
-            icon: "video_library",
             badgeCount: history.length > 0 ? history.length : undefined,
             isActive: activeView === "history",
             onClick: () => {
               if (!session) {
-                handleOpenAuth("login");
+                setAuthModalMode("login");
+                setIsAuthModalOpen(true);
               } else {
                 setActiveView("history");
                 fetchUserHistory();
@@ -571,9 +443,15 @@ export default function Home() {
         ]}
         authActions={{
           loginLabel: "Log in",
-          onLogin: () => handleOpenAuth("login"),
+          onLogin: () => {
+            setAuthModalMode("login");
+            setIsAuthModalOpen(true);
+          },
           signupLabel: "Start for free",
-          onSignup: () => handleOpenAuth("signup"),
+          onSignup: () => {
+            setAuthModalMode("signup");
+            setIsAuthModalOpen(true);
+          },
         }}
         session={session}
         userProfile={userProfile}
@@ -582,868 +460,140 @@ export default function Home() {
         onToggleTheme={toggleTheme}
       />
 
-      {/* Main Content Canvas */}
-      <main className="flex-grow flex flex-col items-center justify-center px-margin-mobile md:px-margin-desktop py-stack-lg max-w-container-max mx-auto w-full min-h-[75vh]">
+      {/* Main Canvas */}
+      <main className="flex-grow flex flex-col items-center justify-start px-4 sm:px-6 lg:px-8 py-8 md:py-12 max-w-7xl mx-auto w-full">
         
-        {/* ========================================================================= */}
-        {/* VIEW 2: MY CLIPS / GENERATION HISTORY                                      */}
-        {/* ========================================================================= */}
+        {/* VIEW 1: MY CLIPS / HISTORY */}
         {activeView === "history" && (
-          <div className="w-full max-w-container-max flex flex-col gap-8 fade-in my-auto py-4">
-            
-            {/* Gallery Header */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-outline-variant/40 pb-6">
-              <div>
-                <h1 className="text-3xl sm:text-4xl font-bold text-on-surface tracking-tight">My Generated Clips</h1>
-                <p className="text-sm text-secondary mt-1">
-                  Access, stream, and download all your past vertical video cut projects.
-                </p>
-              </div>
-
-              <button
-                onClick={() => setActiveView("studio")}
-                className="bg-primary text-on-primary font-semibold text-xs sm:text-sm px-5 py-2.5 rounded-xl flex items-center gap-2 hover:bg-surface-tint transition-all shadow-sm cursor-pointer"
-              >
-                <span className="material-symbols-outlined text-base">add</span>
-                <span>New Video</span>
-              </button>
-            </div>
-
-            {loadingHistory ? (
-              <div className="flex flex-col items-center justify-center py-20 gap-3 text-secondary">
-                <span className="material-symbols-outlined text-4xl text-primary animate-spin">sync</span>
-                <p className="text-sm">Loading your clips gallery...</p>
-              </div>
-            ) : history.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-20 text-center gap-4 bg-surface-container-lowest border border-outline-variant/50 rounded-3xl p-8 max-w-md mx-auto">
-                <div className="w-16 h-16 rounded-2xl bg-surface-container flex items-center justify-center text-secondary">
-                  <span className="material-symbols-outlined text-3xl">video_library</span>
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-on-surface">No clips generated yet</h3>
-                  <p className="text-xs text-secondary mt-1 max-w-xs">
-                    Paste a YouTube link in the Studio to create your first viral shorts project!
-                  </p>
-                </div>
-                <button
-                  onClick={() => setActiveView("studio")}
-                  className="mt-2 px-6 py-2.5 bg-primary text-on-primary font-semibold text-xs rounded-xl hover:bg-surface-tint transition-all shadow-sm cursor-pointer"
-                >
-                  Go to Studio
-                </button>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-10">
-                {history.map((project, pIndex) => (
-                  <div 
-                    key={project.id || pIndex}
-                    className="bg-surface-container-lowest border border-outline-variant/60 rounded-3xl p-6 flex flex-col gap-6 shadow-sm relative overflow-hidden"
-                  >
-                    {/* Project Meta Bar */}
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-outline-variant/30 pb-4">
-                      <div className="flex flex-col gap-1 max-w-xl">
-                        <div className="flex items-center gap-2">
-                          <span className="material-symbols-outlined text-primary text-lg">smart_display</span>
-                          <span className="text-xs font-semibold text-secondary uppercase tracking-wider">
-                            Project #{history.length - pIndex}
-                          </span>
-                          <span className="text-[11px] px-2 py-0.5 rounded-full bg-surface-container-low text-secondary font-medium">
-                            {project.segment_duration || 45}s Cuts
-                          </span>
-                        </div>
-                        <a 
-                          href={project.youtube_url} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="text-sm font-medium text-on-surface hover:text-primary transition-colors truncate max-w-md"
-                        >
-                          {project.youtube_url}
-                        </a>
-                      </div>
-
-                      <div className="flex items-center gap-2.5 w-full sm:w-auto justify-between sm:justify-end">
-                        <span className="text-xs text-outline">
-                          {new Date(project.created_at).toLocaleDateString()}
-                        </span>
-                        {project.clips && project.clips.length > 0 && (
-                          <button
-                            onClick={() => handleDownloadAll(project.clips, project.id)}
-                            className="px-3.5 py-1.5 bg-surface-container-low hover:bg-surface-container text-on-surface text-xs font-semibold rounded-xl border border-outline-variant/60 flex items-center gap-1.5 transition-colors cursor-pointer"
-                          >
-                            <span className="material-symbols-outlined text-sm">download</span>
-                            <span>Download All</span>
-                          </button>
-                        )}
-                        {/* Delete Project Button */}
-                        <button
-                          onClick={() => handleDeleteProject(project.id)}
-                          title="Delete project"
-                          className="p-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-xl border border-red-500/20 flex items-center justify-center transition-colors cursor-pointer"
-                        >
-                          <span className="material-symbols-outlined text-sm">delete</span>
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Clips Grid */}
-                    {project.clips && project.clips.length > 0 ? (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                        {project.clips.map((clip, cIndex) => {
-                          const clipUrl = getClipUrl(clip, project.id);
-                          const filename = getClipFilename(clip);
-                          const isCloud = isClipCloudHosted(clip);
-                          const title = getClipTitle(clip, cIndex);
-                          const score = getClipScore(clip);
-                          const heatmapScore = getClipHeatmapScore(clip);
-                          const timeRange = getClipTimeRange(clip);
-
-                          return (
-                            <div 
-                              key={filename + cIndex}
-                              className="bg-surface-container-low border border-outline-variant/40 rounded-2xl overflow-hidden flex flex-col shadow-xs"
-                            >
-                              <div className="relative aspect-[9/16] bg-black/95 dark:bg-black overflow-hidden border-b border-outline-variant/30">
-                                <video
-                                  src={clipUrl}
-                                  controls
-                                  playsInline
-                                  preload="metadata"
-                                  className="w-full h-full object-cover"
-                                />
-                              </div>
-
-                              <div className="p-3 flex flex-col gap-2 justify-between flex-grow">
-                                <div className="flex flex-col gap-1">
-                                  <div className="flex justify-between items-start gap-1">
-                                    <span className="font-semibold text-on-surface text-xs truncate max-w-[130px]" title={title}>
-                                      {title}
-                                    </span>
-                                    <div className="flex items-center gap-1 shrink-0">
-                                      <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full ${
-                                        score >= 90
-                                          ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-                                          : "bg-primary/15 text-primary"
-                                      }`}>
-                                        🔥 {score}
-                                      </span>
-                                      {heatmapScore !== null && (
-                                        <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/20" title="Audience Heatmap Replay Score">
-                                          📈 {heatmapScore}%
-                                        </span>
-                                      )}
-                                    </div>
-                                  </div>
-
-                                  <div className="flex items-center gap-1.5 text-[10px] text-secondary">
-                                    {timeRange && (
-                                      <span className="font-mono bg-surface-container px-1 rounded">
-                                        {timeRange}
-                                      </span>
-                                    )}
-                                    {isCloud && (
-                                      <span className="px-1 bg-primary/10 text-primary font-bold rounded">
-                                        CDN
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-
-                                <button
-                                  type="button"
-                                  onClick={() => handleDownloadSingle(clip, project.id)}
-                                  className={`w-full py-1.5 text-[11px] font-medium rounded-lg flex items-center justify-center gap-1 border transition-all cursor-pointer ${
-                                    downloadingClips[filename] === "done"
-                                      ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
-                                      : downloadingClips[filename] === "downloading"
-                                      ? "bg-primary/20 border-primary/40 text-primary"
-                                      : "bg-surface-container hover:bg-surface-container-high text-on-surface border-outline-variant/40"
-                                  }`}
-                                >
-                                  <span className={`material-symbols-outlined text-[14px] ${downloadingClips[filename] === "downloading" ? "animate-spin" : ""}`}>
-                                    {downloadingClips[filename] === "done" ? "check_circle" : downloadingClips[filename] === "downloading" ? "sync" : "download"}
-                                  </span>
-                                  <span>
-                                    {downloadingClips[filename] === "done" ? "Downloaded!" : downloadingClips[filename] === "downloading" ? "Downloading..." : "Download MP4"}
-                                  </span>
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <div className="py-4 text-xs text-secondary italic">
-                        {project.status === "failed" ? "Processing failed for this video." : "No clips available."}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          <HistoryView
+            history={history}
+            loading={loadingHistory}
+            onDeleteProject={handleDeleteProject}
+            onDownloadSingle={handleDownloadSingle}
+            onBackToStudio={() => setActiveView("studio")}
+            backendUrl={BACKEND_URL}
+          />
         )}
 
-        {/* ========================================================================= */}
-        {/* VIEW 1: STUDIO (GENERATOR CANVAS)                                         */}
-        {/* ========================================================================= */}
+        {/* VIEW 2: SHORTS STUDIO */}
         {activeView === "studio" && (
-          <>
-            {/* STATE 1: IDLE / LANDING */}
-            {status === "idle" && (
-              <div className="max-w-[840px] w-full text-center flex flex-col gap-10 items-center fade-in my-auto py-6">
-                
-                {/* Hero Typography */}
-                <div className="flex flex-col gap-5 items-center">
-                  <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-primary/10 border border-primary/20 text-primary text-xs font-semibold tracking-wide">
-                    <span className="material-symbols-outlined text-[15px]">auto_awesome</span>
-                    <span>3-Stage AI Best Moment Detector</span>
+          <div className="w-full flex flex-col items-center gap-8 text-center my-auto">
+            
+            {/* Completed Results Showcase */}
+            {status === "completed" && clips.length > 0 ? (
+              <ClipShowcaseGrid
+                clips={clips}
+                onReset={handleReset}
+                onDownloadSingle={handleDownloadSingle}
+                onDownloadAll={handleDownloadAll}
+                isDownloadingAll={isDownloadingAll}
+                downloadingClips={downloadingClips}
+                backendUrl={BACKEND_URL}
+                jobId={jobId}
+              />
+            ) : (
+              /* Hero Ingestion & Active Processing State */
+              <>
+                {/* Hero Header */}
+                <div className="flex flex-col items-center gap-4 max-w-3xl">
+                  <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 text-xs font-semibold tracking-wide">
+                    <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>3-Stage AI Best Moment & Virality Engine</span>
                   </div>
-                  <h1 className="text-[44px] leading-[1.1] md:text-[72px] md:leading-[1.05] font-bold text-on-surface tracking-tighter">
-                    Turn any YouTube video into shorts, <span className="text-primary italic font-medium">instantly.</span>
+
+                  <h1 className="text-4xl sm:text-6xl md:text-7xl font-extrabold tracking-tight leading-[1.08] text-white">
+                    Turn any YouTube video into shorts,{" "}
+                    <span className="bg-gradient-to-r from-indigo-400 via-purple-400 to-cyan-400 bg-clip-text text-transparent italic font-serif">
+                      instantly.
+                    </span>
                   </h1>
-                  <p className="text-[18px] md:text-[20px] leading-[28px] md:leading-[32px] text-secondary max-w-2xl mt-1 font-light">
-                    AI analyzes vocal energy peaks, audience replayed heatmaps, and hook virality to craft captivating vertical shorts.
+
+                  <p className="text-base sm:text-lg text-slate-400 max-w-2xl font-normal leading-relaxed">
+                    AI analyzes vocal energy peaks, audience replay heatmaps, and hooks to extract viral-ready vertical clips with zero editing.
                   </p>
                 </div>
 
-                {/* Input Form */}
-                <form onSubmit={handleGenerate} className="w-full max-w-[680px] relative mt-2 flex flex-col gap-4 group">
-                  {/* Dual Mode Switcher: Fast Highlights vs AI Smart Moments */}
-                  <div className="flex flex-col sm:flex-row items-center justify-between gap-2 p-1.5 bg-surface-container-lowest/90 border border-outline-variant/60 rounded-2xl shadow-sm">
-                    <div className="flex items-center gap-1.5 w-full sm:w-auto">
-                      <button
-                        type="button"
-                        onClick={() => setClippingMode("heuristic")}
-                        className={`flex-1 sm:flex-initial py-2 px-4 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                          clippingMode === "heuristic"
-                            ? "bg-primary text-on-primary shadow-sm"
-                            : "bg-transparent text-secondary hover:text-on-surface"
-                        }`}
-                      >
-                        <span className="material-symbols-outlined text-[16px]">bolt</span>
-                        <span>Fast Highlights</span>
-                        <span className={`text-[10px] px-1.5 py-0.2 font-bold rounded-full ${
-                          clippingMode === "heuristic" ? "bg-white/20 text-white" : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-                        }`}>
-                          FREE
-                        </span>
-                      </button>
+                {/* Primary Hero URL Input Bar */}
+                <HeroInputBar
+                  value={youtubeUrl}
+                  onChange={setYoutubeUrl}
+                  onSubmit={handleGenerate}
+                  isProcessing={status === "processing"}
+                  onPasteNotification={(msg) => showToast(msg, "info")}
+                />
 
-                      <button
-                        type="button"
-                        onClick={() => setClippingMode("ai_enhanced")}
-                        className={`flex-1 sm:flex-initial py-2 px-4 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                          clippingMode === "ai_enhanced"
-                            ? "bg-primary text-on-primary shadow-sm"
-                            : "bg-transparent text-secondary hover:text-on-surface"
-                        }`}
-                      >
-                        <span className="material-symbols-outlined text-[16px]">auto_awesome</span>
-                        <span>AI Smart Moments</span>
-                        <span className={`text-[10px] px-1.5 py-0.2 font-bold rounded-full ${
-                          clippingMode === "ai_enhanced" ? "bg-white/20 text-white" : "bg-primary/15 text-primary"
-                        }`}>
-                          PRO
-                        </span>
-                      </button>
-                    </div>
+                {/* Quick Presets (Aspect ratio, Duration, Advanced Drawer) */}
+                <QuickPresetBar
+                  aspectRatio={aspectRatio}
+                  onAspectRatioChange={setAspectRatio}
+                  segmentDuration={segmentDuration}
+                  onSegmentDurationChange={setSegmentDuration}
+                  showAdvanced={showAdvanced}
+                  onToggleAdvanced={() => setShowAdvanced((prev) => !prev)}
+                  disabled={status === "processing"}
+                />
 
-                    <span className="text-[11px] text-secondary px-3 py-1 font-medium hidden sm:inline-block">
-                      {clippingMode === "heuristic" 
-                        ? "⚡ Heatmap + Audio Spikes (0 Credits)" 
-                        : "🧠 AI Story Arc (1 Credit)"}
-                    </span>
-                  </div>
+                {/* Collapsible Advanced Settings Drawer */}
+                <AdvancedDrawer
+                  isOpen={showAdvanced}
+                  quality={quality}
+                  onQualityChange={setQuality}
+                  clippingMode={clippingMode}
+                  onClippingModeChange={setClippingMode}
+                  captionStyle={captionStyle}
+                  onCaptionStyleChange={setCaptionStyle}
+                  disabled={status === "processing"}
+                />
 
-                  <div className="relative flex flex-col sm:flex-row items-stretch sm:items-center bg-surface-container-lowest rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-outline-variant/60 hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] hover:border-outline-variant transition-all duration-300 p-2 gap-2 overflow-hidden">
-                    <div className="flex items-center flex-grow pl-3 pr-2 py-1">
-                      <span className="material-symbols-outlined text-outline group-focus-within:text-primary transition-colors text-xl mr-2">link</span>
-                      <input
-                        type="url"
-                        placeholder="https://www.youtube.com/watch?v=..."
-                        value={youtubeUrl}
-                        onChange={(e) => setYoutubeUrl(e.target.value)}
-                        className="w-full bg-transparent border-none text-[16px] sm:text-[18px] text-on-surface placeholder:text-outline/70 focus:ring-0 focus:outline-none transition-all"
-                        required
-                      />
-                      <button
-                        type="button"
-                        onClick={handlePasteFromClipboard}
-                        className="shrink-0 px-2.5 py-1.5 rounded-lg bg-surface-container-low hover:bg-surface-container text-secondary hover:text-on-surface text-xs font-semibold flex items-center gap-1 border border-outline-variant/40 transition-all cursor-pointer"
-                        title="Paste from clipboard"
-                      >
-                        <span className="material-symbols-outlined text-[15px]">
-                          {pasted ? "done" : "content_paste"}
-                        </span>
-                        <span>{pasted ? "Pasted!" : "Paste"}</span>
-                      </button>
-                    </div>
-                    <button
-                      type="submit"
-                      disabled={!youtubeUrl.trim() || (clippingMode === "ai_enhanced" && userProfile.credits_remaining <= 0)}
-                      className="px-8 py-3.5 sm:py-4 bg-primary text-on-primary rounded-xl font-label-md text-[15px] font-semibold hover:bg-surface-tint transition-all flex items-center justify-center gap-2 shadow-sm active:scale-[0.98] shrink-0 disabled:opacity-50 cursor-pointer"
-                    >
-                      <span>{clippingMode === "heuristic" ? "Detect Highlights (Free)" : "Detect & Clip (AI)"}</span>
-                      <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
-                    </button>
-                  </div>
+                {/* Live Animated 4-Stage Pipeline Radar (Processing State) */}
+                {status === "processing" && (
+                  <LivePipelineTracker
+                    progress={progress}
+                    step={step}
+                    progressMessage={progressMessage}
+                  />
+                )}
 
-                  {/* Clip Format & Duration Selector */}
-                  <div className="flex flex-wrap items-center justify-between gap-3 px-1 text-xs">
-                    {/* Format Pills: 9:16 Shorts vs 16:9 Landscape */}
-                    <div className="flex items-center gap-1.5 bg-surface-container-low p-1 rounded-xl border border-outline-variant/50">
-                      <button
-                        type="button"
-                        onClick={() => setAspectRatio("9:16")}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                          aspectRatio === "9:16"
-                            ? "bg-surface-container-lowest text-primary shadow-xs border border-outline-variant/40"
-                            : "text-secondary hover:text-on-surface"
-                        }`}
-                      >
-                        <span className="material-symbols-outlined text-[15px]">smartphone</span>
-                        <span>📱 9:16 Shorts / Reels</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setAspectRatio("16:9")}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                          aspectRatio === "16:9"
-                            ? "bg-surface-container-lowest text-primary shadow-xs border border-outline-variant/40"
-                            : "text-secondary hover:text-on-surface"
-                        }`}
-                      >
-                        <span className="material-symbols-outlined text-[15px]">crop_16_9</span>
-                        <span>🎬 16:9 Landscape Clip</span>
-                      </button>
-                    </div>
-
-                    {/* Clip Duration Pills */}
-                    <div className="flex items-center gap-2">
-                      <span className="text-secondary font-medium">Clip Length:</span>
-                      {[30, 45, 60, 90].map((dur) => (
-                        <button
-                          key={dur}
-                          type="button"
-                          onClick={() => setSegmentDuration(dur)}
-                          className={`px-2.5 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer ${
-                            segmentDuration === dur
-                              ? "bg-primary text-on-primary shadow-sm"
-                              : "bg-surface-container-low text-secondary hover:text-on-surface border border-outline-variant/60"
-                          }`}
-                        >
-                          {dur}s
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Dedicated Stream Studio Callout Banner */}
-                  <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3 bg-primary/5 border border-primary/20 rounded-xl text-xs transition-all">
-                    <div className="flex items-center gap-2.5 text-on-surface text-left">
-                      <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                        <span className="material-symbols-outlined text-[17px] text-primary">sports_esports</span>
+                {/* Error State Banner */}
+                {status === "failed" && errorMsg && (
+                  <div className="w-full max-w-3xl p-5 rounded-2xl bg-rose-500/10 border border-rose-500/25 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-left animate-in fade-in">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center shrink-0">
+                        <AlertTriangle className="w-5 h-5" />
                       </div>
                       <div>
-                        <div className="font-semibold text-on-surface">Need long gaming stream highlights?</div>
-                        <div className="text-secondary text-[11px]">Skip streamer intros, extract custom stream sections & combine into 1 cinema reel with auto-chapters.</div>
+                        <h4 className="text-sm font-bold text-white">Generation Failed</h4>
+                        <p className="text-xs text-rose-300 mt-0.5 leading-relaxed">{errorMsg}</p>
                       </div>
                     </div>
-                    <Link
-                      href="/stream"
-                      className="px-3.5 py-1.5 bg-primary text-on-primary rounded-lg font-semibold text-xs hover:bg-surface-tint transition-all shrink-0 flex items-center gap-1.5 shadow-xs cursor-pointer"
-                    >
-                      <span>Open Stream Studio</span>
-                      <span className="material-symbols-outlined text-[15px]">arrow_forward</span>
-                    </Link>
-                  </div>
 
-                  {/* Video Quality Selector */}
-                  <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5 p-2.5 bg-surface-container-low/90 border border-outline-variant/60 rounded-xl text-xs transition-all">
-                    <div className="flex items-center gap-1.5 text-secondary font-medium">
-                      <span className="material-symbols-outlined text-[16px] text-primary">high_quality</span>
-                      <span>Video Quality:</span>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto">
-                      {(["1080p", "720p", "480p"] as const).map((q) => (
-                        <button
-                          key={q}
-                          type="button"
-                          onClick={() => setQuality(q)}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
-                            quality === q
-                              ? "bg-primary text-on-primary shadow-xs"
-                              : "bg-surface-container-lowest text-secondary hover:text-on-surface border border-outline-variant/40"
-                          }`}
-                          title={`Downloads and renders in ${q} if available on YouTube (otherwise auto-downloads best available quality)`}
-                        >
-                          <span>{q === "1080p" ? "🎬 1080p (Full HD)" : q === "720p" ? "⚡ 720p (Fast HD)" : "📱 480p (Fastest)"}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {userProfile.credits_remaining <= 0 && clippingMode === "ai_enhanced" && (
-                    <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-600 dark:text-amber-400 text-center flex flex-col sm:flex-row items-center justify-center gap-2">
-                      <span>Daily AI credit limit reached (0/3).</span>
-                      <button
-                        type="button"
-                        onClick={() => setClippingMode("heuristic")}
-                        className="underline font-bold hover:text-amber-700 cursor-pointer"
-                      >
-                        Switch to Fast Highlights (100% Free & Unlimited)
-                      </button>
-                    </div>
-                  )}
-                </form>
-
-                {/* Three-step preview */}
-                <div id="how-it-works" className="grid grid-cols-1 md:grid-cols-3 gap-8 w-full max-w-3xl mt-12 pt-10 border-t border-outline-variant/30 text-left">
-                  <div className="flex flex-col gap-3">
-                    <div className="w-10 h-10 rounded-full bg-surface-container-low flex items-center justify-center text-primary font-bold font-label-md mb-1">1</div>
-                    <h3 className="font-headline-sm text-[18px] text-on-surface font-semibold">1. Energy & Reaction Spikes</h3>
-                    <p className="font-body-sm text-secondary leading-relaxed">Detects vocal peaks, crowd reactions, and laughter to identify the most exciting moments.</p>
-                  </div>
-
-                  <div className="flex flex-col gap-3">
-                    <div className="w-10 h-10 rounded-full bg-surface-container-low flex items-center justify-center text-primary font-bold font-label-md mb-1">2</div>
-                    <h3 className="font-headline-sm text-[18px] text-on-surface font-semibold">2. Audience Retention Heatmap</h3>
-                    <p className="font-body-sm text-secondary leading-relaxed">Mines YouTube's most-replayed curves and timestamps to pinpoint community-favorite clips.</p>
-                  </div>
-
-                  <div className="flex flex-col gap-3">
-                    <div className="w-10 h-10 rounded-full bg-surface-container-low flex items-center justify-center text-primary font-bold font-label-md mb-1">3</div>
-                    <h3 className="font-headline-sm text-[18px] text-on-surface font-semibold">3. Smart 9:16 Framing & Hooks</h3>
-                    <p className="font-body-sm text-secondary leading-relaxed">Scores opening hook retention, aligns speech, and renders ready-to-publish vertical clips.</p>
-                  </div>
-                </div>
-
-              </div>
-            )}
-
-            {/* STATE 2: PROCESSING */}
-            {status === "processing" && (
-              <div className="w-full max-w-2xl flex flex-col items-center text-center fade-in my-auto py-8">
-                
-                {/* Animated Processing Icon */}
-                <div className="w-16 h-16 mb-6 flex items-center justify-center rounded-2xl bg-primary/10">
-                  <span className="material-symbols-outlined text-4xl text-primary animate-spin" style={{ fontVariationSettings: "'FILL' 0, 'wght' 300" }}>sync</span>
-                </div>
-
-                <h1 className="font-display-lg text-[36px] md:text-[48px] text-on-surface mb-2 font-bold">Detecting best moments...</h1>
-                <p className="font-body-lg text-body-lg text-secondary mb-6 max-w-lg">
-                  {progressMessage || "Processing video and scoring highest engagement moments..."}
-                </p>
-
-                {/* Live 4-Stage Stepper */}
-                <div className="w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-                  {/* Stage 1: Audio Vibe */}
-                  <div className={`p-3.5 rounded-2xl border flex flex-col gap-1.5 transition-all text-left ${
-                    step === "analyzing_audio" || (progress >= 35 && progress < 55)
-                      ? "bg-primary/5 border-primary ring-1 ring-primary/20"
-                      : progress >= 55
-                      ? "bg-emerald-500/5 border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
-                      : "bg-surface-container-low border-outline-variant/40 opacity-70"
-                  }`}>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5 font-bold text-xs">
-                        <span className="material-symbols-outlined text-base">graphic_eq</span>
-                        <span>1. Vibe Check</span>
-                      </div>
-                      {progress >= 55 ? (
-                        <span className="material-symbols-outlined text-base text-emerald-500">check_circle</span>
-                      ) : step === "analyzing_audio" || (progress >= 35 && progress < 55) ? (
-                        <span className="material-symbols-outlined text-base text-primary animate-spin">progress_activity</span>
-                      ) : (
-                        <span className="text-[10px] text-secondary font-mono">dB Spikes</span>
-                      )}
-                    </div>
-                    <p className="text-[11px] text-secondary">Vocal energy & reactions</p>
-                  </div>
-
-                  {/* Stage 2: Most Replayed Heatmap */}
-                  <div className={`p-3.5 rounded-2xl border flex flex-col gap-1.5 transition-all text-left ${
-                    step === "analyzing_heatmap" || (progress >= 55 && progress < 70)
-                      ? "bg-primary/5 border-primary ring-1 ring-primary/20"
-                      : progress >= 70
-                      ? "bg-emerald-500/5 border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
-                      : "bg-surface-container-low border-outline-variant/40 opacity-70"
-                  }`}>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5 font-bold text-xs">
-                        <span className="material-symbols-outlined text-base">insights</span>
-                        <span>2. Heatmap</span>
-                      </div>
-                      {progress >= 70 ? (
-                        <span className="material-symbols-outlined text-base text-emerald-500">check_circle</span>
-                      ) : step === "analyzing_heatmap" || (progress >= 55 && progress < 70) ? (
-                        <span className="material-symbols-outlined text-base text-primary animate-spin">progress_activity</span>
-                      ) : (
-                        <span className="text-[10px] text-secondary font-mono">YouTube</span>
-                      )}
-                    </div>
-                    <p className="text-[11px] text-secondary">Audience replay curve</p>
-                  </div>
-
-                  {/* Stage 3: Social Proof */}
-                  <div className={`p-3.5 rounded-2xl border flex flex-col gap-1.5 transition-all text-left ${
-                    step === "analyzing_comments" || (progress >= 70 && progress < 80)
-                      ? "bg-primary/5 border-primary ring-1 ring-primary/20"
-                      : progress >= 80
-                      ? "bg-emerald-500/5 border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
-                      : "bg-surface-container-low border-outline-variant/40 opacity-70"
-                  }`}>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5 font-bold text-xs">
-                        <span className="material-symbols-outlined text-base">forum</span>
-                        <span>3. Social Proof</span>
-                      </div>
-                      {progress >= 80 ? (
-                        <span className="material-symbols-outlined text-base text-emerald-500">check_circle</span>
-                      ) : step === "analyzing_comments" || (progress >= 70 && progress < 80) ? (
-                        <span className="material-symbols-outlined text-base text-primary animate-spin">progress_activity</span>
-                      ) : (
-                        <span className="text-[10px] text-secondary font-mono">Comments</span>
-                      )}
-                    </div>
-                    <p className="text-[11px] text-secondary">Community timestamps</p>
-                  </div>
-
-                  {/* Stage 4: Sense Check */}
-                  <div className={`p-3.5 rounded-2xl border flex flex-col gap-1.5 transition-all text-left ${
-                    step === "analyzing_transcript" || (progress >= 80 && progress < 90)
-                      ? "bg-primary/5 border-primary ring-1 ring-primary/20"
-                      : progress >= 90
-                      ? "bg-emerald-500/5 border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
-                      : "bg-surface-container-low border-outline-variant/40 opacity-70"
-                  }`}>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5 font-bold text-xs">
-                        <span className="material-symbols-outlined text-base">psychology</span>
-                        <span>4. Hook Virality</span>
-                      </div>
-                      {progress >= 90 ? (
-                        <span className="material-symbols-outlined text-base text-emerald-500">check_circle</span>
-                      ) : step === "analyzing_transcript" || (progress >= 80 && progress < 90) ? (
-                        <span className="material-symbols-outlined text-base text-primary animate-spin">progress_activity</span>
-                      ) : (
-                        <span className="text-[10px] text-secondary font-mono">AI Hooks</span>
-                      )}
-                    </div>
-                    <p className="text-[11px] text-secondary">Opening retention rating</p>
-                  </div>
-                </div>
-
-                {/* Live Progress Card */}
-                <div className="w-full bg-surface-container-low border border-outline-variant rounded-2xl p-6 flex flex-col gap-4 shadow-sm relative overflow-hidden text-left">
-                  <div className="flex items-center justify-between text-secondary text-sm">
-                    <div className="flex items-center gap-2 truncate max-w-[80%]">
-                      <span className="material-symbols-outlined text-base">link</span>
-                      <span className="truncate">{youtubeUrl}</span>
-                    </div>
-                    <span className="font-bold text-primary">{progress}%</span>
-                  </div>
-
-                  {/* Dynamic Progress Bar with Stitch Pulse Animation */}
-                  <div className="w-full flex flex-col gap-2">
-                    <div className="w-full bg-outline-variant/30 rounded-full h-2.5 overflow-hidden">
-                      <div 
-                        className="bg-primary h-2.5 rounded-full transition-all duration-500 ease-out"
-                        style={{ width: `${progress}%` }}
-                      ></div>
-                    </div>
-                    <div className="pulse-bar"></div>
-                  </div>
-
-                  <div className="flex justify-between items-center text-xs text-secondary pt-1">
-                    <span className="capitalize">{step.replace('_', ' ')}</span>
-                    <span>{segmentDuration}s best moments • Auto 9:16</span>
-                  </div>
-                </div>
-
-                <div className="mt-6 text-center">
-                  <p className="font-body-sm text-body-sm text-outline">AI auto-framing, subtitle synchronization, and instant vertical rendering active.</p>
-                </div>
-              </div>
-            )}
-
-            {/* STATE 3: ERROR STATE */}
-            {status === "failed" && (
-              <div className="max-w-[520px] w-full text-center flex flex-col items-center fade-in my-auto py-8">
-                <div className="w-16 h-16 rounded-2xl bg-red-500/10 text-red-500 flex items-center justify-center mb-6">
-                  <span className="material-symbols-outlined text-[36px]">error_outline</span>
-                </div>
-
-                <h1 className="font-display-lg text-[32px] md:text-[44px] text-on-surface mb-2 tracking-tight font-bold">Something went wrong.</h1>
-                <p className="font-body-md text-secondary mb-6 max-w-[440px]">
-                  {errorMsg || "We couldn't process that link. Please verify that the video is public and accessible."}
-                </p>
-
-                {/* Editable Recovery Input */}
-                <div className="w-full bg-surface-container-lowest border border-outline-variant/70 rounded-2xl p-2 mb-6 flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shadow-xs">
-                  <div className="flex items-center flex-grow pl-3 pr-2 py-1">
-                    <span className="material-symbols-outlined text-outline text-lg mr-2">link</span>
-                    <input
-                      type="url"
-                      placeholder="https://www.youtube.com/watch?v=..."
-                      value={youtubeUrl}
-                      onChange={(e) => setYoutubeUrl(e.target.value)}
-                      className="w-full bg-transparent border-none text-sm text-on-surface placeholder:text-outline/70 focus:outline-none"
-                    />
                     <button
                       type="button"
-                      onClick={handlePasteFromClipboard}
-                      className="shrink-0 px-2 py-1 rounded-lg bg-surface-container-low hover:bg-surface-container text-secondary text-xs font-medium"
+                      onClick={() => handleGenerate()}
+                      className="shrink-0 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-md"
                     >
-                      Paste
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>Retry</span>
                     </button>
                   </div>
-                </div>
-
-                <div className="flex flex-wrap items-center justify-center gap-3">
-                  <button
-                    onClick={() => handleGenerate()}
-                    className="bg-primary text-on-primary font-semibold text-sm px-6 py-3 rounded-xl flex items-center gap-2 hover:bg-surface-tint transition-all shadow-sm active:scale-[0.98] cursor-pointer"
-                  >
-                    <span className="material-symbols-outlined text-[18px]">refresh</span>
-                    <span>Retry Video</span>
-                  </button>
-                  <button
-                    onClick={handleReset}
-                    className="bg-surface-container-low hover:bg-surface-container text-on-surface font-semibold text-sm px-6 py-3 rounded-xl border border-outline-variant/60 flex items-center gap-2 transition-all active:scale-[0.98] cursor-pointer"
-                  >
-                    <span className="material-symbols-outlined text-[18px]">arrow_back</span>
-                    <span>Back to Studio</span>
-                  </button>
-                </div>
-              </div>
+                )}
+              </>
             )}
 
-            {/* STATE 4: RESULTS */}
-            {status === "completed" && (
-              <div className="w-full max-w-container-max flex flex-col gap-stack-lg fade-in my-auto">
-                
-                {/* Header */}
-                <header className="flex flex-col gap-stack-sm md:items-center text-left md:text-center">
-                  <h1 className="font-display-lg text-[40px] md:text-[56px] text-on-background font-bold">
-                    {aspectRatio === "16:9" 
-                      ? (clips.length === 1 && typeof clips[0] === "object" && (clips[0] as any).is_compilation 
-                          ? "Your Master Highlight Reel is Ready" 
-                          : "Your Stream Highlights are Ready")
-                      : "Your Clips are Ready"}
-                  </h1>
-                  <p className="font-body-lg text-body-lg text-secondary max-w-[600px] mx-auto">
-                    {aspectRatio === "16:9"
-                      ? (clips.length === 1 && typeof clips[0] === "object" && (clips[0] as any).is_compilation
-                          ? "Top clutches, screams, and epic gameplay moments compiled into 1 continuous YouTube-ready video with chapter markers."
-                          : `Identified and rendered ${clips.length} high-energy highlight cut(s) across your entire stream.`)
-                      : `We've auto-framed and rendered ${clips.length} vertical short(s) for your video.`}
-                  </p>
-                </header>
-
-                {/* Action Bar */}
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-outline-variant/40 pb-4">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                    <span className="font-semibold text-sm text-on-surface">
-                      {clips.length} clip{clips.length !== 1 ? "s" : ""} ready for export
-                    </span>
-                    <span className="text-xs text-secondary">
-                      • {aspectRatio === "16:9" ? "1920x1080 Widescreen (Stream)" : "1080x1920 Vertical (Shorts)"}
-                    </span>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
-                    <button
-                      onClick={handleReset}
-                      className="flex-1 sm:flex-initial px-4 py-2.5 rounded-xl border border-outline-variant/60 hover:bg-surface-container-low text-on-surface font-semibold text-xs sm:text-sm flex items-center justify-center gap-1.5 transition-all active:scale-[0.98] cursor-pointer"
-                    >
-                      <span className="material-symbols-outlined text-[18px]">add</span>
-                      <span>New Video</span>
-                    </button>
-
-                    <button
-                      onClick={() => handleDownloadAll()}
-                      disabled={isDownloadingAll}
-                      className="flex-1 sm:flex-initial bg-primary text-on-primary font-semibold text-xs sm:text-sm px-5 py-2.5 rounded-xl flex items-center justify-center gap-2 hover:bg-surface-tint transition-all duration-200 shadow-sm active:scale-[0.98] cursor-pointer disabled:opacity-60"
-                    >
-                      <span className={`material-symbols-outlined text-[18px] ${isDownloadingAll ? "animate-spin" : ""}`}>
-                        {isDownloadingAll ? "sync" : "download_for_offline"}
-                      </span>
-                      <span>{isDownloadingAll ? "Downloading All..." : "Download All"}</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Video Cards Grid */}
-                <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-gutter">
-                  {clips.map((clip, index) => {
-                    const clipUrl = getClipUrl(clip);
-                    const filename = getClipFilename(clip);
-                    const isCloud = isClipCloudHosted(clip);
-                    const title = getClipTitle(clip, index);
-                    const score = getClipScore(clip);
-                    const heatmapScore = getClipHeatmapScore(clip);
-                    const timeRange = getClipTimeRange(clip);
-                    const downloadState = downloadingClips[filename];
-                    const isLandscape = (typeof clip === "object" && (clip as any)?.aspect_ratio === "16:9") || aspectRatio === "16:9";
-
-                    return (
-                      <article 
-                        key={filename + index}
-                        className="bg-surface-container-lowest border border-outline-variant/50 rounded-2xl overflow-hidden flex flex-col shadow-sm hover:shadow-md transition-all group"
-                      >
-                        {/* Video Player */}
-                        <div className={`relative ${isLandscape ? "aspect-[16/9]" : "aspect-[9/16]"} bg-black/95 dark:bg-black overflow-hidden flex items-center justify-center border-b border-outline-variant/30`}>
-                          <video
-                            src={clipUrl}
-                            controls
-                            playsInline
-                            preload="metadata"
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
-
-                        {/* Meta & Download */}
-                        <div className="p-4 flex flex-col gap-3 justify-between flex-grow">
-                          <div className="flex flex-col gap-2">
-                            <div className="flex justify-between items-start gap-2">
-                              <h2 className="font-label-lg text-[15px] text-on-surface font-bold leading-tight">
-                                {title}
-                              </h2>
-                              <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
-                                <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-xs ${
-                                  score >= 90
-                                    ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
-                                    : score >= 80
-                                    ? "bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30"
-                                    : "bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30"
-                                }`}>
-                                  <span>🔥</span>
-                                  <span>{score} Score</span>
-                                </span>
-                                {heatmapScore !== null && (
-                                  <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30 flex items-center gap-1 shadow-xs" title="Audience Most Replayed Curve Score">
-                                    <span>📈</span>
-                                    <span>{heatmapScore}% Replay</span>
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-
-                            <div className="flex flex-wrap items-center gap-1.5 text-xs text-secondary">
-                              <span className="text-[11px] font-medium text-secondary">
-                                Rank #{index + 1}
-                              </span>
-                              {timeRange && (
-                                <span className="flex items-center gap-1 font-mono text-[11px] px-2 py-0.5 rounded-md bg-surface-container text-secondary">
-                                  <span className="material-symbols-outlined text-[13px]">schedule</span>
-                                  <span>{timeRange}</span>
-                                </span>
-                              )}
-                              {isCloud && (
-                                <span className="font-label-sm text-[10px] px-1.5 py-0.5 bg-primary/10 text-primary rounded-md font-semibold">
-                                  CDN
-                                </span>
-                              )}
-                              {typeof clip === "object" && (clip as any).is_compilation && (
-                                <span className="text-[10px] px-2 py-0.5 rounded-md font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex items-center gap-1">
-                                  <span>🏆</span>
-                                  <span>Full Stream Reel</span>
-                                </span>
-                              )}
-                              {typeof clip === "object" && (clip as any).mode && (
-                                <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-semibold flex items-center gap-0.5 ${
-                                  (clip as any).mode === "heuristic" ? "bg-amber-500/10 text-amber-600 dark:text-amber-400" : "bg-primary/10 text-primary"
-                                }`}>
-                                  <span>{(clip as any).mode === "heuristic" ? "⚡ Fast" : "🧠 AI"}</span>
-                                </span>
-                              )}
-                              {typeof clip === "object" && ((clip as any).quality || (clip as any).resolution) && (
-                                <span className="text-[10px] px-1.5 py-0.5 rounded-md font-semibold bg-primary/10 text-primary border border-primary/20 flex items-center gap-0.5">
-                                  <span>📺</span>
-                                  <span>{(clip as any).quality || "1080p"}</span>
-                                </span>
-                              )}
-                            </div>
-
-                            {typeof clip === "object" && (clip as any).chapter_description && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  navigator.clipboard.writeText((clip as any).chapter_description);
-                                  alert("YouTube chapters copied to clipboard! Paste them directly into your video description.");
-                                }}
-                                className="w-full py-1 px-2 text-[11px] font-medium rounded-lg bg-surface-container-low hover:bg-surface-container text-secondary hover:text-on-surface border border-outline-variant/40 flex items-center justify-center gap-1 transition-all cursor-pointer"
-                              >
-                                <span className="material-symbols-outlined text-[13px]">content_copy</span>
-                                <span>Copy YouTube Chapters</span>
-                              </button>
-                            )}
-                          </div>
-
-                          <button
-                            type="button"
-                            onClick={() => handleDownloadSingle(clip)}
-                            className={`w-full font-semibold text-xs py-2.5 rounded-xl border flex items-center justify-center gap-1.5 transition-all active:scale-[0.98] cursor-pointer ${
-                              downloadState === "done"
-                                ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
-                                : downloadState === "downloading"
-                                ? "bg-primary/20 border-primary/40 text-primary"
-                                : "bg-primary/10 hover:bg-primary/20 text-primary border-primary/20"
-                            }`}
-                          >
-                            <span className={`material-symbols-outlined text-[16px] ${downloadState === "downloading" ? "animate-spin" : ""}`}>
-                              {downloadState === "done" ? "check_circle" : downloadState === "downloading" ? "sync" : "download"}
-                            </span>
-                            <span>
-                              {downloadState === "done" ? "Downloaded!" : downloadState === "downloading" ? "Downloading..." : "Download MP4 (9:16)"}
-                            </span>
-                          </button>
-                        </div>
-                      </article>
-                    );
-                  })}
-                </section>
-
-              </div>
-            )}
-          </>
+          </div>
         )}
 
       </main>
 
-      {/* Footer */}
-      <footer className="w-full border-t border-outline-variant/30 py-6 mt-auto">
-        <div className="max-w-container-max mx-auto px-gutter flex flex-col sm:flex-row justify-between items-center gap-4 text-xs text-secondary">
-          <div>
-            © 2026 Vakiogiri. All rights reserved.
-          </div>
-          <div className="flex items-center gap-6">
-            <span>Daily 3 Free Generations Policy</span>
-            <span>Automated Cloud Backup</span>
-          </div>
-        </div>
-      </footer>
-
-      {/* Auth Modal */}
+      {/* Supabase Authentication Modal */}
       <AuthModal
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
         initialMode={authModalMode}
         onAuthSuccess={() => {
-          supabase.auth.getSession().then((res: any) => {
-            const session = res?.data?.session;
-            setSession(session);
-            fetchUserProfile(session?.access_token);
-            if (session?.access_token) {
-              fetchUserHistory(session.access_token);
-            }
-          });
+          showToast("Signed in successfully!", "success");
         }}
       />
-
     </div>
   );
 }

@@ -1,10 +1,34 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import AuthModal from "../../components/AuthModal";
-import TopNavBar from "../../components/TopNavBar";
-import { supabase, signOut } from "../../lib/supabase";
+import AuthModal from "@/components/AuthModal";
+import TopNavBar from "@/components/TopNavBar";
+import { useUIFeedback } from "@/components/UIFeedback";
+import { supabase, signOut } from "@/lib/supabase";
+import {
+  Gamepad2,
+  Sparkles,
+  Play,
+  PlayCircle,
+  Video,
+  Clock,
+  Sliders,
+  CheckCircle2,
+  AlertTriangle,
+  ArrowLeft,
+  Download,
+  Copy,
+  Check,
+  Clipboard,
+  Zap,
+  Flame,
+  Film,
+  RefreshCw,
+  Loader2,
+  SlidersHorizontal,
+  Bookmark,
+} from "lucide-react";
 
 const BACKEND_URL = "http://localhost:8000";
 
@@ -23,8 +47,6 @@ interface ClipItem {
   content_type?: string;
   quality?: string;
   resolution?: string;
-  is_synthesized?: boolean;
-  is_compilation?: boolean;
   chapters?: Array<{ timestamp: string; seconds: number; title: string; duration: number }>;
   chapter_description?: string;
 }
@@ -37,8 +59,9 @@ interface UserProfile {
 }
 
 export default function StreamStudio() {
+  const { showToast } = useUIFeedback();
   const [mounted, setMounted] = useState(false);
-  const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [theme, setTheme] = useState<"light" | "dark">("dark");
 
   // Auth state
   const [session, setSession] = useState<any>(null);
@@ -54,7 +77,7 @@ export default function StreamStudio() {
   // Stream Form Parameters
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [pasted, setPasted] = useState(false);
-  
+
   // Stream Analysis State
   const [analyzingStream, setAnalyzingStream] = useState(false);
   const [streamAnalysis, setStreamAnalysis] = useState<{
@@ -68,16 +91,16 @@ export default function StreamStudio() {
     video_id?: string;
   } | null>(null);
   const [streamAnalysisError, setStreamAnalysisError] = useState<string | null>(null);
-  
+
   // Stream intro skip & range slider state (in minutes)
   const [rangeMode, setRangeMode] = useState<"skip_intro" | "custom_range">("skip_intro");
-  const [skipIntroMin, setSkipIntroMin] = useState<number>(15); // default skip 15 min intro
+  const [skipIntroMin, setSkipIntroMin] = useState<number>(15);
   const [startMin, setStartMin] = useState<number>(0);
-  const [endMin, setEndMin] = useState<number>(180); // 3 hours cap default
+  const [endMin, setEndMin] = useState<number>(180);
 
   // Video settings
-  const [targetReelDuration, setTargetReelDuration] = useState<number>(300); // 300s = 5 mins
-  const [aspectRatio, setAspectRatio] = useState<"16:9" | "9:16">("16:9"); // 16:9 default for streams
+  const [targetReelDuration, setTargetReelDuration] = useState<number>(300);
+  const [aspectRatio, setAspectRatio] = useState<"16:9" | "9:16">("16:9");
   const [outputMode, setOutputMode] = useState<"single_reel" | "both" | "clips">("single_reel");
   const [quality, setQuality] = useState<"1080p" | "720p" | "480p">("1080p");
   const [clippingMode, setClippingMode] = useState<"heuristic" | "ai_enhanced">("heuristic");
@@ -86,7 +109,7 @@ export default function StreamStudio() {
   const [jobId, setJobId] = useState<string | null>(null);
   const [status, setStatus] = useState<"idle" | "processing" | "completed" | "failed">("idle");
   const [progress, setProgress] = useState<number>(5);
-  const [progressMessage, setProgressMessage] = useState<string>("Initializing...");
+  const [progressMessage, setProgressMessage] = useState<string>("Initializing stream slice...");
   const [step, setStep] = useState<string>("initializing");
   const [clips, setClips] = useState<(string | ClipItem)[]>([]);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -99,43 +122,28 @@ export default function StreamStudio() {
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isPollingRef = useRef<boolean>(false);
 
-  // Paste helper
-  const handlePasteFromClipboard = async () => {
-    try {
-      const text = await navigator.clipboard.readText();
-      if (text) {
-        setYoutubeUrl(text.trim());
-        setPasted(true);
-        setTimeout(() => setPasted(false), 2000);
-      }
-    } catch (err) {
-      console.warn("Clipboard access denied", err);
-    }
-  };
-
-  // Mount & Auth Init
   useEffect(() => {
     setMounted(true);
     const savedTheme = localStorage.getItem("theme") as "light" | "dark" | null;
-    if (savedTheme) {
-      setTheme(savedTheme);
-      document.documentElement.classList.toggle("dark", savedTheme === "dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-    }
+    const initialTheme = savedTheme || "dark";
+    setTheme(initialTheme);
+    document.documentElement.classList.toggle("dark", initialTheme === "dark");
+    document.documentElement.classList.toggle("light", initialTheme === "light");
 
     supabase.auth.getSession().then((res: any) => {
-      const session = res?.data?.session;
-      setSession(session);
-      if (session?.access_token) {
-        fetchUserProfile(session.access_token);
+      const activeSession = res?.data?.session;
+      setSession(activeSession);
+      if (activeSession?.access_token) {
+        fetchUserProfile(activeSession.access_token);
       }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: any, session: any) => {
-      setSession(session);
-      if (session?.access_token) {
-        fetchUserProfile(session.access_token);
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event: any, activeSession: any) => {
+      setSession(activeSession);
+      if (activeSession?.access_token) {
+        fetchUserProfile(activeSession.access_token);
       } else {
         setUserProfile({
           id: "guest",
@@ -152,32 +160,12 @@ export default function StreamStudio() {
     };
   }, []);
 
-  const fetchUserProfile = async (token?: string) => {
-    const activeToken = token || session?.access_token;
-    if (!activeToken) return;
-    try {
-      const res = await fetch(`${BACKEND_URL}/user/me`, {
-        headers: { "Authorization": `Bearer ${activeToken}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setUserProfile(data);
-      }
-    } catch (err) {
-      console.warn("Could not fetch user profile", err);
-    }
-  };
-
   const toggleTheme = () => {
-    const nextTheme = theme === "light" ? "dark" : "light";
+    const nextTheme = theme === "dark" ? "light" : "dark";
     setTheme(nextTheme);
     localStorage.setItem("theme", nextTheme);
     document.documentElement.classList.toggle("dark", nextTheme === "dark");
-  };
-
-  const handleOpenAuth = (mode: "login" | "signup") => {
-    setAuthModalMode(mode);
-    setIsAuthModalOpen(true);
+    document.documentElement.classList.toggle("light", nextTheme === "light");
   };
 
   const stopPolling = () => {
@@ -188,28 +176,46 @@ export default function StreamStudio() {
     isPollingRef.current = false;
   };
 
-  const handleReset = () => {
-    stopPolling();
-    setStatus("idle");
-    setJobId(null);
-    setClips([]);
-    setErrorMsg(null);
-    setProgress(5);
-    setStreamAnalysis(null);
-    setStreamAnalysisError(null);
+  const fetchUserProfile = async (token?: string) => {
+    const activeToken = token || session?.access_token;
+    if (!activeToken) return;
+
+    try {
+      const res = await fetch(`${BACKEND_URL}/user/me`, {
+        headers: { Authorization: `Bearer ${activeToken}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setUserProfile(data);
+      }
+    } catch (err) {
+      console.warn("Could not fetch profile:", err);
+    }
   };
 
-  // Step 1: Pre-flight Stream Analysis (Duration & Info)
-  const handleAnalyzeStream = async () => {
-    if (!youtubeUrl.trim()) {
-      setStreamAnalysisError("Please paste a YouTube stream URL first.");
-      return;
+  const handlePasteFromClipboard = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) {
+        setYoutubeUrl(text.trim());
+        setPasted(true);
+        setStreamAnalysis(null);
+        setStreamAnalysisError(null);
+        showToast("Stream link pasted from clipboard!", "info");
+        setTimeout(() => setPasted(false), 2000);
+      }
+    } catch (err) {
+      console.warn("Clipboard access denied", err);
     }
+  };
+
+  const handleAnalyzeStream = async () => {
+    if (!youtubeUrl.trim()) return;
 
     const trimmedUrl = youtubeUrl.trim();
     const isYouTube = /^(https?:\/\/)?(www\.|m\.)?(youtube\.com\/(watch\?v=|shorts\/|live\/)|youtu\.be\/)/i.test(trimmedUrl);
     if (!isYouTube) {
-      setStreamAnalysisError(`"${trimmedUrl}" is not a valid YouTube stream URL. Please paste a valid link like https://www.youtube.com/watch?v=... or https://youtube.com/live/...`);
+      setStreamAnalysisError(`"${trimmedUrl}" is not a valid YouTube stream URL. Please paste a valid link.`);
       return;
     }
 
@@ -230,9 +236,9 @@ export default function StreamStudio() {
       }
 
       const data = await res.json();
-      
+
       if (data.is_live || data.live_status === "is_live") {
-        throw new Error("Yeh live stream abhi chal rahi hai (Live). Stream khatam hone ke baad hi highlight clips banaye ja sakte hain!");
+        throw new Error("This livestream is currently actively broadcasting live. Highlights can be extracted once the live broadcast finishes and YouTube processes the VOD!");
       }
 
       const totalSec = Number(data.duration) || 0;
@@ -249,79 +255,68 @@ export default function StreamStudio() {
         video_id: data.video_id,
       });
 
-      // Calibrate slider bounds to the stream's exact duration
-      setEndMin(totalMin);
-      setStartMin(0);
-      const safeIntro = Math.min(15, Math.max(0, Math.floor(totalMin * 0.2)));
-      setSkipIntroMin(safeIntro);
-
+      setEndMin(Math.min(totalMin, 180));
+      setSkipIntroMin(Math.min(15, Math.floor(totalMin * 0.2)));
+      showToast("Stream analyzed successfully! Select time range below.", "success");
     } catch (err: any) {
-      if (err.message === "Failed to fetch" || err.name === "TypeError") {
-        setStreamAnalysisError("Backend server se connect nahi ho pa raha (Port 8000). Kripya check karein ki backend server chal raha hai: 'uvicorn main:app --reload --port 8000'");
-      } else {
-        setStreamAnalysisError(err.message || "Failed to analyze stream. Please check the URL.");
-      }
+      setStreamAnalysisError(err.message || "Failed to analyze stream duration.");
     } finally {
       setAnalyzingStream(false);
     }
   };
 
-  // Start Stream Processing
   const handleSubmitStream = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!youtubeUrl.trim() || status === "processing") return;
+
+    if (!youtubeUrl.trim()) return;
 
     if (userProfile.credits_remaining <= 0) {
-      setErrorMsg("Daily credit limit reached! You will receive 3 free credits tomorrow.");
+      showToast("You have reached your daily credit limit (0/3 remaining).", "error");
       return;
     }
 
     setErrorMsg(null);
     setClips([]);
     setProgress(5);
-    setProgressMessage("Starting stream highlight extraction...");
+    setProgressMessage("Initiating smart stream slice...");
     setStatus("processing");
     stopPolling();
 
-    // Compute effective stream bounds
-    const streamStartMin = rangeMode === "skip_intro" ? skipIntroMin : startMin;
-    const streamEndMin = rangeMode === "custom_range" && endMin > startMin ? endMin : undefined;
-
     try {
+      const startSec = rangeMode === "skip_intro" ? skipIntroMin * 60 : startMin * 60;
+      const endSec = rangeMode === "skip_intro" ? (streamAnalysis?.duration || 10800) : endMin * 60;
+
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (session?.access_token) {
         headers["Authorization"] = `Bearer ${session.access_token}`;
       }
 
-      const payload = {
-        youtube_url: youtubeUrl.trim(),
-        content_type: "stream",
-        aspect_ratio: aspectRatio,
-        segment_duration: targetReelDuration,
-        stream_output_mode: outputMode,
-        quality: quality,
-        mode: clippingMode,
-        stream_start_min: streamStartMin,
-        stream_end_min: streamEndMin,
-        synthesize_stories: false,
-      };
-
-      const res = await fetch(`${BACKEND_URL}/process`, {
+      const res = await fetch(`${BACKEND_URL}/stream/process`, {
         method: "POST",
         headers,
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          youtube_url: youtubeUrl.trim(),
+          start_time: startSec,
+          end_time: endSec,
+          target_reel_duration: targetReelDuration,
+          output_mode: outputMode,
+          aspect_ratio: aspectRatio,
+          quality: quality,
+          clipping_mode: clippingMode,
+          generate_chapters: true,
+        }),
       });
 
       if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.detail || `Server error (${res.status})`);
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || `Server returned ${res.status}`);
       }
 
       const data = await res.json();
       const currentJobId = data.job_id;
       setJobId(currentJobId);
-      setProgress(data.progress || 8);
-      setProgressMessage(data.message || "Downloading stream recording...");
+      setProgress(data.progress || 10);
+      setProgressMessage(data.message || "Extracting high-energy stream moments...");
 
       if (data.credits_remaining !== undefined) {
         setUserProfile((prev) => ({ ...prev, credits_remaining: data.credits_remaining }));
@@ -329,124 +324,126 @@ export default function StreamStudio() {
 
       pollIntervalRef.current = setInterval(() => {
         checkStatus(currentJobId);
-      }, 1400);
+      }, 1500);
 
       checkStatus(currentJobId);
     } catch (err: any) {
       setStatus("failed");
-      const cleanError = (err.message || "Failed to start stream highlights processing.")
-        .replace(/\x1b\[[0-9;]*[a-zA-Z]|\[[0-9;]+m/g, "");
-      setErrorMsg(cleanError);
+      setErrorMsg(err.message || "Failed to start stream highlight generation.");
     }
   };
 
   const checkStatus = async (currentJobId: string) => {
     if (isPollingRef.current) return;
     isPollingRef.current = true;
+
     try {
       const res = await fetch(`${BACKEND_URL}/status/${currentJobId}`);
-      if (!res.ok) {
-        if (res.status === 404) {
-          stopPolling();
-          setStatus("failed");
-          setErrorMsg("Pichla job server restart ya cancel hone ki wajah se band ho gaya tha. Kripya neeche 'Try Again' par click karke dobara shuru karein.");
-          return;
-        }
-        throw new Error(`Status check failed (${res.status})`);
-      }
-      const data = await res.json();
+      if (!res.ok) throw new Error("Could not fetch status.");
 
-      setStep(data.step || "processing");
+      const data = await res.json();
       if (data.progress !== undefined) setProgress(data.progress);
       if (data.message) setProgressMessage(data.message);
+      if (data.step) setStep(data.step);
 
       if (data.status === "completed") {
+        stopPolling();
+        setProgress(100);
         setStatus("completed");
         setClips(data.clips || []);
         setSelectedClipIndex(0);
-        stopPolling();
+        showToast("Stream highlights generated successfully!", "success");
+        fetchUserProfile();
       } else if (data.status === "failed") {
-        setStatus("failed");
-        const cleanError = (data.error || "Stream processing failed.")
-          .replace(/\x1b\[[0-9;]*[a-zA-Z]|\[[0-9;]+m/g, "");
-        setErrorMsg(cleanError);
         stopPolling();
+        setStatus("failed");
+        setErrorMsg(data.error || "Stream processing failed.");
       }
     } catch (err) {
-      console.warn("Poll status check error:", err);
+      console.warn("Polling error:", err);
     } finally {
       isPollingRef.current = false;
     }
   };
 
-  const getActiveClip = (): ClipItem | null => {
-    if (!clips || clips.length === 0) return null;
-    const item = clips[selectedClipIndex];
-    if (typeof item === "string") {
-      return { filename: item, url: `${BACKEND_URL}/clips/${jobId}/${item}` };
-    }
-    return item;
+  const handleReset = () => {
+    stopPolling();
+    setStatus("idle");
+    setClips([]);
+    setErrorMsg(null);
+    setProgress(5);
+    setStreamAnalysis(null);
   };
 
   const copyChapterDescription = (text: string) => {
     navigator.clipboard.writeText(text);
     setCopiedChapters(true);
-    setTimeout(() => setCopiedChapters(false), 2500);
+    showToast("YouTube chapters & timestamps copied to clipboard!", "success");
+    setTimeout(() => setCopiedChapters(false), 2000);
   };
 
   const seekToTimestamp = (seconds: number) => {
     if (videoPlayerRef.current) {
       videoPlayerRef.current.currentTime = seconds;
-      videoPlayerRef.current.play().catch(() => {});
+      videoPlayerRef.current.play();
     }
   };
 
-  const activeClip = getActiveClip();
+  const activeClip: ClipItem | null = clips.length > 0
+    ? typeof clips[selectedClipIndex] === "string"
+      ? { filename: clips[selectedClipIndex] as string, url: `${BACKEND_URL}/clips/${jobId}/${clips[selectedClipIndex]}` }
+      : (clips[selectedClipIndex] as ClipItem)
+    : null;
 
-  if (!mounted) return null;
+  if (!mounted) {
+    return (
+      <div className="min-h-screen bg-[#08080c] flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-surface text-on-surface flex flex-col font-body transition-colors duration-200">
-      <AuthModal
-        isOpen={isAuthModalOpen}
-        onClose={() => setIsAuthModalOpen(false)}
-        initialMode={authModalMode}
-        onAuthSuccess={() => {
-          setIsAuthModalOpen(false);
-          supabase.auth.getSession().then((res: any) => {
-            const sess = res?.data?.session;
-            setSession(sess);
-            if (sess?.access_token) fetchUserProfile(sess.access_token);
-          });
-        }}
-      />
+    <div className={`min-h-screen flex flex-col font-sans antialiased relative ${theme === "dark" ? "dark bg-[#08080c] text-[#f8fafc]" : "light bg-[#f8fafc] text-[#0f172a]"}`}>
+      
+      {/* Background ambient spotlight */}
+      <div className="fixed inset-0 ambient-spotlight pointer-events-none -z-10" />
 
       {/* Top Navigation */}
       <TopNavBar
         logo={{
           name: "Vakiogiri",
-          icon: "sports_esports",
-          onClick: handleReset,
+          icon: "auto_awesome",
+          href: "/",
         }}
         navItems={[
           {
-            id: "shorts",
+            id: "studio",
             label: "Shorts Studio",
-            icon: "auto_fix_high",
             href: "/",
           },
           {
             id: "stream",
             label: "Stream Studio",
-            icon: "sports_esports",
             isActive: true,
+          },
+          {
+            id: "history",
+            label: "My Clips",
+            href: "/?view=history",
           },
         ]}
         authActions={{
           loginLabel: "Log in",
-          onLogin: () => handleOpenAuth("login"),
+          onLogin: () => {
+            setAuthModalMode("login");
+            setIsAuthModalOpen(true);
+          },
           signupLabel: "Start for free",
-          onSignup: () => handleOpenAuth("signup"),
+          onSignup: () => {
+            setAuthModalMode("signup");
+            setIsAuthModalOpen(true);
+          },
         }}
         session={session}
         userProfile={userProfile}
@@ -455,39 +452,45 @@ export default function StreamStudio() {
         onToggleTheme={toggleTheme}
       />
 
-      <main className="flex-grow flex flex-col items-center px-4 md:px-8 py-8 max-w-6xl mx-auto w-full">
+      {/* Main Stream Studio Canvas */}
+      <main className="flex-grow flex flex-col items-center px-4 sm:px-6 lg:px-8 py-8 md:py-12 max-w-6xl mx-auto w-full">
+        
         {/* Studio Hero Header */}
         <div className="flex flex-col items-center text-center max-w-3xl mb-8">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-primary/10 text-primary border border-primary/20 text-xs font-semibold uppercase tracking-wider mb-3">
-            <span className="material-symbols-outlined text-sm">stadia_controller</span>
-            <span>Gaming & Stream Supercut Engine</span>
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 text-xs font-semibold tracking-wide mb-3">
+            <Gamepad2 className="w-4 h-4" />
+            <span>Gaming & Livestream Supercut Engine</span>
           </div>
-          <h1 className="text-3xl md:text-5xl font-extrabold text-on-surface tracking-tight leading-tight">
-            Turn 4-Hour Streams into <span className="text-primary">Master Highlights</span>
+
+          <h1 className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight leading-tight">
+            Turn 4-Hour Streams into{" "}
+            <span className="bg-gradient-to-r from-cyan-400 via-indigo-400 to-purple-400 bg-clip-text text-transparent">
+              Master Highlights
+            </span>
           </h1>
-          <p className="text-sm md:text-base text-secondary mt-2 max-w-xl">
-            Automatically detect gaming screams, clutch 1v4 kills, and rage moments. Skip boring stream intros with precision sliders.
+
+          <p className="text-sm sm:text-base text-slate-400 mt-2 max-w-xl">
+            Automatically detect gaming screams, clutch 1v4 kills, and hype moments. Skip stream intros with calibrated time sliders.
           </p>
         </div>
 
-        {/* Studio View */}
+        {/* Studio Form & Pipeline */}
         {status !== "completed" ? (
           <div className="w-full max-w-3xl flex flex-col gap-6">
-            {/* Input Card */}
+            
             <form
               onSubmit={handleSubmitStream}
-              className="bg-surface-container-lowest border border-outline-variant/60 rounded-3xl p-6 sm:p-8 shadow-sm flex flex-col gap-6 relative"
+              className="bg-[#101018] border border-white/10 rounded-3xl p-6 sm:p-8 shadow-2xl flex flex-col gap-6 relative"
             >
-              {/* YouTube URL Bar */}
+              {/* Stream URL Bar */}
               <div className="flex flex-col gap-2">
-                <label className="text-xs font-semibold text-secondary uppercase tracking-wider flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center justify-between">
                   <span>Stream URL</span>
-                  <span className="text-[11px] text-primary/80 lowercase">YouTube VOD / Stream links</span>
+                  <span className="text-[11px] font-mono text-cyan-400">YouTube VOD / Stream links</span>
                 </label>
+
                 <div className="relative flex items-center">
-                  <div className="absolute left-4 text-secondary flex items-center pointer-events-none">
-                    <span className="material-symbols-outlined text-xl text-primary">play_circle</span>
-                  </div>
+                  <PlayCircle className="w-5 h-5 absolute left-4 text-cyan-400 pointer-events-none" />
                   <input
                     type="url"
                     required
@@ -499,29 +502,27 @@ export default function StreamStudio() {
                       if (streamAnalysisError) setStreamAnalysisError(null);
                     }}
                     disabled={status === "processing" || analyzingStream}
-                    className="w-full bg-surface-container/40 border border-outline-variant/60 rounded-2xl py-3.5 pl-12 pr-28 text-sm text-on-surface placeholder:text-secondary/60 focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all disabled:opacity-50"
+                    className="w-full bg-white/5 border border-white/10 rounded-2xl py-3.5 pl-12 pr-28 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-all font-medium disabled:opacity-50"
                   />
                   <div className="absolute right-2 flex items-center">
                     <button
                       type="button"
                       onClick={handlePasteFromClipboard}
                       disabled={status === "processing" || analyzingStream}
-                      className="px-3.5 py-1.5 bg-surface-container-high hover:bg-surface-container-highest text-secondary hover:text-on-surface text-xs font-semibold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      className="px-3 py-1.5 bg-white/10 hover:bg-white/15 text-slate-300 hover:text-white text-xs font-semibold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                     >
-                      <span className="material-symbols-outlined text-sm">
-                        {pasted ? "done" : "content_paste"}
-                      </span>
+                      {pasted ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Clipboard className="w-3.5 h-3.5" />}
                       <span>{pasted ? "Pasted!" : "Paste"}</span>
                     </button>
                   </div>
                 </div>
               </div>
 
-              {/* Analysis Error Notification */}
+              {/* Error Box */}
               {streamAnalysisError && (
-                <div className="p-3.5 bg-error-container/20 border border-error/30 text-on-surface rounded-2xl text-xs flex items-center gap-2.5">
-                  <span className="material-symbols-outlined text-error text-lg shrink-0">info</span>
-                  <span className="text-secondary leading-snug">{streamAnalysisError}</span>
+                <div className="p-3.5 bg-rose-500/10 border border-rose-500/25 text-rose-300 rounded-2xl text-xs flex items-center gap-2.5">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
+                  <span>{streamAnalysisError}</span>
                 </div>
               )}
 
@@ -532,414 +533,257 @@ export default function StreamStudio() {
                     type="button"
                     onClick={handleAnalyzeStream}
                     disabled={analyzingStream || !youtubeUrl.trim() || status === "processing"}
-                    className="w-full bg-primary hover:bg-surface-tint text-on-primary font-bold py-4 rounded-2xl shadow-md transition-all flex items-center justify-center gap-2 text-sm sm:text-base cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full bg-gradient-to-r from-cyan-600 via-indigo-600 to-purple-600 hover:from-cyan-500 hover:to-purple-500 text-white font-bold py-3.5 rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-sm cursor-pointer disabled:opacity-50"
                   >
                     {analyzingStream ? (
                       <>
-                        <span className="material-symbols-outlined animate-spin text-xl">progress_activity</span>
-                        <span>Analyzing Stream (Checking Duration & Details)...</span>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Inspecting Stream (Duration & Details)...</span>
                       </>
                     ) : (
                       <>
-                        <span className="material-symbols-outlined text-xl">query_stats</span>
-                        <span>Analyse Stream</span>
+                        <Sparkles className="w-4 h-4 text-cyan-200" />
+                        <span>Inspect Stream Duration & Details</span>
                       </>
                     )}
                   </button>
-
-                  <div className="flex items-center gap-2 text-xs text-secondary bg-surface-container/30 border border-outline-variant/30 rounded-xl p-3">
-                    <span className="material-symbols-outlined text-primary text-base shrink-0">info</span>
-                    <span>Paste any YouTube gaming stream or VOD link. We will inspect the stream duration first so you can configure highlight filters accurately.</span>
-                  </div>
+                  <p className="text-[11px] text-slate-500 text-center font-mono">
+                    Streams are pre-scanned without full download to save 90% bandwidth.
+                  </p>
                 </div>
               ) : (
-                /* STEP 2: STREAM ANALYZED (All controls and filters unlocked) */
-                <div className="flex flex-col gap-6 animate-in fade-in duration-300">
-                  {/* Stream Overview Card */}
-                  <div className="bg-surface-container/40 border border-primary/25 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                    <div className="flex items-center gap-3.5 min-w-0">
+                /* STEP 2: STREAM INSPECTED -> SHOW SLIDERS & OPTIONS */
+                <div className="flex flex-col gap-5 pt-2 border-t border-white/10 animate-in fade-in duration-300">
+                  
+                  {/* Stream Card Details */}
+                  <div className="flex items-center justify-between p-3.5 rounded-2xl bg-white/[0.03] border border-white/8 gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
                       {streamAnalysis.thumbnail ? (
                         <img
                           src={streamAnalysis.thumbnail}
-                          alt={streamAnalysis.title}
-                          className="w-20 h-14 object-cover rounded-xl border border-outline-variant/40 shrink-0 bg-surface-container-high"
+                          alt="Thumbnail"
+                          className="w-16 h-12 object-cover rounded-xl border border-white/10 shrink-0"
                         />
                       ) : (
-                        <div className="w-14 h-14 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0 text-primary">
-                          <span className="material-symbols-outlined text-2xl">movie</span>
+                        <div className="w-12 h-12 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center shrink-0 text-cyan-400">
+                          <Film className="w-6 h-6" />
                         </div>
                       )}
                       <div className="flex flex-col min-w-0">
-                        <span className="text-xs font-semibold text-primary uppercase tracking-wider flex items-center gap-1">
-                          <span className="material-symbols-outlined text-[15px]">check_circle</span>
-                          <span>Stream Analyzed</span>
+                        <span className="text-[10px] font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                          <span>Stream Probed Successfully</span>
                         </span>
-                        <h4 className="text-sm font-bold text-on-surface truncate" title={streamAnalysis.title}>
+                        <h4 className="text-xs sm:text-sm font-bold text-white truncate max-w-sm">
                           {streamAnalysis.title}
                         </h4>
-                        <div className="flex flex-wrap items-center gap-2 text-xs text-secondary mt-0.5">
-                          {streamAnalysis.uploader && <span className="font-medium text-on-surface/80">{streamAnalysis.uploader}</span>}
-                          {streamAnalysis.uploader && <span>•</span>}
-                          <span className="font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-md">
-                            ⏱️ Duration: {streamAnalysis.duration_formatted} ({Math.floor(streamAnalysis.duration / 60)} mins)
-                          </span>
+                        <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-0.5 font-mono">
+                          <span>⏱️ {streamAnalysis.duration_formatted}</span>
+                          <span>•</span>
+                          <span>{streamAnalysis.uploader || "Streamer"}</span>
                         </div>
                       </div>
                     </div>
 
                     <button
                       type="button"
-                      onClick={() => {
-                        setStreamAnalysis(null);
-                        setStreamAnalysisError(null);
-                      }}
-                      className="px-3 py-1.5 bg-surface-container-high hover:bg-surface-container-highest text-secondary hover:text-on-surface rounded-xl text-xs font-semibold flex items-center gap-1 transition-all shrink-0 cursor-pointer"
+                      onClick={() => setStreamAnalysis(null)}
+                      className="px-3 py-1.5 bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-semibold rounded-xl border border-white/10 transition-colors cursor-pointer shrink-0"
                     >
-                      <span className="material-symbols-outlined text-sm">swap_horiz</span>
-                      <span>Change URL</span>
+                      Change URL
                     </button>
                   </div>
 
-                  {/* STREAM SEGMENT SLIDER (Calibrated to stream duration) */}
-                  {(() => {
-                    const totalStreamMin = Math.max(1, Math.floor(streamAnalysis.duration / 60));
-                    const maxIntroMin = Math.min(60, Math.max(10, Math.floor(totalStreamMin * 0.75)));
-                    const presets = [0, 10, 15, 25, 40].filter((p) => p <= maxIntroMin);
+                  {/* Range Slider Filter */}
+                  <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/8 flex flex-col gap-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                        <SlidersHorizontal className="w-3.5 h-3.5 text-cyan-400" />
+                        <span>Skip Intro / Starting Offset</span>
+                      </span>
+                      <span className="text-xs font-mono font-bold text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/20">
+                        Skip first {skipIntroMin} mins
+                      </span>
+                    </div>
 
-                    return (
-                      <div className="bg-surface-container/30 border border-outline-variant/40 rounded-2xl p-5 flex flex-col gap-4">
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            <span className="material-symbols-outlined text-primary text-xl">tune</span>
-                            <span className="text-sm font-bold text-on-surface">Stream Segment & Intro Filter</span>
-                          </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={Math.min(60, Math.floor(streamAnalysis.duration / 60))}
+                      value={skipIntroMin}
+                      onChange={(e) => setSkipIntroMin(Number(e.target.value))}
+                      className="w-full accent-cyan-500 cursor-pointer"
+                    />
 
-                          {/* Mode Tabs */}
-                          <div className="flex items-center gap-1 bg-surface-container-high p-1 rounded-xl self-start sm:self-auto text-xs">
-                            <button
-                              type="button"
-                              onClick={() => setRangeMode("skip_intro")}
-                              className={`px-3 py-1 rounded-lg font-semibold transition-all ${
-                                rangeMode === "skip_intro"
-                                  ? "bg-primary text-on-primary shadow-xs"
-                                  : "text-secondary hover:text-on-surface"
-                              }`}
-                            >
-                              Skip Intro Chit-Chat
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setRangeMode("custom_range")}
-                              className={`px-3 py-1 rounded-lg font-semibold transition-all ${
-                                rangeMode === "custom_range"
-                                  ? "bg-primary text-on-primary shadow-xs"
-                                  : "text-secondary hover:text-on-surface"
-                              }`}
-                            >
-                              Custom Range
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Skip Intro Slider View */}
-                        {rangeMode === "skip_intro" ? (
-                          <div className="flex flex-col gap-3">
-                            <div className="flex justify-between items-center text-xs">
-                              <span className="text-secondary">
-                                Streamer chatting & mic testing will be ignored for first:
-                              </span>
-                              <span className="font-mono font-bold text-primary text-sm bg-primary/10 px-2.5 py-0.5 rounded-md">
-                                {skipIntroMin} Minutes ({skipIntroMin * 60}s)
-                              </span>
-                            </div>
-
-                            <input
-                              type="range"
-                              min={0}
-                              max={maxIntroMin}
-                              step={5}
-                              value={skipIntroMin}
-                              onChange={(e) => setSkipIntroMin(Number(e.target.value))}
-                              disabled={status === "processing"}
-                              className="w-full h-2 bg-surface-container-highest rounded-lg appearance-none cursor-pointer accent-primary"
-                            />
-
-                            {/* Quick Presets */}
-                            <div className="flex items-center justify-between text-[11px] text-secondary">
-                              <span>0m (Full Stream)</span>
-                              <div className="flex items-center gap-1.5">
-                                {presets.map((preset) => (
-                                  <button
-                                    key={preset}
-                                    type="button"
-                                    onClick={() => setSkipIntroMin(preset)}
-                                    className={`px-2 py-0.5 rounded border transition-all ${
-                                      skipIntroMin === preset
-                                        ? "border-primary bg-primary/10 text-primary font-bold"
-                                        : "border-outline-variant/60 text-secondary hover:text-on-surface"
-                                    }`}
-                                  >
-                                    {preset}m {preset === 15 ? "⭐" : ""}
-                                  </button>
-                                ))}
-                              </div>
-                              <span>{maxIntroMin}m Max</span>
-                            </div>
-
-                            <p className="text-[11px] text-secondary italic">
-                              💡 Tip: Setting 15m ignores streamer greetings/chatting and starts detecting when actual gameplay begins.
-                            </p>
-                          </div>
-                        ) : (
-                          /* Custom Time Range (Start Min to End Min) */
-                          <div className="flex flex-col gap-4">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                              <div className="flex flex-col gap-1.5">
-                                <div className="flex justify-between text-xs">
-                                  <span className="text-secondary">Start From:</span>
-                                  <span className="font-mono font-bold text-primary">{startMin} min</span>
-                                </div>
-                                <input
-                                  type="range"
-                                  min={0}
-                                  max={Math.max(0, totalStreamMin - 5)}
-                                  step={5}
-                                  value={startMin}
-                                  onChange={(e) => {
-                                    const val = Number(e.target.value);
-                                    setStartMin(val);
-                                    if (val >= endMin) setEndMin(Math.min(totalStreamMin, val + 15));
-                                  }}
-                                  className="w-full h-2 bg-surface-container-highest rounded-lg appearance-none cursor-pointer accent-primary"
-                                />
-                              </div>
-
-                              <div className="flex flex-col gap-1.5">
-                                <div className="flex justify-between text-xs">
-                                  <span className="text-secondary">Analyze Until:</span>
-                                  <span className="font-mono font-bold text-primary">{endMin} min</span>
-                                </div>
-                                <input
-                                  type="range"
-                                  min={startMin + 5}
-                                  max={totalStreamMin}
-                                  step={5}
-                                  value={endMin}
-                                  onChange={(e) => setEndMin(Number(e.target.value))}
-                                  className="w-full h-2 bg-surface-container-highest rounded-lg appearance-none cursor-pointer accent-primary"
-                                />
-                              </div>
-                            </div>
-                            <div className="text-[11px] text-secondary bg-surface-container-high/40 p-2 rounded-lg">
-                              Analyzing stream slice: <span className="font-semibold text-on-surface">{startMin}m ➔ {endMin}m</span> (Duration: {endMin - startMin} mins out of {totalStreamMin} mins).
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })()}
-
-                  {/* Target Highlight Reel Length */}
-                  <div className="flex flex-col gap-2">
-                    <label className="text-xs font-semibold text-secondary uppercase tracking-wider flex items-center justify-between">
-                      <span>Target Reel Length</span>
-                      <span className="text-[11px] text-secondary">Master compilation runtime</span>
-                    </label>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                      {[
-                        { label: "⚡ 2 Mins", duration: 120, sub: "Quick Teaser" },
-                        { label: "🎬 3 Mins", duration: 180, sub: "Fast Highlights" },
-                        { label: "🔥 5 Mins", duration: 300, sub: "YouTube Ideal" },
-                        { label: "🏆 10 Mins", duration: 600, sub: "Extended Supercut" },
-                      ].map((item) => (
+                    <div className="flex items-center gap-2 pt-1">
+                      {[0, 10, 15, 25, 30].map((preset) => (
                         <button
-                          key={item.duration}
+                          key={preset}
                           type="button"
-                          onClick={() => setTargetReelDuration(item.duration)}
-                          className={`p-3 rounded-2xl border text-left flex flex-col gap-0.5 transition-all cursor-pointer ${
-                            targetReelDuration === item.duration
-                              ? "border-primary bg-primary/10 text-on-surface shadow-xs ring-1 ring-primary"
-                              : "border-outline-variant/60 bg-surface-container/20 text-secondary hover:text-on-surface hover:border-outline-variant"
+                          onClick={() => setSkipIntroMin(preset)}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
+                            skipIntroMin === preset
+                              ? "bg-cyan-500 text-white font-bold"
+                              : "bg-white/5 text-slate-400 hover:text-white"
                           }`}
                         >
-                          <span className="font-bold text-xs sm:text-sm text-on-surface">{item.label}</span>
-                          <span className="text-[10px] text-secondary">{item.sub}</span>
+                          {preset === 0 ? "No Skip" : `Skip ${preset}m`}
                         </button>
                       ))}
                     </div>
                   </div>
 
-                  {/* Quality & Aspect Ratio Grid */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {/* Target Quality */}
-                    <div className="flex flex-col gap-2">
-                      <label className="text-xs font-semibold text-secondary uppercase tracking-wider">
-                        Export Quality
-                      </label>
-                      <div className="grid grid-cols-3 gap-1.5">
-                        {[
-                          { id: "1080p", label: "1080p FHD" },
-                          { id: "720p", label: "720p HD" },
-                          { id: "480p", label: "480p Fast" },
-                        ].map((q) => (
-                          <button
-                            key={q.id}
-                            type="button"
-                            onClick={() => setQuality(q.id as any)}
-                            className={`py-2 px-1 text-center rounded-xl text-xs font-semibold border transition-all ${
-                              quality === q.id
-                                ? "bg-primary text-on-primary border-primary shadow-xs"
-                                : "border-outline-variant/60 text-secondary hover:text-on-surface bg-surface-container/20"
-                            }`}
-                          >
-                            {q.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Aspect Ratio */}
-                    <div className="flex flex-col gap-2">
-                      <label className="text-xs font-semibold text-secondary uppercase tracking-wider">
-                        Aspect Ratio
-                      </label>
-                      <div className="grid grid-cols-2 gap-1.5">
+                  {/* Format & Aspect Ratio Selector */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-semibold text-slate-300">Aspect Ratio</label>
+                      <div className="grid grid-cols-2 gap-2">
                         <button
                           type="button"
                           onClick={() => setAspectRatio("16:9")}
-                          className={`py-2 px-2 text-center rounded-xl text-xs font-semibold border transition-all flex items-center justify-center gap-1.5 ${
+                          className={`py-2 px-3 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
                             aspectRatio === "16:9"
-                              ? "bg-primary text-on-primary border-primary shadow-xs"
-                              : "border-outline-variant/60 text-secondary hover:text-on-surface bg-surface-container/20"
+                              ? "bg-indigo-600 border-indigo-500 text-white shadow-xs"
+                              : "bg-white/5 border-white/10 text-slate-400 hover:text-white"
                           }`}
                         >
-                          <span className="material-symbols-outlined text-sm">tv</span>
-                          <span>16:9 Widescreen</span>
+                          16:9 Widescreen
                         </button>
                         <button
                           type="button"
                           onClick={() => setAspectRatio("9:16")}
-                          className={`py-2 px-2 text-center rounded-xl text-xs font-semibold border transition-all flex items-center justify-center gap-1.5 ${
+                          className={`py-2 px-3 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
                             aspectRatio === "9:16"
-                              ? "bg-primary text-on-primary border-primary shadow-xs"
-                              : "border-outline-variant/60 text-secondary hover:text-on-surface bg-surface-container/20"
+                              ? "bg-indigo-600 border-indigo-500 text-white shadow-xs"
+                              : "bg-white/5 border-white/10 text-slate-400 hover:text-white"
                           }`}
                         >
-                          <span className="material-symbols-outlined text-sm">stay_current_portrait</span>
-                          <span>9:16 Vertical</span>
+                          9:16 Vertical
                         </button>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-semibold text-slate-300">Output Quality</label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {(["1080p", "720p", "480p"] as const).map((q) => (
+                          <button
+                            key={q}
+                            type="button"
+                            onClick={() => setQuality(q)}
+                            className={`py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                              quality === q
+                                ? "bg-indigo-600 border-indigo-500 text-white shadow-xs"
+                                : "bg-white/5 border-white/10 text-slate-400 hover:text-white"
+                            }`}
+                          >
+                            {q}
+                          </button>
+                        ))}
                       </div>
                     </div>
                   </div>
 
-                  {/* Submit Action */}
-                  <div className="flex flex-col gap-3 pt-2 border-t border-outline-variant/40">
-                    <div className="flex items-center gap-2 text-xs text-emerald-600 dark:text-emerald-400 font-semibold bg-emerald-500/10 px-3.5 py-2 rounded-xl border border-emerald-500/25">
-                      <span className="material-symbols-outlined text-[17px] shrink-0 text-emerald-500">bolt</span>
-                      <span>
-                        ⚡ <strong>Smart Partial Download:</strong> YouTube se sirf selected time-slice ({rangeMode === "skip_intro" ? `${skipIntroMin}m ke baad ka part` : `${startMin}m ➔ ${endMin}m (${endMin - startMin} mins)`}) download hoga! Poora 4-5 GB stream download nahi hoga.
-                      </span>
-                    </div>
-
+                  {/* Submit Button */}
+                  <div className="flex flex-col gap-2 pt-2">
                     <button
                       type="submit"
                       disabled={status === "processing"}
-                      className="w-full bg-primary hover:bg-surface-tint text-on-primary font-bold py-4 rounded-2xl shadow-md transition-all flex items-center justify-center gap-2 text-sm sm:text-base cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-full bg-gradient-to-r from-cyan-600 via-indigo-600 to-purple-600 hover:from-cyan-500 hover:to-purple-500 text-white font-bold py-3.5 rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-sm cursor-pointer disabled:opacity-50"
                     >
-                      <span className="material-symbols-outlined">auto_videocam</span>
+                      <Sparkles className="w-4 h-4 text-cyan-200" />
                       <span>Extract Stream Highlights ({quality})</span>
                     </button>
-
-                    <div className="flex items-center justify-between text-xs text-secondary px-1">
-                      <span>Available Credits: <strong className="text-on-surface">{userProfile.credits_remaining}</strong></span>
-                      <span>100% Free & Local Processing</span>
-                    </div>
                   </div>
+
                 </div>
               )}
             </form>
 
-            {/* Live Progress Bar (During Processing) */}
+            {/* Processing Progress Tracker */}
             {status === "processing" && (
-              <div className="bg-surface-container-lowest border border-primary/30 rounded-3xl p-6 shadow-sm flex flex-col gap-4 animate-in fade-in duration-300">
+              <div className="p-6 rounded-3xl bg-[#101018] border border-cyan-500/30 shadow-2xl flex flex-col gap-4 animate-in fade-in">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="material-symbols-outlined text-primary animate-spin">progress_activity</span>
-                    <span className="text-sm font-bold text-on-surface">Extracting Stream Highlights...</span>
+                  <div className="flex items-center gap-2.5">
+                    <Loader2 className="w-5 h-5 text-cyan-400 animate-spin" />
+                    <span className="text-sm font-bold text-white">Extracting Stream Supercut...</span>
                   </div>
-                  <span className="font-mono text-xs font-bold text-primary bg-primary/10 px-2 py-0.5 rounded">
+                  <span className="font-mono text-xs font-bold text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/20">
                     {progress}%
                   </span>
                 </div>
 
-                <div className="w-full bg-surface-container h-2.5 rounded-full overflow-hidden">
+                <div className="w-full bg-white/5 h-2.5 rounded-full overflow-hidden p-0.5">
                   <div
-                    className="bg-primary h-full rounded-full transition-all duration-300 ease-out"
+                    className="h-full rounded-full shimmer-progress transition-all duration-300"
                     style={{ width: `${progress}%` }}
                   />
                 </div>
 
-                <div className="flex items-center justify-between text-xs text-secondary">
-                  <span className="truncate max-w-[85%]">{progressMessage}</span>
-                  <span className="font-mono uppercase text-[11px] text-primary">{step}</span>
+                <div className="flex items-center justify-between text-xs text-slate-400">
+                  <span className="truncate max-w-[80%]">{progressMessage}</span>
+                  <span className="font-mono uppercase text-[10px] text-cyan-400">{step}</span>
                 </div>
               </div>
             )}
 
-            {/* Error Message Display */}
+            {/* Error Message */}
             {status === "failed" && errorMsg && (
-              <div className="bg-error-container/20 border border-error/30 text-on-surface rounded-3xl p-5 flex items-start gap-3">
-                <span className="material-symbols-outlined text-error text-xl shrink-0 mt-0.5">error</span>
+              <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/25 flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
                 <div className="flex flex-col gap-1 text-xs">
-                  <span className="font-bold text-error">Stream Clipping Notice</span>
-                  <p className="text-secondary leading-relaxed">{errorMsg}</p>
+                  <span className="font-bold text-white">Stream Notice</span>
+                  <p className="text-rose-300 leading-relaxed">{errorMsg}</p>
                   <button
                     onClick={handleReset}
-                    className="self-start mt-2 px-3 py-1 bg-surface-container text-on-surface font-semibold rounded-lg hover:bg-surface-container-high transition-all text-xs"
+                    className="self-start mt-2 px-3 py-1 bg-white/10 hover:bg-white/20 text-white rounded-lg text-xs font-semibold cursor-pointer"
                   >
                     Try Again
                   </button>
                 </div>
               </div>
             )}
+
           </div>
         ) : (
           /* RESULTS VIEW: 16:9 Cinema Player & Chapters */
-          <div className="w-full flex flex-col gap-6 animate-in fade-in duration-400">
+          <div className="w-full flex flex-col gap-6 animate-in fade-in duration-300">
+            
             {/* Top Bar Actions */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-surface-container-lowest border border-outline-variant/60 rounded-3xl p-6">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-[#101018] border border-white/10 rounded-3xl p-6 shadow-2xl">
               <div>
-                <span className="text-xs font-bold text-primary uppercase tracking-wider flex items-center gap-1.5">
-                  <span className="material-symbols-outlined text-sm">verified</span>
+                <span className="text-xs font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
                   Highlights Generation Complete
                 </span>
-                <h2 className="text-2xl font-extrabold text-on-surface mt-1">
+                <h2 className="text-2xl font-extrabold text-white mt-1">
                   {activeClip?.title || "Master Highlights Supercut"}
                 </h2>
-                <div className="flex items-center gap-3 text-xs text-secondary mt-1">
-                  <span>Quality: <strong className="text-on-surface">{activeClip?.quality || quality}</strong></span>
+                <div className="flex items-center gap-3 text-xs text-slate-400 mt-1 font-mono">
+                  <span>Quality: <strong className="text-white">{activeClip?.quality || quality}</strong></span>
                   <span>•</span>
-                  <span>Duration: <strong className="text-on-surface">{Math.round((activeClip?.duration || 0) / 60)} mins</strong></span>
+                  <span>Duration: <strong className="text-white">{Math.round((activeClip?.duration || 0) / 60)} mins</strong></span>
                   <span>•</span>
-                  <span>Ratio: <strong className="text-on-surface">{activeClip?.aspect_ratio || "16:9"}</strong></span>
+                  <span>Ratio: <strong className="text-white">{activeClip?.aspect_ratio || "16:9"}</strong></span>
                 </div>
               </div>
 
               <div className="flex items-center gap-2 self-stretch sm:self-auto">
                 <button
+                  type="button"
                   onClick={handleReset}
-                  className="px-4 py-2.5 bg-surface-container-high hover:bg-surface-container-highest text-secondary hover:text-on-surface rounded-xl font-semibold text-xs transition-all flex items-center gap-1.5"
+                  className="px-4 py-2.5 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white rounded-xl font-semibold text-xs transition-all flex items-center gap-1.5 cursor-pointer border border-white/10"
                 >
-                  <span className="material-symbols-outlined text-sm">arrow_back</span>
+                  <ArrowLeft className="w-4 h-4" />
                   <span>Clip Another</span>
                 </button>
                 {activeClip && (
                   <a
                     href={activeClip.url}
                     download={activeClip.filename}
-                    className="px-5 py-2.5 bg-primary text-on-primary hover:bg-surface-tint rounded-xl font-bold text-xs transition-all shadow-sm flex items-center gap-1.5"
+                    className="px-5 py-2.5 bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white rounded-xl font-bold text-xs transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
                   >
-                    <span className="material-symbols-outlined text-sm">download</span>
+                    <Download className="w-4 h-4" />
                     <span>Download Master Reel</span>
                   </a>
                 )}
@@ -948,8 +792,9 @@ export default function StreamStudio() {
 
             {/* Video Player & Chapters Split */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Left 2 Cols: 16:9 Cinema Video Player */}
-              <div className="lg:col-span-2 bg-surface-container-lowest border border-outline-variant/60 rounded-3xl p-4 sm:p-6 flex flex-col gap-4">
+              
+              {/* Left 2 Cols: Video Player */}
+              <div className="lg:col-span-2 bg-[#101018] border border-white/10 rounded-3xl p-4 sm:p-6 flex flex-col gap-4 shadow-2xl">
                 <div className="w-full aspect-video bg-black rounded-2xl overflow-hidden relative shadow-inner">
                   {activeClip ? (
                     <video
@@ -961,39 +806,38 @@ export default function StreamStudio() {
                       className="w-full h-full object-contain"
                     />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center text-secondary">
+                    <div className="w-full h-full flex items-center justify-center text-slate-500">
                       Loading video player...
                     </div>
                   )}
                 </div>
 
-                <div className="flex items-center justify-between text-xs text-secondary px-1">
+                <div className="flex items-center justify-between text-xs text-slate-400 px-1 font-mono">
                   <span>Aspect: {activeClip?.aspect_ratio || "16:9 Widescreen"}</span>
-                  <span>Bitrate-Optimized H.264 (Lossless Master)</span>
+                  <span>Lossless Master Cut (CUDA / FFmpeg)</span>
                 </div>
               </div>
 
-              {/* Right 1 Col: Interactive Chapters & Description */}
-              <div className="bg-surface-container-lowest border border-outline-variant/60 rounded-3xl p-5 flex flex-col gap-4">
-                <div className="flex items-center justify-between border-b border-outline-variant/40 pb-3">
+              {/* Right 1 Col: Chapters */}
+              <div className="bg-[#101018] border border-white/10 rounded-3xl p-5 flex flex-col gap-4 shadow-2xl">
+                <div className="flex items-center justify-between border-b border-white/10 pb-3">
                   <div className="flex items-center gap-1.5">
-                    <span className="material-symbols-outlined text-primary text-base">bookmarks</span>
-                    <span className="text-sm font-bold text-on-surface">YouTube Chapters</span>
+                    <Bookmark className="w-4 h-4 text-cyan-400" />
+                    <span className="text-sm font-bold text-white">YouTube Chapters</span>
                   </div>
                   {activeClip?.chapter_description && (
                     <button
+                      type="button"
                       onClick={() => copyChapterDescription(activeClip.chapter_description || "")}
-                      className="text-xs text-primary hover:underline font-semibold flex items-center gap-1"
+                      className="text-xs text-cyan-400 hover:text-cyan-300 font-semibold flex items-center gap-1 cursor-pointer"
                     >
-                      <span className="material-symbols-outlined text-sm">
-                        {copiedChapters ? "check" : "content_copy"}
-                      </span>
+                      {copiedChapters ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                       <span>{copiedChapters ? "Copied!" : "Copy"}</span>
                     </button>
                   )}
                 </div>
 
-                {/* Chapter Timestamp List */}
+                {/* Chapter List */}
                 {activeClip?.chapters && activeClip.chapters.length > 0 ? (
                   <div className="flex flex-col gap-2 max-h-[380px] overflow-y-auto pr-1">
                     {activeClip.chapters.map((ch, idx) => (
@@ -1001,44 +845,55 @@ export default function StreamStudio() {
                         key={idx}
                         type="button"
                         onClick={() => seekToTimestamp(ch.seconds)}
-                        className="text-left p-3 rounded-xl bg-surface-container/30 hover:bg-surface-container-high/60 border border-outline-variant/30 transition-all flex items-center justify-between gap-2 text-xs group cursor-pointer"
+                        className="text-left p-3 rounded-xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 transition-all flex items-center justify-between gap-2 text-xs group cursor-pointer"
                       >
                         <div className="flex items-center gap-2.5 truncate">
-                          <span className="font-mono font-bold text-primary text-[11px] bg-primary/10 px-2 py-0.5 rounded">
+                          <span className="font-mono font-bold text-cyan-400 text-[11px] bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/20">
                             {ch.timestamp}
                           </span>
-                          <span className="text-on-surface font-medium truncate group-hover:text-primary">
+                          <span className="text-white font-medium truncate group-hover:text-cyan-300">
                             {ch.title}
                           </span>
                         </div>
-                        <span className="material-symbols-outlined text-sm text-secondary group-hover:text-primary shrink-0">
-                          play_arrow
-                        </span>
+                        <Play className="w-3.5 h-3.5 text-slate-500 group-hover:text-cyan-400 shrink-0" />
                       </button>
                     ))}
                   </div>
                 ) : (
-                  <div className="text-xs text-secondary py-8 text-center">
-                    Seamless continuous highlight reel rendered.
+                  <div className="text-xs text-slate-500 py-8 text-center font-mono">
+                    Continuous highlight reel rendered.
                   </div>
                 )}
 
-                {/* YouTube Description Box */}
+                {/* Chapter description snippet */}
                 {activeClip?.chapter_description && (
-                  <div className="mt-auto pt-3 border-t border-outline-variant/30 flex flex-col gap-1.5">
-                    <span className="text-[11px] font-semibold text-secondary uppercase tracking-wider">
-                      Ready for YouTube Description:
+                  <div className="mt-auto pt-3 border-t border-white/10 flex flex-col gap-1.5">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      Ready for Description:
                     </span>
-                    <div className="bg-surface-container/40 p-2.5 rounded-xl font-mono text-[11px] text-secondary max-h-24 overflow-y-auto">
+                    <div className="bg-black/50 p-2.5 rounded-xl font-mono text-[11px] text-slate-400 max-h-24 overflow-y-auto border border-white/5">
                       {activeClip.chapter_description}
                     </div>
                   </div>
                 )}
               </div>
+
             </div>
+
           </div>
         )}
+
       </main>
+
+      {/* Supabase Auth Modal */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        initialMode={authModalMode}
+        onAuthSuccess={() => {
+          showToast("Signed in successfully!", "success");
+        }}
+      />
     </div>
   );
 }

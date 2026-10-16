@@ -1,12 +1,29 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Plus_Jakarta_Sans, JetBrains_Mono } from "next/font/google";
+import { UIFeedbackProvider } from "@/components/UIFeedback";
 import "./globals.css";
 
-const inter = Inter({ subsets: ["latin"] });
+const inter = Inter({ 
+  subsets: ["latin"],
+  variable: "--font-inter",
+  display: "swap",
+});
+
+const plusJakarta = Plus_Jakarta_Sans({
+  subsets: ["latin"],
+  variable: "--font-display",
+  display: "swap",
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-mono",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
-  title: "Vakiogiri - Turn any YouTube video into shorts, instantly",
-  description: "Paste a link below to extract viral-ready vertical clips using AI. No editing required.",
+  title: "Vakiogiri AI — Viral Short-Form Video Studio",
+  description: "Extract viral, high-retention vertical clips from long YouTube videos and livestreams with audience heatmap and speech energy AI.",
 };
 
 export default function RootLayout({
@@ -15,15 +32,18 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning className="h-full antialiased">
+    <html lang="en" className="dark h-full antialiased" suppressHydrationWarning>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-        <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap" rel="stylesheet" />
       </head>
-      <body suppressHydrationWarning className={`${inter.className} min-h-full flex flex-col`}>
-        {children}
+      <body
+        suppressHydrationWarning
+        className={`${inter.variable} ${plusJakarta.variable} ${jetbrainsMono.variable} font-sans min-h-full flex flex-col bg-[#08080c] text-[#f8fafc]`}
+      >
+        <UIFeedbackProvider>
+          {children}
+        </UIFeedbackProvider>
       </body>
     </html>
   );

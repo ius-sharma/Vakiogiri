@@ -1,6 +1,23 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect } from "react";
+import Link from "next/link";
+import {
+  Sparkles,
+  Scissors,
+  Film,
+  Video,
+  Gamepad2,
+  Library,
+  Sun,
+  Moon,
+  Zap,
+  Menu,
+  X,
+  ChevronDown,
+  LogOut,
+  User,
+} from "lucide-react";
 
 export interface NavDropdownItem {
   label: string;
@@ -59,7 +76,7 @@ export default function TopNavBar({
   session,
   userProfile,
   onSignOut,
-  theme,
+  theme = "dark",
   onToggleTheme,
   className = "",
 }: TopNavBarProps) {
@@ -75,12 +92,10 @@ export default function TopNavBar({
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Handle mobile menu scroll locking and Escape listener
+  // Handle escape key
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -88,517 +103,216 @@ export default function TopNavBar({
         setActiveDropdown(null);
       }
     };
-
-    if (mobileMenuOpen) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
-    }
-
     window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.body.style.overflow = "";
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [mobileMenuOpen]);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
-  const toggleDropdown = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setActiveDropdown((prev) => (prev === id ? null : id));
+  const getNavIcon = (id: string) => {
+    if (id === "studio") return <Scissors className="w-4 h-4" />;
+    if (id === "stream") return <Gamepad2 className="w-4 h-4" />;
+    if (id === "history") return <Library className="w-4 h-4" />;
+    return <Film className="w-4 h-4" />;
   };
 
   return (
-    <header
-      className={`w-full sticky top-0 z-50 transition-colors duration-200 ${className}`}
-      style={{
-        backgroundColor: "var(--nav-bg)",
-      }}
-    >
-      {/* Outer shelf container with rounded bottom corners */}
-      <div className="w-full rounded-b-2xl px-6 md:px-8">
-        <div className="max-w-[1280px] mx-auto h-[68px] flex items-center justify-between relative">
-          
-          {/* ========================================================================= */}
-          {/* ZONE 1: LEFT ZONE — LOGO                                                  */}
-          {/* ========================================================================= */}
-          <div className="flex items-center shrink-0 z-10">
-            {logo.onClick ? (
-              <button
-                type="button"
-                onClick={logo.onClick}
-                className="flex items-center gap-2 text-left cursor-pointer group focus:outline-none"
-              >
-                {logo.icon && (
-                  <span
-                    className="material-symbols-outlined text-[26px] transition-transform group-hover:scale-105"
-                    style={{
-                      color: "var(--accent)",
-                      fontVariationSettings: "'FILL' 1",
-                    }}
-                  >
-                    {logo.icon}
-                  </span>
-                )}
-                <span
-                  className="font-bold text-[19px] tracking-tight transition-opacity group-hover:opacity-90"
-                  style={{ color: "var(--text-primary)" }}
-                >
-                  {logo.name}
-                </span>
-              </button>
-            ) : (
-              <a
-                href={logo.href || "/"}
-                className="flex items-center gap-2 group"
-              >
-                {logo.icon && (
-                  <span
-                    className="material-symbols-outlined text-[26px] transition-transform group-hover:scale-105"
-                    style={{
-                      color: "var(--accent)",
-                      fontVariationSettings: "'FILL' 1",
-                    }}
-                  >
-                    {logo.icon}
-                  </span>
-                )}
-                <span
-                  className="font-bold text-[19px] tracking-tight transition-opacity group-hover:opacity-90"
-                  style={{ color: "var(--text-primary)" }}
-                >
-                  {logo.name}
-                </span>
-              </a>
-            )}
-          </div>
-
-          {/* ========================================================================= */}
-          {/* ZONE 2: CENTER ZONE — NAV LINKS (PILL-SHAPED CAPSULE)                     */}
-          {/* ========================================================================= */}
-          <div
-            ref={dropdownRef}
-            className="hidden lg:flex items-center justify-center absolute left-1/2 -translate-x-1/2"
-          >
-            {navItems.length > 0 && (
-              <nav
-                className="flex items-center p-1 rounded-full border border-black/5 dark:border-white/5 transition-all"
-                style={{
-                  backgroundColor: "var(--nav-pill-bg)",
-                }}
-              >
-                {navItems.map((item) => {
-                  const hasDropdown = item.dropdownItems && item.dropdownItems.length > 0;
-                  const isDropdownOpen = activeDropdown === item.id;
-
-                  return (
-                    <div key={item.id} className="relative flex items-center">
-                      {item.onClick ? (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            if (hasDropdown) {
-                              toggleDropdown(item.id, e);
-                            } else {
-                              item.onClick?.();
-                              setActiveDropdown(null);
-                            }
-                          }}
-                          className={`flex items-center gap-2 px-4 py-1.5 text-[14px] font-medium rounded-full transition-all cursor-pointer select-none ${
-                            item.isActive
-                              ? "bg-black/8 dark:bg-white/12 text-[var(--text-primary)] font-semibold shadow-2xs"
-                              : "text-[var(--text-primary)] hover:bg-[var(--nav-pill-hover)]"
-                          }`}
-                        >
-                          {/* Optional numbered badge inline before label */}
-                          {typeof item.badgeCount === "number" && (
-                            <span className="w-5 h-5 rounded-full bg-black/10 dark:bg-white/15 text-[11px] font-bold inline-flex items-center justify-center shrink-0">
-                              {item.badgeCount}
-                            </span>
-                          )}
-
-                          {item.icon && (
-                            <span className="material-symbols-outlined text-[16px] opacity-75">
-                              {item.icon}
-                            </span>
-                          )}
-
-                          <span>{item.label}</span>
-
-                          {/* Subtle Dropdown Chevron */}
-                          {hasDropdown && (
-                            <span
-                              className={`material-symbols-outlined text-[12px] opacity-70 transition-transform duration-200 ${
-                                isDropdownOpen ? "rotate-180" : ""
-                              }`}
-                            >
-                              expand_more
-                            </span>
-                          )}
-                        </button>
-                      ) : (
-                        <a
-                          href={item.href || "#"}
-                          onClick={(e) => {
-                            if (hasDropdown) {
-                              e.preventDefault();
-                              toggleDropdown(item.id, e);
-                            }
-                          }}
-                          className={`flex items-center gap-2 px-4 py-1.5 text-[14px] font-medium rounded-full transition-all cursor-pointer select-none ${
-                            item.isActive
-                              ? "bg-black/8 dark:bg-white/12 text-[var(--text-primary)] font-semibold shadow-2xs"
-                              : "text-[var(--text-primary)] hover:bg-[var(--nav-pill-hover)]"
-                          }`}
-                        >
-                          {typeof item.badgeCount === "number" && (
-                            <span className="w-5 h-5 rounded-full bg-black/10 dark:bg-white/15 text-[11px] font-bold inline-flex items-center justify-center shrink-0">
-                              {item.badgeCount}
-                            </span>
-                          )}
-
-                          {item.icon && (
-                            <span className="material-symbols-outlined text-[16px] opacity-75">
-                              {item.icon}
-                            </span>
-                          )}
-
-                          <span>{item.label}</span>
-
-                          {hasDropdown && (
-                            <span
-                              className={`material-symbols-outlined text-[12px] opacity-70 transition-transform duration-200 ${
-                                isDropdownOpen ? "rotate-180" : ""
-                              }`}
-                            >
-                              expand_more
-                            </span>
-                          )}
-                        </a>
-                      )}
-
-                      {/* Dropdown Menu Submenu */}
-                      {hasDropdown && isDropdownOpen && (
-                        <div
-                          className="absolute top-full mt-2 left-1/2 -translate-x-1/2 min-w-[200px] py-2 px-1.5 rounded-2xl border border-black/10 dark:border-white/10 shadow-lg z-50 animate-in fade-in zoom-in-95 duration-150"
-                          style={{
-                            backgroundColor: "var(--nav-bg)",
-                          }}
-                        >
-                          {item.dropdownItems?.map((subItem, sIdx) => (
-                            <button
-                              key={sIdx}
-                              type="button"
-                              onClick={() => {
-                                subItem.onClick?.();
-                                setActiveDropdown(null);
-                              }}
-                              className="w-full text-left px-3.5 py-2 rounded-xl text-[13px] font-medium text-[var(--text-primary)] hover:bg-[var(--nav-pill-hover)] transition-colors flex flex-col gap-0.5 cursor-pointer"
-                            >
-                              <span>{subItem.label}</span>
-                              {subItem.description && (
-                                <span className="text-[11px] opacity-60">
-                                  {subItem.description}
-                                </span>
-                              )}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </nav>
-            )}
-          </div>
-
-          {/* ========================================================================= */}
-          {/* ZONE 3: RIGHT ZONE — AUTH ACTIONS & CONTROLS                              */}
-          {/* ========================================================================= */}
-          <div className="flex items-center gap-3 sm:gap-4 shrink-0 z-10">
-            {/* Authenticated user status badge */}
-            {session && userProfile && (
-              <div
-                className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border border-black/5 dark:border-white/5"
-                style={{
-                  backgroundColor: "var(--nav-pill-bg)",
-                  color: "var(--text-primary)",
-                }}
-              >
-                <span className="text-amber-500">⚡</span>
-                <span>
-                  {userProfile.credits_remaining}/
-                  {userProfile.max_daily_credits || 3} Left
-                </span>
-              </div>
-            )}
-
-            {/* Theme Toggle Button */}
-            {onToggleTheme && (
-              <button
-                type="button"
-                onClick={onToggleTheme}
-                className="w-9 h-9 rounded-full flex items-center justify-center border border-black/5 dark:border-white/5 hover:bg-[var(--nav-pill-hover)] transition-colors cursor-pointer"
-                style={{
-                  backgroundColor: "var(--nav-pill-bg)",
-                  color: "var(--text-primary)",
-                }}
-                aria-label="Toggle theme"
-              >
-                {theme === "dark" ? (
-                  <span className="text-amber-400 text-sm">☀️</span>
-                ) : (
-                  <span className="text-[var(--accent)] text-sm">🌙</span>
-                )}
-              </button>
-            )}
-
-            {/* Auth Buttons: Unauthenticated vs Authenticated */}
-            {session ? (
-              <div className="flex items-center gap-3">
-                <span
-                  className="hidden xl:inline-block text-xs font-medium truncate max-w-[130px] opacity-75"
-                  style={{ color: "var(--text-muted)" }}
-                >
-                  {session.user?.email || userProfile?.email || "User"}
-                </span>
-                {onSignOut && (
-                  <button
-                    type="button"
-                    onClick={onSignOut}
-                    className="text-[14px] font-medium hover:opacity-80 transition-opacity cursor-pointer px-2"
-                    style={{ color: "var(--text-primary)" }}
-                  >
-                    Sign out
-                  </button>
-                )}
-              </div>
-            ) : (
-              <div className="flex items-center gap-4 sm:gap-5">
-                {/* 1. Plain text link ("Log in") — no button styling, no background */}
-                {authActions.onLogin && (
-                  <button
-                    type="button"
-                    onClick={authActions.onLogin}
-                    className="hidden sm:inline-block text-[14px] font-medium hover:opacity-80 transition-opacity cursor-pointer bg-transparent border-none p-0"
-                    style={{ color: "var(--text-primary)" }}
-                  >
-                    {authActions.loginLabel || "Log in"}
-                  </button>
-                )}
-
-                {/* 2. Solid pill button ("Start for free") — high contrast */}
-                {authActions.onSignup && (
-                  <button
-                    type="button"
-                    onClick={authActions.onSignup}
-                    className="px-5 py-2 rounded-full font-bold text-[14px] tracking-tight transition-all active:scale-95 cursor-pointer shadow-sm bg-[#191c1d] text-white hover:bg-neutral-800 dark:bg-white dark:text-[#0a0a0d] dark:hover:bg-neutral-200"
-                  >
-                    {authActions.signupLabel || "Start for free"}
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* Mobile Hamburger Toggle (< 1024px) */}
+    <header className={`w-full sticky top-0 z-40 studio-glass border-b border-white/8 transition-colors duration-200 ${className}`}>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+        
+        {/* Brand Logo */}
+        <div className="flex items-center gap-3">
+          {logo.onClick ? (
             <button
               type="button"
-              onClick={() => setMobileMenuOpen((prev) => !prev)}
-              className="lg:hidden w-10 h-10 rounded-full flex items-center justify-center border border-black/5 dark:border-white/5 hover:bg-[var(--nav-pill-hover)] transition-colors cursor-pointer"
-              style={{
-                backgroundColor: "var(--nav-pill-bg)",
-                color: "var(--text-primary)",
-              }}
-              aria-label="Toggle mobile menu"
+              onClick={logo.onClick}
+              className="flex items-center gap-2.5 cursor-pointer group focus:outline-none"
             >
-              <span className="material-symbols-outlined text-[20px]">
-                {mobileMenuOpen ? "close" : "menu"}
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-cyan-400 flex items-center justify-center text-white shadow-md shadow-indigo-500/25 group-hover:scale-105 transition-transform">
+                <Sparkles className="w-5 h-5 fill-current/20" />
+              </div>
+              <span className="font-extrabold text-lg tracking-tight text-white group-hover:text-indigo-300 transition-colors">
+                {logo.name || "Vakiogiri"}
+              </span>
+              <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 uppercase">
+                AI Studio
               </span>
             </button>
-          </div>
-
-        </div>
-      </div>
-
-      {/* Backdrop overlay for mobile drawer */}
-      {mobileMenuOpen && (
-        <div
-          className="fixed inset-0 top-[68px] bg-black/40 backdrop-blur-xs z-40 lg:hidden animate-in fade-in duration-150"
-          onClick={() => setMobileMenuOpen(false)}
-        />
-      )}
-
-      {/* ========================================================================= */}
-      {/* MOBILE SLIDE-DOWN DRAWER PANEL (< 1024px)                                 */}
-      {/* ========================================================================= */}
-      {mobileMenuOpen && (
-        <div
-          className="lg:hidden border-t border-black/5 dark:border-white/5 px-6 py-4 flex flex-col gap-3 relative z-50 animate-in slide-in-from-top-2 duration-200 shadow-xl"
-          style={{
-            backgroundColor: "var(--nav-bg)",
-          }}
-        >
-          {/* Mobile Nav items */}
-          <div className="flex flex-col gap-1">
-            {navItems.map((item) => {
-              const hasDropdown = item.dropdownItems && item.dropdownItems.length > 0;
-              const isDropdownOpen = activeDropdown === item.id;
-
-              return (
-                <div key={item.id} className="flex flex-col">
-                  {item.onClick ? (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        if (hasDropdown) {
-                          toggleDropdown(item.id, e);
-                        } else {
-                          item.onClick?.();
-                          setMobileMenuOpen(false);
-                        }
-                      }}
-                      className={`w-full flex items-center justify-between px-4 py-2.5 rounded-xl text-[14px] font-medium transition-all text-left cursor-pointer ${
-                        item.isActive
-                          ? "bg-black/10 dark:bg-white/10 font-semibold"
-                          : "hover:bg-[var(--nav-pill-hover)]"
-                      }`}
-                      style={{ color: "var(--text-primary)" }}
-                    >
-                      <div className="flex items-center gap-2.5">
-                        {typeof item.badgeCount === "number" && (
-                          <span className="w-5 h-5 rounded-full bg-black/10 dark:bg-white/15 text-[11px] font-bold inline-flex items-center justify-center">
-                            {item.badgeCount}
-                          </span>
-                        )}
-                        {item.icon && (
-                          <span className="material-symbols-outlined text-[18px] opacity-75">
-                            {item.icon}
-                          </span>
-                        )}
-                        <span>{item.label}</span>
-                      </div>
-                      {hasDropdown && (
-                        <span
-                          className={`material-symbols-outlined text-[14px] opacity-70 transition-transform ${
-                            isDropdownOpen ? "rotate-180" : ""
-                          }`}
-                        >
-                          expand_more
-                        </span>
-                      )}
-                    </button>
-                  ) : (
-                    <a
-                      href={item.href || "#"}
-                      onClick={(e) => {
-                        if (hasDropdown) {
-                          e.preventDefault();
-                          toggleDropdown(item.id, e);
-                        } else {
-                          setMobileMenuOpen(false);
-                        }
-                      }}
-                      className={`w-full flex items-center justify-between px-4 py-2.5 rounded-xl text-[14px] font-medium transition-all text-left cursor-pointer ${
-                        item.isActive
-                          ? "bg-black/10 dark:bg-white/10 font-semibold"
-                          : "hover:bg-[var(--nav-pill-hover)]"
-                      }`}
-                      style={{ color: "var(--text-primary)" }}
-                    >
-                      <div className="flex items-center gap-2.5">
-                        {typeof item.badgeCount === "number" && (
-                          <span className="w-5 h-5 rounded-full bg-black/10 dark:bg-white/15 text-[11px] font-bold inline-flex items-center justify-center">
-                            {item.badgeCount}
-                          </span>
-                        )}
-                        {item.icon && (
-                          <span className="material-symbols-outlined text-[18px] opacity-75">
-                            {item.icon}
-                          </span>
-                        )}
-                        <span>{item.label}</span>
-                      </div>
-                      {hasDropdown && (
-                        <span
-                          className={`material-symbols-outlined text-[14px] opacity-70 transition-transform ${
-                            isDropdownOpen ? "rotate-180" : ""
-                          }`}
-                        >
-                          expand_more
-                        </span>
-                      )}
-                    </a>
-                  )}
-
-                  {/* Mobile Accordion Submenu */}
-                  {hasDropdown && isDropdownOpen && (
-                    <div className="pl-6 pr-2 py-1 flex flex-col gap-1">
-                      {item.dropdownItems?.map((subItem, sIdx) => (
-                        <button
-                          key={sIdx}
-                          type="button"
-                          onClick={() => {
-                            subItem.onClick?.();
-                            setMobileMenuOpen(false);
-                            setActiveDropdown(null);
-                          }}
-                          className="w-full text-left px-3 py-2 rounded-lg text-[13px] text-[var(--text-primary)] hover:bg-[var(--nav-pill-hover)] transition-colors cursor-pointer"
-                        >
-                          {subItem.label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Mobile Auth Actions */}
-          <div className="pt-3 border-t border-black/5 dark:border-white/5 flex flex-col gap-2">
-            {!session ? (
-              <div className="flex flex-col gap-2">
-                {authActions.onSignup && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      authActions.onSignup?.();
-                      setMobileMenuOpen(false);
-                    }}
-                    className="w-full text-center py-2.5 rounded-xl text-[14px] font-bold bg-[#191c1d] text-white hover:bg-neutral-800 dark:bg-white dark:text-[#0a0a0d] dark:hover:bg-neutral-200 transition-all cursor-pointer shadow-xs active:scale-[0.98]"
-                  >
-                    {authActions.signupLabel || "Start for free"}
-                  </button>
-                )}
-                {authActions.onLogin && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      authActions.onLogin?.();
-                      setMobileMenuOpen(false);
-                    }}
-                    className="w-full text-center py-2.5 rounded-xl text-[14px] font-medium hover:bg-[var(--nav-pill-hover)] transition-colors cursor-pointer"
-                    style={{ color: "var(--text-primary)" }}
-                  >
-                    {authActions.loginLabel || "Log in"}
-                  </button>
-                )}
+          ) : (
+            <Link
+              href={logo.href || "/"}
+              className="flex items-center gap-2.5 group focus:outline-none"
+            >
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-cyan-400 flex items-center justify-center text-white shadow-md shadow-indigo-500/25 group-hover:scale-105 transition-transform">
+                <Sparkles className="w-5 h-5 fill-current/20" />
               </div>
-            ) : (
-              session && onSignOut && (
+              <span className="font-extrabold text-lg tracking-tight text-white group-hover:text-indigo-300 transition-colors">
+                {logo.name || "Vakiogiri"}
+              </span>
+              <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 uppercase">
+                AI Studio
+              </span>
+            </Link>
+          )}
+        </div>
+
+        {/* Center Pill Navigation */}
+        <nav
+          ref={dropdownRef}
+          className="hidden md:flex items-center p-1 rounded-full bg-white/[0.04] border border-white/8 backdrop-blur-md"
+        >
+          {navItems.map((item) => {
+            const isActive = item.isActive;
+            const content = (
+              <>
+                {getNavIcon(item.id)}
+                <span>{item.label}</span>
+                {typeof item.badgeCount === "number" && item.badgeCount > 0 && (
+                  <span className="w-5 h-5 rounded-full bg-indigo-500/30 text-indigo-300 text-[10px] font-bold flex items-center justify-center">
+                    {item.badgeCount}
+                  </span>
+                )}
+              </>
+            );
+
+            if (item.onClick) {
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={item.onClick}
+                  className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+                    isActive
+                      ? "bg-indigo-600 text-white shadow-sm shadow-indigo-600/30"
+                      : "text-slate-400 hover:text-white hover:bg-white/5"
+                  }`}
+                >
+                  {content}
+                </button>
+              );
+            }
+
+            return (
+              <Link
+                key={item.id}
+                href={item.href || "#"}
+                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+                  isActive
+                    ? "bg-indigo-600 text-white shadow-sm shadow-indigo-600/30"
+                    : "text-slate-400 hover:text-white hover:bg-white/5"
+                }`}
+              >
+                {content}
+              </Link>
+            );
+          })}
+        </nav>
+
+        {/* Right Zone: Credits, Theme, Auth */}
+        <div className="flex items-center gap-3">
+          
+          {/* Credits Counter Pill */}
+          {userProfile && (
+            <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/[0.04] border border-white/8 text-xs font-mono font-bold text-slate-300">
+              <Zap className="w-3.5 h-3.5 text-amber-400 fill-amber-400/20" />
+              <span>
+                {userProfile.credits_remaining ?? 3}/
+                {userProfile.max_daily_credits || 3} Clips
+              </span>
+            </div>
+          )}
+
+          {/* Theme Toggle */}
+          {onToggleTheme && (
+            <button
+              type="button"
+              onClick={onToggleTheme}
+              className="w-9 h-9 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/8 text-slate-300 hover:text-white flex items-center justify-center transition-all cursor-pointer"
+              title="Toggle theme"
+            >
+              {theme === "dark" ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-indigo-400" />}
+            </button>
+          )}
+
+          {/* Auth Actions */}
+          {session ? (
+            <div className="flex items-center gap-2">
+              <div className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/[0.04] text-xs font-medium text-slate-300 border border-white/8">
+                <User className="w-3.5 h-3.5 text-indigo-400" />
+                <span className="truncate max-w-[120px]">{session.user?.email || "User"}</span>
+              </div>
+
+              {onSignOut && (
                 <button
                   type="button"
-                  onClick={() => {
-                    onSignOut();
-                    setMobileMenuOpen(false);
-                  }}
-                  className="w-full text-center py-2.5 rounded-xl text-[14px] font-medium hover:bg-[var(--nav-pill-hover)] transition-colors cursor-pointer"
-                  style={{ color: "var(--text-primary)" }}
+                  onClick={onSignOut}
+                  className="p-2 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                  title="Sign out"
                 >
-                  Sign out ({session.user?.email || "User"})
+                  <LogOut className="w-4 h-4" />
                 </button>
-              )
-            )}
-          </div>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              {authActions.onLogin && (
+                <button
+                  type="button"
+                  onClick={authActions.onLogin}
+                  className="hidden sm:inline-block px-3 py-1.5 text-xs font-semibold text-slate-300 hover:text-white transition-colors cursor-pointer"
+                >
+                  {authActions.loginLabel || "Log in"}
+                </button>
+              )}
+
+              {authActions.onSignup && (
+                <button
+                  type="button"
+                  onClick={authActions.onSignup}
+                  className="px-4 py-1.5 rounded-xl text-xs font-bold bg-white text-black hover:bg-slate-200 transition-all cursor-pointer shadow-md active:scale-95"
+                >
+                  {authActions.signupLabel || "Start for free"}
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Mobile Menu Toggle */}
+          <button
+            type="button"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            className="md:hidden w-9 h-9 rounded-xl bg-white/[0.04] border border-white/8 text-white flex items-center justify-center cursor-pointer"
+          >
+            {mobileMenuOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
+          </button>
+        </div>
+
+      </div>
+
+      {/* Mobile Navigation Drawer */}
+      {mobileMenuOpen && (
+        <div className="md:hidden border-t border-white/8 px-4 py-4 flex flex-col gap-2 bg-[#0c0c14]/95 backdrop-blur-2xl animate-in slide-in-from-top-2">
+          {navItems.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => {
+                item.onClick?.();
+                setMobileMenuOpen(false);
+              }}
+              className={`flex items-center justify-between p-3 rounded-xl text-sm font-semibold transition-all ${
+                item.isActive ? "bg-indigo-600 text-white" : "text-slate-300 hover:bg-white/5"
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                {getNavIcon(item.id)}
+                <span>{item.label}</span>
+              </div>
+              {typeof item.badgeCount === "number" && item.badgeCount > 0 && (
+                <span className="w-5 h-5 rounded-full bg-white/20 text-white text-xs flex items-center justify-center">
+                  {item.badgeCount}
+                </span>
+              )}
+            </button>
+          ))}
         </div>
       )}
     </header>
