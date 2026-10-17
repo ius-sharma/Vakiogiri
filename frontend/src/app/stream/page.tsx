@@ -28,6 +28,7 @@ import {
   Loader2,
   SlidersHorizontal,
   Bookmark,
+  Scissors,
 } from "lucide-react";
 
 const BACKEND_URL = "http://localhost:8000";
@@ -121,6 +122,17 @@ export default function StreamStudio() {
 
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isPollingRef = useRef<boolean>(false);
+
+  const formatMinutesToHms = (minutes: number) => {
+    const totalSeconds = Math.max(0, Math.round(minutes * 60));
+    const h = Math.floor(totalSeconds / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    const s = Math.floor(totalSeconds % 60);
+    if (h > 0) {
+      return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+    }
+    return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+  };
 
   useEffect(() => {
     setMounted(true);
@@ -255,7 +267,8 @@ export default function StreamStudio() {
         video_id: data.video_id,
       });
 
-      setEndMin(Math.min(totalMin, 180));
+      setStartMin(0);
+      setEndMin(totalMin);
       setSkipIntroMin(Math.min(15, Math.floor(totalMin * 0.2)));
       showToast("Stream analyzed successfully! Select time range below.", "success");
     } catch (err: any) {
@@ -273,6 +286,17 @@ export default function StreamStudio() {
     if (userProfile.credits_remaining <= 0) {
       showToast("You have reached your daily credit limit (0/3 remaining).", "error");
       return;
+    }
+
+    if (rangeMode === "custom_range") {
+      if (startMin >= endMin) {
+        showToast("Start point (Point A) must be strictly less than End point (Point B).", "error");
+        return;
+      }
+      if (endMin - startMin < 1) {
+        showToast("Custom slice range must be at least 1 minute.", "error");
+        return;
+      }
     }
 
     setErrorMsg(null);
@@ -594,43 +618,203 @@ export default function StreamStudio() {
                     </button>
                   </div>
 
-                  {/* Range Slider Filter */}
-                  <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/8 flex flex-col gap-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
-                        <SlidersHorizontal className="w-3.5 h-3.5 text-cyan-400" />
-                        <span>Skip Intro / Starting Offset</span>
-                      </span>
-                      <span className="text-xs font-mono font-bold text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/20">
-                        Skip first {skipIntroMin} mins
-                      </span>
-                    </div>
+                  {/* Range Mode Switcher & Slicing Controls */}
+                  <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/8 flex flex-col gap-4">
+                    
+                    {/* Header with Mode Toggle */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2 border-b border-white/5">
+                      <div className="flex items-center gap-2">
+                        <Scissors className="w-4 h-4 text-cyan-400" />
+                        <span className="text-xs font-bold text-slate-200 uppercase tracking-wider">Stream Slicing Range</span>
+                      </div>
 
-                    <input
-                      type="range"
-                      min={0}
-                      max={Math.min(60, Math.floor(streamAnalysis.duration / 60))}
-                      value={skipIntroMin}
-                      onChange={(e) => setSkipIntroMin(Number(e.target.value))}
-                      className="w-full accent-cyan-500 cursor-pointer"
-                    />
-
-                    <div className="flex items-center gap-2 pt-1">
-                      {[0, 10, 15, 25, 30].map((preset) => (
+                      {/* Mode Switch Tabs */}
+                      <div className="flex items-center bg-black/40 p-1 rounded-xl border border-white/10 gap-1 self-start sm:self-auto">
                         <button
-                          key={preset}
                           type="button"
-                          onClick={() => setSkipIntroMin(preset)}
-                          className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
-                            skipIntroMin === preset
-                              ? "bg-cyan-500 text-white font-bold"
-                              : "bg-white/5 text-slate-400 hover:text-white"
+                          onClick={() => setRangeMode("skip_intro")}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                            rangeMode === "skip_intro"
+                              ? "bg-cyan-500 text-white font-bold shadow-xs"
+                              : "text-slate-400 hover:text-white"
                           }`}
                         >
-                          {preset === 0 ? "No Skip" : `Skip ${preset}m`}
+                          Skip Intro
                         </button>
-                      ))}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRangeMode("custom_range");
+                            if (endMin <= startMin) {
+                              setEndMin(Math.floor(streamAnalysis.duration / 60));
+                            }
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                            rangeMode === "custom_range"
+                              ? "bg-gradient-to-r from-cyan-500 to-indigo-500 text-white font-bold shadow-xs"
+                              : "text-slate-400 hover:text-white"
+                          }`}
+                        >
+                          <Scissors className="w-3.5 h-3.5" />
+                          <span>Custom 2-Point Cut (A ➔ B)</span>
+                        </button>
+                      </div>
                     </div>
+
+                    {/* Mode A: Skip Intro Slider */}
+                    {rangeMode === "skip_intro" ? (
+                      <div className="flex flex-col gap-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-slate-300">
+                            Cut and discard the starting waiting/chat screen:
+                          </span>
+                          <span className="text-xs font-mono font-bold text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/20">
+                            Skip first {skipIntroMin} mins ({formatMinutesToHms(skipIntroMin)})
+                          </span>
+                        </div>
+
+                        <input
+                          type="range"
+                          min={0}
+                          max={Math.min(90, Math.floor(streamAnalysis.duration / 60))}
+                          value={skipIntroMin}
+                          onChange={(e) => setSkipIntroMin(Number(e.target.value))}
+                          className="w-full accent-cyan-500 cursor-pointer"
+                        />
+
+                        <div className="flex flex-wrap items-center gap-2 pt-1">
+                          {[0, 10, 15, 20, 30, 45].map((preset) => (
+                            <button
+                              key={preset}
+                              type="button"
+                              onClick={() => setSkipIntroMin(preset)}
+                              className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
+                                skipIntroMin === preset
+                                  ? "bg-cyan-500 text-white font-bold"
+                                  : "bg-white/5 text-slate-400 hover:text-white"
+                              }`}
+                            >
+                              {preset === 0 ? "No Skip" : `Skip ${preset}m`}
+                            </button>
+                          ))}
+                        </div>
+
+                        <div className="p-3 rounded-xl bg-cyan-500/5 border border-cyan-500/15 flex items-center justify-between text-xs text-slate-400 font-mono">
+                          <span>Active Range: <strong>{formatMinutesToHms(skipIntroMin)}</strong> ➔ <strong>{streamAnalysis.duration_formatted}</strong></span>
+                          <span className="text-cyan-400">⚡ Downloads from {skipIntroMin}m to end</span>
+                        </div>
+                      </div>
+                    ) : (
+                      /* Mode B: Custom 2-Point Cut (Point A to Point B) */
+                      <div className="flex flex-col gap-4">
+                        
+                        {/* Point A (Start Time) */}
+                        <div className="flex flex-col gap-2 p-3.5 rounded-xl bg-white/[0.02] border border-white/5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                              <span>Point A — Start Slice (From)</span>
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                                {formatMinutesToHms(startMin)} ({startMin}m)
+                              </span>
+                            </div>
+                          </div>
+
+                          <input
+                            type="range"
+                            min={0}
+                            max={Math.max(0, endMin - 1)}
+                            value={startMin}
+                            onChange={(e) => setStartMin(Math.min(Number(e.target.value), endMin - 1))}
+                            className="w-full accent-emerald-500 cursor-pointer"
+                          />
+
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="text-[10px] text-slate-500 font-mono mr-1">Quick Set:</span>
+                            {[0, 15, 30, 45, 60, 90].map((preset) => (
+                              preset < endMin && (
+                                <button
+                                  key={preset}
+                                  type="button"
+                                  onClick={() => setStartMin(preset)}
+                                  className={`px-2 py-0.5 rounded-md text-[10px] font-semibold transition-all cursor-pointer ${
+                                    startMin === preset
+                                      ? "bg-emerald-500 text-white font-bold"
+                                      : "bg-white/5 text-slate-400 hover:text-white"
+                                  }`}
+                                >
+                                  {preset === 0 ? "0m (Start)" : `${preset}m`}
+                                </button>
+                              )
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Point B (End Time) */}
+                        <div className="flex flex-col gap-2 p-3.5 rounded-xl bg-white/[0.02] border border-white/5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-indigo-400" />
+                              <span>Point B — End Slice (To)</span>
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-mono font-bold text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">
+                                {formatMinutesToHms(endMin)} ({endMin}m)
+                              </span>
+                            </div>
+                          </div>
+
+                          <input
+                            type="range"
+                            min={startMin + 1}
+                            max={Math.floor(streamAnalysis.duration / 60)}
+                            value={endMin}
+                            onChange={(e) => setEndMin(Math.max(Number(e.target.value), startMin + 1))}
+                            className="w-full accent-indigo-500 cursor-pointer"
+                          />
+
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="text-[10px] text-slate-500 font-mono mr-1">Quick Set:</span>
+                            {[30, 60, 90, 120, 180, Math.floor(streamAnalysis.duration / 60)].map((preset, idx) => (
+                              preset > startMin && preset <= Math.floor(streamAnalysis.duration / 60) && (
+                                <button
+                                  key={idx}
+                                  type="button"
+                                  onClick={() => setEndMin(preset)}
+                                  className={`px-2 py-0.5 rounded-md text-[10px] font-semibold transition-all cursor-pointer ${
+                                    endMin === preset
+                                      ? "bg-indigo-500 text-white font-bold"
+                                      : "bg-white/5 text-slate-400 hover:text-white"
+                                  }`}
+                                >
+                                  {preset === Math.floor(streamAnalysis.duration / 60) ? "Stream End" : `${preset}m`}
+                                </button>
+                              )
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Slice Summary Card */}
+                        <div className="p-3.5 rounded-xl bg-gradient-to-r from-emerald-500/10 via-cyan-500/10 to-indigo-500/10 border border-cyan-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs">
+                          <div className="flex flex-col gap-0.5">
+                            <span className="font-bold text-white flex items-center gap-1.5">
+                              <Scissors className="w-3.5 h-3.5 text-cyan-400" />
+                              <span>2-Point Slice: {formatMinutesToHms(startMin)} ➔ {formatMinutesToHms(endMin)}</span>
+                            </span>
+                            <span className="text-[11px] text-slate-400">
+                              Duration: <strong className="text-cyan-300">{endMin - startMin} minutes</strong> • Downloads ONLY this portion!
+                            </span>
+                          </div>
+                          <span className="px-2.5 py-1 rounded-lg bg-cyan-500/20 text-cyan-300 font-mono text-[11px] font-bold border border-cyan-500/30">
+                            ⚡ Saves ~{Math.max(0, Math.round((1 - ((endMin - startMin) / Math.max(1, streamAnalysis.duration / 60))) * 100))}% bandwidth
+                          </span>
+                        </div>
+
+                      </div>
+                    )}
+
                   </div>
 
                   {/* Format & Aspect Ratio Selector */}
