@@ -784,7 +784,7 @@ export default function StreamStudio() {
                     className="px-5 py-2.5 bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white rounded-xl font-bold text-xs transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
                   >
                     <Download className="w-4 h-4" />
-                    <span>Download Master Reel</span>
+                    <span>Download Master Highlights (16:9)</span>
                   </a>
                 )}
               </div>
@@ -814,7 +814,7 @@ export default function StreamStudio() {
 
                 <div className="flex items-center justify-between text-xs text-slate-400 px-1 font-mono">
                   <span>Aspect: {activeClip?.aspect_ratio || "16:9 Widescreen"}</span>
-                  <span>Lossless Master Cut (CUDA / FFmpeg)</span>
+                  <span>PTS-Synchronized Master Cut (FFmpeg)</span>
                 </div>
               </div>
 
@@ -861,7 +861,7 @@ export default function StreamStudio() {
                   </div>
                 ) : (
                   <div className="text-xs text-slate-500 py-8 text-center font-mono">
-                    Continuous highlight reel rendered.
+                    Continuous 16:9 master compilation rendered.
                   </div>
                 )}
 
