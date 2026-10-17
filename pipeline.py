@@ -664,7 +664,7 @@ def run_pipeline(
             if has_wav and os.path.exists(temp_wav):
                 try:
                     if is_partial_stream:
-                        print(f"[Pipeline] Sliced Download Active: scan range 0.0s to {duration:.1f}s (Stream time shift: +{stream_slice_start:.1f}s)")
+                        print(f"[Pipeline] Sliced Download Active: scan range 0.0s to {duration:.1f}s")
                         stream_moments = detect_stream_audio_peaks(
                             wav_path=temp_wav,
                             target_duration=segment_duration,
@@ -672,7 +672,7 @@ def run_pipeline(
                             mode=detector_mode,
                             start_offset=0.0,
                             end_offset=duration,
-                            stream_time_shift=stream_slice_start
+                            stream_time_shift=0.0
                         )
                     else:
                         start_sec = stream_slice_start
