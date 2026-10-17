@@ -20,6 +20,7 @@ import yt_dlp
 from moment_detector import detect_best_moments, transcribe_video_audio
 from story_synthesizer import synthesize_story_blueprints, stitch_synthesized_story
 from stream_detector import detect_stream_audio_peaks, stitch_highlight_compilation
+from gemini_stream_detector import detect_stream_highlights_gemini
 
 # ==============================================================================
 # CONFIGURATION CONSTANTS
@@ -528,6 +529,7 @@ def split_and_crop_video(
             "-ss", str(start_time),
             "-t", str(clip_dur),
             "-i", video_path,
+            "-avoid_negative_ts", "make_zero",
             "-vf", vf_filter,
             "-c:v", "libx264",
             "-preset", "faster",
@@ -653,7 +655,7 @@ def run_pipeline(
         # 3. Detect Best Moments
         if is_supercut:
             if progress_callback:
-                progress_callback("analyzing_stream", 50, "Analyzing audio energy spikes, screams & reaction peaks across video...")
+                progress_callback("analyzing_stream", 50, "Analyzing stream climax peaks & audience heatmaps...")
             temp_wav = os.path.join(download_dir, "temp_stream_audio.wav")
             from moment_detector import extract_audio_pcm
             has_wav = extract_audio_pcm(video_path, temp_wav)
@@ -689,21 +691,49 @@ def run_pipeline(
                 except Exception as stream_err:
                     print(f"[Stream Detector Notice] Audio peak scan notice: {stream_err}")
 
-            if stream_moments and len(stream_moments) >= 2:
-                moments = stream_moments
-                if detector_mode == "supercut":
-                    # Ensure all key moments of the supercut are rendered so they can be stitched into the full reel
-                    max_clips = max(max_clips, len(stream_moments))
-            else:
-                moments = detect_best_moments(
-                    video_path=video_path,
+            # Primary: Gemini 2.5 Flash Climax & Reaction Intelligence
+            gemini_moments = []
+            try:
+                if progress_callback:
+                    progress_callback("gemini_stream_analysis", 60, "Gemini 2.5 Flash analyzing clutch plays, reactions & context...")
+                gemini_moments = detect_stream_highlights_gemini(
                     youtube_url=youtube_url,
                     duration=duration,
                     target_duration=segment_duration,
-                    top_k=max_clips,
-                    ai_enabled=ai_enabled,
-                    progress_callback=progress_callback
+                    start_offset=stream_slice_start if not is_partial_stream else 0.0,
+                    end_offset=stream_slice_end if not is_partial_stream else duration,
+                    audio_peaks=stream_moments,
+                    stream_title=meta.get("title")
                 )
+            except Exception as gem_err:
+                print(f"[Pipeline Notice] Gemini stream highlights notice: {gem_err}")
+
+            if gemini_moments and len(gemini_moments) >= 2:
+                print(f"[Pipeline] Using {len(gemini_moments)} Gemini-detected 16:9 stream highlights!")
+                moments = gemini_moments
+                max_clips = max(max_clips, len(gemini_moments))
+            elif stream_moments and len(stream_moments) >= 2:
+                print(f"[Pipeline] Falling back to {len(stream_moments)} acoustic reaction peaks.")
+                moments = stream_moments
+                if detector_mode == "supercut":
+                    max_clips = max(max_clips, len(stream_moments))
+            else:
+                # Safe fallback without triggering heavy OpenCV frame loops on long streams
+                print("[Pipeline] Generating spaced highlight windows across stream...")
+                num_fallback = max(3, max_clips)
+                chunk_len = round(float(segment_duration) / float(num_fallback), 1)
+                stride = max(chunk_len + 10.0, duration / float(num_fallback + 1))
+                moments = []
+                for f_idx in range(num_fallback):
+                    f_start = min(duration - chunk_len, (f_idx + 1) * stride)
+                    f_end = min(duration, f_start + chunk_len)
+                    moments.append({
+                        "start": round(f_start, 2),
+                        "end": round(f_end, 2),
+                        "duration": round(f_end - f_start, 2),
+                        "title": f"Highlight Segment {f_idx + 1}",
+                        "score": 80.0
+                    })
         else:
             moments = detect_best_moments(
                 video_path=video_path,

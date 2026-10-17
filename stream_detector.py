@@ -1,10 +1,9 @@
 """
-Gaming & Stream Highlight Detection Engine (StreamAI / Heuristic 2.0)
+Gaming & Stream Highlight Detection Engine (StreamAI / Vakiogiri 2.0)
 Specialized in:
-1. Relative Decibel Spikes & Scream Detection (Adaptive Rolling Noise Floor)
-2. Pitch Surges & Laughter Bursts during Clutch/Rage/Scare moments
-3. Seamless Highlight Reel Compilation Stitcher (FFmpeg Concat + Chapter Generation)
-100% Local, CPU-Optimized, Zero-API-Cost.
+1. Gemini 2.5 Flash Climax & Reaction Intelligence (Audience Heatmap + Acoustic + Context)
+2. Local High-Energy Peak & Reaction Detection (Adaptive Rolling Noise Floor + Non-Maximum Suppression)
+3. 16:9 Widescreen Highlight Compilation Stitcher (FFmpeg Filter Complex, Zero Desync, Chapter Timestamps)
 """
 
 import os
@@ -22,6 +21,8 @@ if sys.platform == "win32":
     except Exception:
         pass
 
+from gemini_stream_detector import detect_stream_highlights_gemini, get_gemini_client
+
 
 def detect_stream_audio_peaks(
     wav_path: str,
@@ -35,12 +36,11 @@ def detect_stream_audio_peaks(
 ) -> List[Dict[str, Any]]:
     """
     Scans a 16kHz mono audio WAV for gaming scream, shout, and clutch reaction peaks.
-    Uses an adaptive rolling baseline to distinguish player screams from continuous game audio/music.
+    Uses an adaptive rolling baseline to distinguish player reactions from background audio.
     
     Modes:
     - 'supercut': target_duration represents the TOTAL runtime of the stitched highlight reel (e.g. 3m, 5m, 10m).
-      Identifies the top N punchy, high-energy micro-moments across the entire 3-4 hour stream so they assemble
-      into 1 single master compilation of exactly target_duration.
+      Identifies top N punchy, high-energy micro-moments across the stream.
     - 'clips': target_duration represents the length of each individual highlight clip.
     """
     if not os.path.exists(wav_path):
@@ -56,23 +56,22 @@ def detect_stream_audio_peaks(
     if duration < 10.0:
         return []
 
-    # In supercut mode, divide target_duration into N punchy moments across the stream
     if mode == "supercut":
         if target_duration <= 120:
             num_moments = 4  # 4 moments x 30s = 120s (2 min)
         elif target_duration <= 180:
             num_moments = 5  # 5 moments x 36s = 180s (3 min)
         elif target_duration <= 300:
-            num_moments = 7  # 7 moments x 42s = ~300s (5 min)
+            num_moments = 6  # 6 moments x 50s = 300s (5 min)
         elif target_duration <= 480:
-            num_moments = 10
+            num_moments = 8
         else:
-            num_moments = 12
+            num_moments = 10
         clip_len = round(float(target_duration) / num_moments, 1)
         needed_clips = num_moments
-        # Space moments across the full stream length (adapting to both 15m videos and 4h streams)
+        # FIX: Allow bursty gaming highlights (e.g. 35s apart) instead of locking out for 15 minutes!
         if min_peak_distance is None:
-            min_peak_distance = max(15.0, duration / (num_moments * 2.0))
+            min_peak_distance = max(30.0, min(60.0, clip_len * 0.8))
     else:
         clip_len = float(target_duration)
         needed_clips = top_k
@@ -88,7 +87,7 @@ def detect_stream_audio_peaks(
     if num_frames <= 0:
         return []
 
-    # Fast chunked vectorized RMS computation (analyzes 1 hour in 0.2s vs 60s unvectorized loop)
+    # Fast chunked vectorized RMS computation
     chunk_size = 50000
     rms_list = []
     for start_idx in range(0, num_frames, chunk_size):
@@ -107,7 +106,7 @@ def detect_stream_audio_peaks(
     rms_db = 20.0 * np.log10(np.maximum(1e-5, rms))
     times = (np.arange(len(rms)) * hop_sec) + (frame_len / (2.0 * sr))
 
-    # Fast uniform baseline filter via numpy cumulative sum (0.01s)
+    # Fast uniform baseline filter via numpy cumulative sum
     window_frames = int(60.0 / hop_sec)
     pad = window_frames // 2
     padded = np.pad(rms_db, pad, mode='edge')
@@ -118,37 +117,15 @@ def detect_stream_audio_peaks(
     # Energy headroom above rolling baseline
     headroom = rms_db - local_floor
 
-    # Identify candidate loud frames (headroom > 6 dB and absolute energy >= -24 dBFS)
-    loud_indices = np.where((rms_db >= -24.0) & (headroom > 6.0))[0]
-    pitch_presence = np.zeros(len(rms), dtype=np.float32)
-
-    min_lag = int(sr / 450)  # Human voice upper bound ~450 Hz
-    max_lag = int(sr / 80)   # Human voice lower bound ~80 Hz
-
-    # Only evaluate voice pitch autocorrelation on loud candidate frames (~100x faster)
-    for i in loud_indices:
-        s_idx = i * hop
-        frame = y[s_idx : s_idx + frame_len]
-        corr = np.correlate(frame, frame, mode="full")
-        corr = corr[len(corr)//2:]
-        if max_lag < len(corr) and corr[0] > 1e-5:
-            search_region = corr[min_lag:max_lag]
-            peak_idx = int(np.argmax(search_region))
-            peak_val = float(search_region[peak_idx])
-            if peak_val > 0.30 * corr[0]:
-                pitch_presence[i] = 1.0
-
-    v_mult = np.where(pitch_presence > 0.5, 1.3, 1.0)
-    relative_surge = np.where((rms_db >= -24.0) & (headroom > 6.0), headroom * v_mult, 0.0)
+    # Identify candidate loud frames
+    loud_indices = np.where((rms_db >= -24.0) & (headroom > 5.0))[0]
+    relative_surge = np.where((rms_db >= -24.0) & (headroom > 5.0), headroom, 0.0)
 
     # Peak candidate finding
-    peak_indices = np.where(relative_surge > 8.0)[0]
-    
+    peak_indices = np.where(relative_surge > 7.0)[0]
     if len(peak_indices) == 0:
-        # Fallback to absolute highest RMS frames if no high-surge peaks found
-        peak_indices = np.argsort(rms_db)[-30:]
+        peak_indices = np.argsort(rms_db)[-40:]
 
-    # Sort peak indices by surge strength descending
     sorted_peaks = sorted(peak_indices, key=lambda idx: relative_surge[idx], reverse=True)
 
     selected_times = []
@@ -156,60 +133,53 @@ def detect_stream_audio_peaks(
     for p_idx in sorted_peaks:
         t_peak = float(times[p_idx])
         surge_val = float(relative_surge[p_idx])
-        abs_db = float(rms_db[p_idx])
 
-        # Ensure candidate is strictly within user's requested stream range (skip intro chit-chat)
         if t_peak < start_offset:
             continue
         if end_offset and t_peak > end_offset:
             continue
 
-        # Ensure candidates are spaced out across the stream
         if any(abs(t_peak - st) < min_peak_distance for st in selected_times):
             continue
 
         selected_times.append(t_peak)
 
-        # Proportional lead-in: ~35% build-up before the climax
-        lead_in = min(15.0 if mode == "supercut" else 120.0, float(clip_len) * 0.35)
+        # FIX: Generous lead-in so the player's fight and setup buildup are preserved (25-30s)
+        lead_in = min(30.0 if mode == "supercut" else 120.0, float(clip_len) * 0.55)
         start_time = max(start_offset, t_peak - lead_in)
         end_time = min(duration, start_time + clip_len)
         if end_offset and end_time > end_offset:
             end_time = end_offset
 
-        score = float(np.clip(70.0 + (surge_val * 1.5), 72.0, 98.0))
+        score = float(np.clip(75.0 + (surge_val * 1.6), 75.0, 98.0))
 
-        # Dynamic title based on peak intensity
-        if surge_val >= 14.0:
-            prefix = "Intense Scream & Clutch"
-        elif surge_val >= 10.0:
-            prefix = "Insane Clutch Moment"
-        elif abs_db >= -14.0:
-            prefix = "Epic Action & Boss Fight"
+        if surge_val > 14.0:
+            prefix = "Insane Climax / Reaction"
+        elif surge_val > 10.0:
+            prefix = "High Energy Play"
         else:
-            prefix = "Major Stream Highlight"
+            prefix = "Stream Highlight"
 
         candidates.append({
-            "peak_time": round(t_peak, 2),
-            "start": round(start_time, 2),
-            "end": round(end_time, 2),
+            "start": round(start_time + stream_time_shift, 2),
+            "end": round(end_time + stream_time_shift, 2),
             "duration": round(end_time - start_time, 2),
-            "surge_db": round(surge_val, 1),
-            "peak_db": round(abs_db, 1),
             "score": round(score, 1),
+            "peak_time": round(t_peak + stream_time_shift, 2),
+            "surge_db": round(surge_val, 1),
             "title": f"{prefix} @ {format_timestamp_short(t_peak + stream_time_shift)}"
         })
 
         if len(candidates) >= needed_clips:
             break
 
-    # Sort candidates chronologically for natural video flow
     candidates.sort(key=lambda c: c["start"])
     return candidates
 
 
 def format_timestamp_short(seconds: float) -> str:
     """Format seconds into HH:MM:SS or MM:SS."""
+    seconds = max(0.0, float(seconds))
     h = int(seconds // 3600)
     m = int((seconds % 3600) // 60)
     s = int(seconds % 60)
@@ -225,8 +195,8 @@ def stitch_highlight_compilation(
     aspect_ratio: str = "16:9"
 ) -> Dict[str, Any]:
     """
-    Merges individual highlight clips into a single continuous YouTube-ready compilation reel.
-    Uses FFmpeg concat demuxer with audio normalization and generates a YouTube chapter description.
+    Merges individual 16:9 highlight clips into a single continuous YouTube compilation video.
+    Uses FFmpeg PTS-normalized filtergraph with audio sync and generates YouTube chapter description.
     """
     if not clip_paths:
         raise ValueError("No clips provided for compilation stitching.")
@@ -238,32 +208,53 @@ def stitch_highlight_compilation(
     output_dir = os.path.dirname(output_compilation_path)
     os.makedirs(output_dir, exist_ok=True)
 
-    # 1. Build FFmpeg concat manifest
-    manifest_path = os.path.join(output_dir, "concat_manifest.txt")
-    with open(manifest_path, "w", encoding="utf-8") as f:
-        for p in valid_clips:
-            # Always use absolute paths so FFmpeg concat demuxer does not double-prefix directory
-            safe_p = os.path.abspath(p).replace("\\", "/").replace("'", "'\\''")
-            f.write(f"file '{safe_p}'\n")
+    n_clips = len(valid_clips)
+    print(f"\n[🎬 Concat Stitcher] Stitching {n_clips} clips into 16:9 Master Compilation: {os.path.basename(output_compilation_path)}")
 
-    # 2. Fast Lossless Stream-Copy Concat (0 re-encoding, 100% untouched quality, ~1 second runtime)
-    concat_fast_cmd = [
+    # Method 1: PTS-Normalized Filter Complex (Guaranteed 0% Audio/Video Desync across all cuts)
+    input_args = []
+    filter_parts = []
+    concat_inputs = []
+
+    for idx, p in enumerate(valid_clips):
+        input_args.extend(["-i", os.path.abspath(p)])
+        filter_parts.append(f"[{idx}:v]setpts=PTS-STARTPTS,fps=30[v{idx}];")
+        filter_parts.append(f"[{idx}:a]asetpts=PTS-STARTPTS,aresample=48000[a{idx}];")
+        concat_inputs.append(f"[v{idx}][a{idx}]")
+
+    filter_complex = "".join(filter_parts) + "".join(concat_inputs) + f"concat=n={n_clips}:v=1:a=1[outv][outa]"
+
+    concat_cmd = [
         "ffmpeg",
         "-y",
-        "-f", "concat",
-        "-safe", "0",
-        "-i", manifest_path,
-        "-c", "copy",
+        *input_args,
+        "-filter_complex", filter_complex,
+        "-map", "[outv]",
+        "-map", "[outa]",
+        "-c:v", "libx264",
+        "-preset", "veryfast",
+        "-crf", "18",
+        "-tune", "film",
+        "-pix_fmt", "yuv420p",
+        "-c:a", "aac",
+        "-b:a", "192k",
+        "-ar", "48000",
         "-movflags", "+faststart",
         output_compilation_path
     ]
 
     try:
-        subprocess.run(concat_fast_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+        subprocess.run(concat_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+        print(f"[🎬 Concat Stitcher] Successfully rendered PTS-synchronized 16:9 compilation video!")
     except subprocess.CalledProcessError as e:
-        # Fallback to high-quality re-encode only if stream copy encounters a container mismatch
-        print(f"[Stream Detector Notice] Lossless stream-copy fallback triggered: {e.stderr[:150] if e.stderr else 'unknown'}")
-        concat_fallback_cmd = [
+        print(f"[Concat Stitcher Warning] Filter complex error: {e.stderr[:200] if e.stderr else 'unknown'}, trying demuxer fallback...")
+        manifest_path = os.path.join(output_dir, "concat_manifest.txt")
+        with open(manifest_path, "w", encoding="utf-8") as f:
+            for p in valid_clips:
+                safe_p = os.path.abspath(p).replace("\\", "/").replace("'", "'\\''")
+                f.write(f"file '{safe_p}'\n")
+
+        demuxer_cmd = [
             "ffmpeg",
             "-y",
             "-f", "concat",
@@ -271,31 +262,29 @@ def stitch_highlight_compilation(
             "-i", manifest_path,
             "-c:v", "libx264",
             "-preset", "faster",
-            "-crf", "15",
-            "-tune", "film",
+            "-crf", "18",
             "-pix_fmt", "yuv420p",
             "-c:a", "aac",
-            "-b:a", "256k",
-            "-ar", "48000",
+            "-b:a", "192k",
             "-movflags", "+faststart",
             output_compilation_path
         ]
-        subprocess.run(concat_fallback_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
-    finally:
-        if os.path.exists(manifest_path):
-            try:
-                os.remove(manifest_path)
-            except Exception:
-                pass
+        try:
+            subprocess.run(demuxer_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+        finally:
+            if os.path.exists(manifest_path):
+                try:
+                    os.remove(manifest_path)
+                except Exception:
+                    pass
 
-    # 3. Calculate Chapter Timestamps
+    # Calculate Chapter Timestamps
     chapters = []
     chapter_lines = []
     current_time = 0.0
 
     for idx, clip_p in enumerate(valid_clips):
         clip_dur = 45.0
-        # Probe duration of each clip via ffprobe
         probe_cmd = [
             "ffprobe",
             "-v", "error",
@@ -310,7 +299,7 @@ def stitch_highlight_compilation(
             pass
 
         time_str = format_timestamp_short(current_time)
-        clip_title = titles[idx] if (titles and idx < len(titles)) else f"Highlight Moment #{idx + 1}"
+        clip_title = titles[idx] if (titles and idx < len(titles)) else f"Highlight #{idx + 1}"
         chapters.append({
             "timestamp": time_str,
             "seconds": round(current_time, 2),

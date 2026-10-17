@@ -93,6 +93,18 @@ class ProcessRequest(BaseModel):
     stream_end_min: Optional[float] = Field(default=None)  # Optional end boundary in minutes
 
 
+class StreamProcessRequest(BaseModel):
+    youtube_url: str
+    start_time: Optional[float] = 0.0  # seconds
+    end_time: Optional[float] = None   # seconds
+    target_reel_duration: Optional[int] = 300  # seconds (e.g. 180s, 300s, 600s total 16:9 compilation)
+    output_mode: Optional[str] = "single_reel"  # "single_reel" | "both" | "clips"
+    aspect_ratio: Optional[str] = "16:9"  # Default 16:9 widescreen
+    quality: Optional[str] = "1080p"
+    clipping_mode: Optional[str] = "heuristic"
+    generate_chapters: Optional[bool] = True
+
+
 def process_video_task(
     job_id: str,
     user_id: str,
@@ -375,6 +387,142 @@ def process_video(
         "stream_title": meta.get("title", ""),
         "stream_duration": stream_dur,
         "message": f"Initializing {mode_label} for {type_label} ({ratio_label})...",
+        "credits_remaining": current_credits
+    }
+
+
+@app.post("/stream/process")
+def process_stream_endpoint(
+    request: StreamProcessRequest,
+    background_tasks: BackgroundTasks,
+    user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Dedicated endpoint for long gaming streams and VODs.
+    Extracts high-intensity 16:9 climax highlights (buildup context + scream/clutch reactions)
+    and stitches them into a master compilation with YouTube chapters.
+    """
+    raw_url = request.youtube_url.strip() if request.youtube_url else ""
+    if not raw_url:
+        raise HTTPException(status_code=400, detail="YouTube URL must be provided.")
+    if not is_valid_youtube_url(raw_url):
+        raise HTTPException(
+            status_code=400,
+            detail=f"'{raw_url}' is not a valid YouTube stream URL. Please paste a valid YouTube video or stream link."
+        )
+
+    user_id = user["id"]
+    mode = (request.clipping_mode or "heuristic").lower()
+    if mode not in ["heuristic", "ai_enhanced"]:
+        mode = "heuristic"
+
+    aspect_ratio = (request.aspect_ratio or "16:9").lower()
+    if aspect_ratio not in ["16:9", "9:16"]:
+        aspect_ratio = "16:9"
+
+    stream_output_mode = (request.output_mode or "single_reel").lower()
+    if stream_output_mode not in ["single_reel", "both", "clips"]:
+        stream_output_mode = "single_reel"
+
+    quality = (request.quality or "1080p").lower()
+    if quality not in ["1080p", "720p", "480p", "best"]:
+        quality = "1080p"
+
+    meta = probe_stream_metadata(raw_url)
+    live_status = meta.get("live_status", "")
+    if live_status == "is_live" or meta.get("is_live"):
+        raise HTTPException(
+            status_code=400,
+            detail="Yeh live stream abhi chal rahi hai (Live). Stream broadcast complete hone ke baad try karein!"
+        )
+    elif live_status == "is_upcoming":
+        raise HTTPException(
+            status_code=400,
+            detail="Yeh stream abhi shuru nahi hui hai (Upcoming). Broadcast hone ke baad try karein!"
+        )
+
+    stream_dur = meta.get("duration", 0.0)
+    if stream_dur > MAX_STREAM_DURATION_SECONDS:
+        dur_str = format_duration(stream_dur)
+        raise HTTPException(
+            status_code=400,
+            detail=f"This stream is {dur_str}. During early beta, streams are capped at {int(MAX_STREAM_DURATION_HOURS)} hours."
+        )
+
+    credit_deducted = False
+    if mode == "ai_enhanced":
+        has_credit = deduct_credit(user_id)
+        if not has_credit:
+            raise HTTPException(
+                status_code=403,
+                detail="Daily AI credit limit reached (0/3 remaining). Switch to 'Fast Highlights (Free)' mode for unlimited clips!"
+            )
+        credit_deducted = True
+
+    job_id = str(uuid.uuid4())
+    target_reel_dur = request.target_reel_duration or 300
+    start_min = (request.start_time or 0.0) / 60.0
+    end_min = (request.end_time / 60.0) if request.end_time else None
+
+    # Calculate optimal number of clips for target duration
+    if target_reel_dur <= 120:
+        max_clips = 3
+    elif target_reel_dur <= 180:
+        max_clips = 4
+    elif target_reel_dur <= 300:
+        max_clips = 6
+    elif target_reel_dur <= 600:
+        max_clips = 8
+    else:
+        max_clips = 10
+
+    ratio_label = "16:9 Widescreen" if aspect_ratio == "16:9" else "9:16 Vertical"
+    jobs[job_id] = {
+        "status": "processing",
+        "step": "initializing",
+        "progress": 5,
+        "message": f"Initializing Gemini Stream Engine ({quality}, {ratio_label}, {target_reel_dur // 60}m compilation)...",
+        "segment_duration": target_reel_dur,
+        "max_clips": max_clips,
+        "mode": mode,
+        "aspect_ratio": aspect_ratio,
+        "content_type": "stream",
+        "stream_output_mode": stream_output_mode,
+        "quality": quality,
+        "stream_start_min": start_min,
+        "stream_end_min": end_min,
+        "stream_title": meta.get("title", ""),
+        "stream_duration": stream_dur,
+        "clips": [],
+        "error": None
+    }
+
+    record_job(job_id, user_id, raw_url, target_reel_dur)
+
+    background_tasks.add_task(
+        process_video_task,
+        job_id,
+        user_id,
+        raw_url,
+        target_reel_dur,
+        mode,
+        False,
+        credit_deducted,
+        aspect_ratio,
+        "stream",
+        max_clips,
+        stream_output_mode,
+        quality,
+        start_min,
+        end_min
+    )
+
+    current_credits = (user["credits_remaining"] - 1) if credit_deducted else user["credits_remaining"]
+    return {
+        "job_id": job_id,
+        "status": "processing",
+        "progress": 5,
+        "message": f"Extracting 16:9 stream climax moments ({ratio_label}, {quality})...",
         "credits_remaining": current_credits
     }
 
