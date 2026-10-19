@@ -9,10 +9,10 @@ interface Vec3 {
 }
 
 interface MorphParticle {
-  // Target shape coordinates
+  // Target 3D continuous mathematical shapes
   sphere: Vec3;
-  videoIcon: Vec3;
-  loginIcon: Vec3;
+  infinity: Vec3;
+  saturn: Vec3;
 
   // Stored random unit direction for cosmic entry
   dirX: number;
@@ -63,171 +63,121 @@ export default function ParticleOrbCanvas({
     resize();
     window.addEventListener("resize", resize);
 
-    // Mouse tracking for subtle magnetic hover pull
-    let mouseX = window.innerWidth * targetCenterRatioX;
-    let mouseY = window.innerHeight / 2;
-    let currentMagneticX = 0;
-    let currentMagneticY = 0;
+    // Mouse tracking for subtle, per-dot magnetic hover pull
+    let mouseX = -9999;
+    let mouseY = -9999;
 
     const handleMouseMove = (e: MouseEvent) => {
       mouseX = e.clientX;
       mouseY = e.clientY;
     };
+    const handleMouseLeave = () => {
+      mouseX = -9999;
+      mouseY = -9999;
+    };
     window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseleave", handleMouseLeave);
 
     const count = 800;
     const particles: MorphParticle[] = [];
-    
-    // Base radii:
-    // Circle/Sphere: Full majestic original radius
-    // Icons: Clean, elegant compact size (0.64x scale)
-    const sphereRadius = Math.max(140, Math.min(window.innerWidth, window.innerHeight) * 0.22);
-    const compactScale = 0.64;
-    const compactRadius = sphereRadius * compactScale;
 
-    // Helper: sample points on a line segment in 3D with clean precision
-    const sampleLine = (p1: Vec3, p2: Vec3, n: number): Vec3[] => {
-      const pts: Vec3[] = [];
-      for (let i = 0; i < n; i++) {
-        const t = i / n;
-        pts.push({
-          x: p1.x + (p2.x - p1.x) * t,
-          y: p1.y + (p2.y - p1.y) * t,
-          z: p1.z + (p2.z - p1.z) * t + (Math.random() - 0.5) * 3,
-        });
-      }
-      return pts;
-    };
-
-    // Helper: sample points on a 3D circle/arc with clean precision
-    const sampleArc = (cx: number, cy: number, r: number, startA: number, endA: number, n: number): Vec3[] => {
-      const pts: Vec3[] = [];
-      for (let i = 0; i < n; i++) {
-        const t = i / n;
-        const angle = startA + (endA - startA) * t;
-        pts.push({
-          x: cx + r * Math.cos(angle),
-          y: cy + r * Math.sin(angle),
-          z: (Math.random() - 0.5) * 4,
-        });
-      }
-      return pts;
-    };
+    // Base radius: Majestic 3D scale
+    const baseRadius = Math.max(140, Math.min(window.innerWidth, window.innerHeight) * 0.22);
 
     // ==============================================================
-    // 1. SHAPE 1: Sphere Targets (Full Original Size - Fibonacci Lattice)
+    // 1. SHAPE 1: 3D Cosmic Sphere Orb (Fibonacci Lattice)
     // ==============================================================
     const sphereTargets: Vec3[] = [];
     for (let i = 0; i < count; i++) {
       const y = 1 - (i / (count - 1)) * 2;
       const radiusAtY = Math.sqrt(1 - y * y);
-      const theta = i * 2.399963229728653;
+      const theta = i * 2.399963229728653; // Golden angle
       sphereTargets.push({
-        x: sphereRadius * radiusAtY * Math.cos(theta),
-        y: sphereRadius * y,
-        z: sphereRadius * radiusAtY * Math.sin(theta),
+        x: baseRadius * radiusAtY * Math.cos(theta),
+        y: baseRadius * y,
+        z: baseRadius * radiusAtY * Math.sin(theta),
       });
     }
 
     // ==============================================================
-    // 2. SHAPE 2: Video Film Slate / Clapperboard Icon (Crisp, High-Detail)
+    // 2. SHAPE 2: 3D Infinity Loop / Mobius Ribbon (∞)
+    // ==============================================================
+    // Continuous 3D Lemniscate ribbon with volumetric tube depth
+    const infinityTargets: Vec3[] = [];
+    const infW = baseRadius * 1.38;
+    const infH = baseRadius * 0.72;
+    for (let i = 0; i < count; i++) {
+      const t = (i / count) * Math.PI * 2;
+      const denom = 1 + Math.sin(t) * Math.sin(t);
+      // Lemniscate of Bernoulli base curve
+      const baseX = (infW * Math.SQRT2 * Math.cos(t)) / denom;
+      const baseY = (infW * Math.SQRT2 * Math.cos(t) * Math.sin(t)) / denom;
+      const baseZ = infH * Math.sin(2 * t);
+
+      // Add gentle ribbon thickness so it's a solid 3D ribbon in space
+      const crossAngle = 2 * t;
+      const tubeRadius = (Math.sin(i * 11.3) * 0.5 + 0.5) * 11;
+      const offsetX = tubeRadius * Math.cos(crossAngle);
+      const offsetY = tubeRadius * Math.sin(crossAngle) * 0.6;
+      const offsetZ = tubeRadius * Math.sin(crossAngle);
+
+      infinityTargets.push({
+        x: baseX + offsetX,
+        y: baseY + offsetY,
+        z: baseZ + offsetZ,
+      });
+    }
+
+    // ==============================================================
+    // 3. SHAPE 3: 3D Saturn Ring / Celestial Orbit
     // ==============================================================
     // Composed of:
-    // - Outer Film Slate Frame: w = 1.35 * compactRadius, h = 1.05 * compactRadius
-    // - Diagonal Clapper Stripe Marks across the top bar
-    // - Center Crisp Play Triangle with clean inner vertices
-    const videoTargets: Vec3[] = [];
-    const slateW = compactRadius * 1.30;
-    const slateH = compactRadius * 1.00;
-    const clapperH = compactRadius * 0.32;
+    // - Inner Planet Core (300 particles): Fibonacci sphere with compact radius
+    // - Outer Planetary Halo Ring (500 particles): Tilted multi-layered particle disc
+    const saturnTargets: Vec3[] = [];
+    const coreCount = 300;
+    const coreRadius = baseRadius * 0.46;
 
-    // Body bottom rectangle (3 lines: left, bottom, right)
-    videoTargets.push(...sampleLine({ x: -slateW, y: -slateH + clapperH, z: 0 }, { x: -slateW, y: slateH, z: 0 }, 75));
-    videoTargets.push(...sampleLine({ x: -slateW, y: slateH, z: 0 }, { x: slateW, y: slateH, z: 0 }, 100));
-    videoTargets.push(...sampleLine({ x: slateW, y: slateH, z: 0 }, { x: slateW, y: -slateH + clapperH, z: 0 }, 75));
-
-    // Clapper top bar (hinged bar at top)
-    videoTargets.push(...sampleLine({ x: -slateW, y: -slateH, z: 0 }, { x: slateW, y: -slateH, z: 0 }, 100));
-    videoTargets.push(...sampleLine({ x: -slateW, y: -slateH + clapperH, z: 0 }, { x: slateW, y: -slateH + clapperH, z: 0 }, 90));
-    videoTargets.push(...sampleLine({ x: -slateW, y: -slateH, z: 0 }, { x: -slateW, y: -slateH + clapperH, z: 0 }, 25));
-    videoTargets.push(...sampleLine({ x: slateW, y: -slateH, z: 0 }, { x: slateW, y: -slateH + clapperH, z: 0 }, 25));
-
-    // 4 Diagonal Clapper Stripes
-    const stripeXs = [-slateW * 0.65, -slateW * 0.20, slateW * 0.25, slateW * 0.70];
-    for (const sx of stripeXs) {
-      videoTargets.push(...sampleLine({ x: sx, y: -slateH + clapperH, z: 0 }, { x: sx + 18, y: -slateH, z: 0 }, 20));
+    for (let i = 0; i < coreCount; i++) {
+      const y = 1 - (i / (coreCount - 1)) * 2;
+      const radiusAtY = Math.sqrt(1 - y * y);
+      const theta = i * 2.399963229728653;
+      saturnTargets.push({
+        x: coreRadius * radiusAtY * Math.cos(theta),
+        y: coreRadius * y,
+        z: coreRadius * radiusAtY * Math.sin(theta),
+      });
     }
 
-    // Centered Equilateral Play Triangle
-    const triR = compactRadius * 0.50;
-    const triV1 = { x: -triR * 0.55, y: -triR * 0.75, z: 0 };
-    const triV2 = { x: -triR * 0.55, y: triR * 0.75, z: 0 };
-    const triV3 = { x: triR * 0.85, y: 0, z: 0 };
-    videoTargets.push(...sampleLine(triV1, triV2, 60));
-    videoTargets.push(...sampleLine(triV2, triV3, 60));
-    videoTargets.push(...sampleLine(triV3, triV1, 60));
+    const ringCount = count - coreCount;
+    const innerRingR = baseRadius * 0.78;
+    const outerRingR = baseRadius * 1.62;
+    const ringTilt = 0.42; // ~24 degree permanent tilt for the halo disc
+    const cosRingTilt = Math.cos(ringTilt);
+    const sinRingTilt = Math.sin(ringTilt);
 
-    // Fill remaining points with balanced inner film timeline tracks
-    while (videoTargets.length < count) {
-      const t = Math.random();
-      const dotX = -slateW * 0.75 + t * (slateW * 1.5);
-      videoTargets.push({
-        x: dotX,
-        y: slateH * 0.78,
-        z: (Math.random() - 0.5) * 4,
+    for (let i = 0; i < ringCount; i++) {
+      const frac = i / ringCount;
+      const phi = frac * Math.PI * 2 + (Math.sin(i * 7.1) * 0.05);
+      // Density distributed across the ring disc
+      const radialT = Math.sqrt((i % 50) / 50);
+      const r = innerRingR + radialT * (outerRingR - innerRingR);
+      const zJitter = (Math.sin(i * 13.9) * 0.5) * 8;
+
+      const rawX = r * Math.cos(phi);
+      const rawY = r * Math.sin(phi);
+      const rawZ = zJitter;
+
+      // Apply tilted disc orientation
+      saturnTargets.push({
+        x: rawX,
+        y: rawY * cosRingTilt - rawZ * sinRingTilt,
+        z: rawY * sinRingTilt + rawZ * cosRingTilt,
       });
     }
 
     // ==============================================================
-    // 3. SHAPE 3: Sleek Modern Login / Security Shield & Keyhole Icon
-    // ==============================================================
-    // Composed of:
-    // - Elegant Security Shield Outer Silhouette
-    // - Centered Keyhole / User Avatar Node
-    // - Radiating Orbit Arc
-    const loginTargets: Vec3[] = [];
-    const shieldW = compactRadius * 1.15;
-    const shieldTopY = -compactRadius * 1.15;
-    const shieldCornerY = -compactRadius * 0.35;
-    const shieldBottomY = compactRadius * 1.25;
-
-    // Shield Top edge
-    loginTargets.push(...sampleLine({ x: -shieldW, y: shieldTopY, z: 0 }, { x: shieldW, y: shieldTopY, z: 0 }, 90));
-    // Shield Upper Sides
-    loginTargets.push(...sampleLine({ x: -shieldW, y: shieldTopY, z: 0 }, { x: -shieldW, y: shieldCornerY, z: 0 }, 50));
-    loginTargets.push(...sampleLine({ x: shieldW, y: shieldTopY, z: 0 }, { x: shieldW, y: shieldCornerY, z: 0 }, 50));
-    // Shield Lower Converging Curves to bottom tip
-    loginTargets.push(...sampleLine({ x: -shieldW, y: shieldCornerY, z: 0 }, { x: 0, y: shieldBottomY, z: 0 }, 100));
-    loginTargets.push(...sampleLine({ x: shieldW, y: shieldCornerY, z: 0 }, { x: 0, y: shieldBottomY, z: 0 }, 100));
-
-    // Center User Head / Lock Shackle Circle
-    const lockHeadR = compactRadius * 0.38;
-    const lockHeadY = -compactRadius * 0.25;
-    loginTargets.push(...sampleArc(0, lockHeadY, lockHeadR, 0, Math.PI * 2, 130));
-
-    // Keyhole / User Body Trapezoid below head
-    const bodyTopW = compactRadius * 0.22;
-    const bodyBotW = compactRadius * 0.55;
-    const bodyTopY = lockHeadY + lockHeadR + 4;
-    const bodyBotY = compactRadius * 0.65;
-    loginTargets.push(...sampleLine({ x: -bodyTopW, y: bodyTopY, z: 0 }, { x: bodyTopW, y: bodyTopY, z: 0 }, 30));
-    loginTargets.push(...sampleLine({ x: bodyTopW, y: bodyTopY, z: 0 }, { x: bodyBotW, y: bodyBotY, z: 0 }, 50));
-    loginTargets.push(...sampleLine({ x: bodyBotW, y: bodyBotY, z: 0 }, { x: -bodyBotW, y: bodyBotY, z: 0 }, 60));
-    loginTargets.push(...sampleLine({ x: -bodyBotW, y: bodyBotY, z: 0 }, { x: -bodyTopW, y: bodyTopY, z: 0 }, 50));
-
-    // Fill remaining points with concentric inner verification glow ring
-    const innerRingR = compactRadius * 0.75;
-    while (loginTargets.length < count) {
-      const angle = Math.random() * Math.PI * 2;
-      loginTargets.push({
-        x: innerRingR * Math.cos(angle),
-        y: innerRingR * Math.sin(angle) * 0.85,
-        z: (Math.random() - 0.5) * 6,
-      });
-    }
-
-    // ==============================================================
-    // 4. PARTICLES INITIALIZATION: SMALLER, CRISP, ELEGANT DOTS
+    // 4. PARTICLES INITIALIZATION
     // ==============================================================
     const maxDimension = Math.max(window.innerWidth, window.innerHeight);
     for (let i = 0; i < count; i++) {
@@ -243,13 +193,11 @@ export default function ParticleOrbCanvas({
 
       const isOrange = Math.random() < 0.65;
 
-      // NOTICE: Dots are made noticeably smaller, crisper, and refined
-      // Orange dots: ~0.95px to 1.35px (reduced from 3.0px)
-      // White dots: ~0.80px to 1.15px
+      // Dots are crisp, refined, and delicate
       particles.push({
         sphere: sphereTargets[i],
-        videoIcon: videoTargets[i],
-        loginIcon: loginTargets[i],
+        infinity: infinityTargets[i],
+        saturn: saturnTargets[i],
 
         dirX,
         dirY,
@@ -261,19 +209,22 @@ export default function ParticleOrbCanvas({
         vz: 0,
 
         color: isOrange ? "orange" : "white",
-        size: isOrange ? 0.95 + Math.random() * 0.40 : 0.80 + Math.random() * 0.35,
+        size: isOrange ? 0.90 + Math.random() * 0.40 : 0.75 + Math.random() * 0.35,
         baseAlpha: 0.70 + Math.random() * 0.30,
       });
     }
 
+    // Steady, rock-solid rotation parameters (no wobbling, no tumbling!)
     let rotY = 0;
-    let rotX = 0.15;
-    
+    const fixedTiltAngle = 0.22; // ~12.6 degree fixed aesthetic tilt
+    const cosTilt = Math.cos(fixedTiltAngle);
+    const sinTilt = Math.sin(fixedTiltAngle);
+
     // Cycle Timing:
-    // Full 360 degree rotation per shape before leisurely morphing
+    // Each shape rotates smoothly for a full leisurely round before transitioning
     let morphTime = 0;
-    const stageDuration = 800; // ~13.3 seconds per shape
-    const morphCycleDuration = stageDuration * 3; // 2400 frames total loop
+    const stageDuration = 1000; // ~16.6 seconds per shape at 60fps
+    const morphCycleDuration = stageDuration * 3; // 3000 frames total loop (~50s)
 
     let entranceProgress = 0;
     let explodeTimer = 0;
@@ -288,51 +239,33 @@ export default function ParticleOrbCanvas({
       ctx.clearRect(0, 0, width, height);
 
       const isMobile = width < 768;
-      const baseCenterX = isMobile ? width / 2 : width * targetCenterRatioX;
-      const baseCenterY = isMobile ? height * 0.28 : height / 2;
+      // Fixed, completely stable center coordinate (ZERO shaking or wobbling)
+      const centerX = isMobile ? width / 2 : width * targetCenterRatioX;
+      const centerY = isMobile ? height * 0.28 : height / 2;
 
-      // Subtle Minimal Magnetic Hover
-      const dx = mouseX - baseCenterX;
-      const dy = mouseY - baseCenterY;
-      const distFromCenter = Math.sqrt(dx * dx + dy * dy);
-      let targetMagX = 0;
-      let targetMagY = 0;
-      if (distFromCenter > 0.001 && distFromCenter < 400 && !isMobile) {
-        const pull = Math.min(18, distFromCenter * 0.04);
-        targetMagX = (dx / distFromCenter) * pull;
-        targetMagY = (dy / distFromCenter) * pull;
-      }
-      currentMagneticX += (targetMagX - currentMagneticX) * 0.05;
-      currentMagneticY += (targetMagY - currentMagneticY) * 0.05;
-
-      const centerX = baseCenterX + (Number.isNaN(currentMagneticX) ? 0 : currentMagneticX);
-      const centerY = baseCenterY + (Number.isNaN(currentMagneticY) ? 0 : currentMagneticY);
-
-      // Slow 3D Rotation
-      rotY += 0.0022;
-      rotX += 0.0005;
+      // Clean, constant polar rotation around Y-axis (rock solid, steady)
+      rotY += 0.0019;
       const cosY = Math.cos(rotY);
       const sinY = Math.sin(rotY);
-      const cosX = Math.cos(rotX);
-      const sinX = Math.sin(rotX);
 
-      const fov = 450;
+      const fov = 460;
       const isCurrentlyExploding = explodingRef.current;
 
       if (entranceProgress < 1) {
         entranceProgress += (1 - entranceProgress) * 0.045;
       }
 
-      // Morphing time progression
+      // Morphing time progression:
       morphTime = (morphTime + 1) % morphCycleDuration;
       const currentStage = Math.floor(morphTime / stageDuration);
       const timeInStage = morphTime % stageDuration;
 
-      // Hold stabilized for 65% of the stage, then transition over the remaining 35%
-      const holdTime = stageDuration * 0.65;
+      // Hold stabilized for 75% of stage, then smoothly morph during the remaining 25%
+      const holdTime = stageDuration * 0.75;
       let morphWeight = 0;
       if (timeInStage > holdTime) {
         const transitionProgress = (timeInStage - holdTime) / (stageDuration - holdTime);
+        // Hermite smooth cubic easing
         morphWeight = transitionProgress * transitionProgress * (3 - 2 * transitionProgress);
       }
 
@@ -351,22 +284,25 @@ export default function ParticleOrbCanvas({
         if (!isCurrentlyExploding) {
           let target: Vec3;
           if (currentStage === 0) {
+            // Sphere -> Infinity Loop
             target = {
-              x: p.sphere.x + (p.videoIcon.x - p.sphere.x) * morphWeight,
-              y: p.sphere.y + (p.videoIcon.y - p.sphere.y) * morphWeight,
-              z: p.sphere.z + (p.videoIcon.z - p.sphere.z) * morphWeight,
+              x: p.sphere.x + (p.infinity.x - p.sphere.x) * morphWeight,
+              y: p.sphere.y + (p.infinity.y - p.sphere.y) * morphWeight,
+              z: p.sphere.z + (p.infinity.z - p.sphere.z) * morphWeight,
             };
           } else if (currentStage === 1) {
+            // Infinity Loop -> Saturn Celestial Orbit
             target = {
-              x: p.videoIcon.x + (p.loginIcon.x - p.videoIcon.x) * morphWeight,
-              y: p.videoIcon.y + (p.loginIcon.y - p.videoIcon.y) * morphWeight,
-              z: p.videoIcon.z + (p.loginIcon.z - p.videoIcon.z) * morphWeight,
+              x: p.infinity.x + (p.saturn.x - p.infinity.x) * morphWeight,
+              y: p.infinity.y + (p.saturn.y - p.infinity.y) * morphWeight,
+              z: p.infinity.z + (p.saturn.z - p.infinity.z) * morphWeight,
             };
           } else {
+            // Saturn Celestial Orbit -> Sphere
             target = {
-              x: p.loginIcon.x + (p.sphere.x - p.loginIcon.x) * morphWeight,
-              y: p.loginIcon.y + (p.sphere.y - p.loginIcon.y) * morphWeight,
-              z: p.loginIcon.z + (p.sphere.z - p.loginIcon.z) * morphWeight,
+              x: p.saturn.x + (p.sphere.x - p.saturn.x) * morphWeight,
+              y: p.saturn.y + (p.sphere.y - p.saturn.y) * morphWeight,
+              z: p.saturn.z + (p.sphere.z - p.saturn.z) * morphWeight,
             };
           }
 
@@ -376,15 +312,15 @@ export default function ParticleOrbCanvas({
           const currentBaseY = target.y + p.dirY * currentDist;
           const currentBaseZ = target.z + p.dirZ * currentDist;
 
-          // Rotate around Y and X
-          const x1 = currentBaseX * cosY + currentBaseZ * sinY;
-          const z1 = -currentBaseX * sinY + currentBaseZ * cosY;
-          const y1 = currentBaseY * cosX - z1 * sinX;
-          const z2 = currentBaseY * sinX + z1 * cosX;
+          // Pure, rock-solid rotation around Y-axis followed by fixed aesthetic tilt
+          const xRot = currentBaseX * cosY + currentBaseZ * sinY;
+          const zRot = -currentBaseX * sinY + currentBaseZ * cosY;
+          const yTilted = currentBaseY * cosTilt - zRot * sinTilt;
+          const zTilted = currentBaseY * sinTilt + zRot * cosTilt;
 
-          pos.x = x1;
-          pos.y = y1;
-          pos.z = z2;
+          pos.x = xRot;
+          pos.y = yTilted;
+          pos.z = zTilted;
         } else {
           if (p.vx === 0 && p.vy === 0 && p.vz === 0) {
             const mag = Math.sqrt(pos.x * pos.x + pos.y * pos.y + pos.z * pos.z) || 1;
@@ -399,25 +335,42 @@ export default function ParticleOrbCanvas({
           p.baseAlpha = Math.max(0, p.baseAlpha - 0.02);
         }
 
+        // Perspective projection
         const scale = fov / (fov + Math.max(-300, Math.min(300, pos.z)));
-        const screenX = centerX + pos.x * scale;
-        const screenY = centerY + pos.y * scale;
+        let screenX = centerX + pos.x * scale;
+        let screenY = centerY + pos.y * scale;
 
-        const depthAlpha = Math.max(0.40, Math.min(1, (pos.z + sphereRadius) / (sphereRadius * 2))) * p.baseAlpha;
-        
-        // Smaller, refined dot radius for clean starry aesthetics
+        // Subtle, gentle magnetic hover effect directly on individual dots
+        let hoverAlphaBoost = 0;
+        if (!isMobile && mouseX > -1000 && !isCurrentlyExploding) {
+          const mdx = mouseX - screenX;
+          const mdy = mouseY - screenY;
+          const dotDist = Math.sqrt(mdx * mdx + mdy * mdy);
+          const hoverRadius = 85;
+
+          if (dotDist < hoverRadius && dotDist > 0.1) {
+            const pullFactor = Math.pow(1 - dotDist / hoverRadius, 2);
+            const pullDistance = pullFactor * 13; // Max 13px subtle magnetic attraction
+            screenX += (mdx / dotDist) * pullDistance;
+            screenY += (mdy / dotDist) * pullDistance;
+            hoverAlphaBoost = pullFactor * 0.35;
+          }
+        }
+
+        const depthAlpha =
+          Math.min(1, Math.max(0.38, (pos.z + baseRadius) / (baseRadius * 2))) * p.baseAlpha + hoverAlphaBoost;
         const dotRadius = Math.max(0.65, p.size * scale);
 
         ctx.beginPath();
         ctx.arc(screenX, screenY, dotRadius, 0, Math.PI * 2);
 
         if (p.color === "orange") {
-          ctx.fillStyle = `rgba(255, 116, 39, ${depthAlpha})`;
+          ctx.fillStyle = `rgba(255, 116, 39, ${Math.min(1, depthAlpha)})`;
           ctx.shadowColor = `rgba(255, 116, 39, ${depthAlpha * 0.75})`;
-          ctx.shadowBlur = 5;
+          ctx.shadowBlur = 4;
         } else {
-          ctx.fillStyle = `rgba(255, 255, 255, ${depthAlpha})`;
-          ctx.shadowColor = `rgba(255, 255, 255, ${depthAlpha * 0.55})`;
+          ctx.fillStyle = `rgba(255, 255, 255, ${Math.min(1, depthAlpha)})`;
+          ctx.shadowColor = `rgba(255, 255, 255, ${depthAlpha * 0.50})`;
           ctx.shadowBlur = 3;
         }
 
@@ -433,6 +386,7 @@ export default function ParticleOrbCanvas({
     return () => {
       window.removeEventListener("resize", resize);
       window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseleave", handleMouseLeave);
       cancelAnimationFrame(animationFrameId);
     };
   }, [onExplodeComplete, targetCenterRatioX]);
