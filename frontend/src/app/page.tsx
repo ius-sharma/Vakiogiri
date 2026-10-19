@@ -596,14 +596,6 @@ export default function Home() {
             },
           },
           {
-            id: "pricing",
-            label: "Pricing",
-            onClick: () => {
-              setAuthModalMode("signup");
-              setIsAuthModalOpen(true);
-            },
-          },
-          {
             id: "library",
             label: "Library",
             isActive: activeView === "history",

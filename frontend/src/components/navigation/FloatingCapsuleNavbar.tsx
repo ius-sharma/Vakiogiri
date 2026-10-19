@@ -25,7 +25,6 @@ export default function FloatingCapsuleNavbar({
   navItems = [
     { id: "studio", label: "Studio" },
     { id: "features", label: "Features" },
-    { id: "pricing", label: "Pricing" },
     { id: "faq", label: "FAQ" },
   ],
   onOpenAuth,
