@@ -137,23 +137,33 @@ export default function FloatingCapsuleNavbar({
 
         {/* Right Section: Log In Trigger + Inset Pure White Capsule */}
         <div className="flex items-center gap-3 pl-2 pr-1">
-          <button
-            type="button"
-            onClick={() => onOpenAuth?.("login")}
+          <Link
+            href="/login"
+            onClick={(e) => {
+              if (onOpenAuth) {
+                e.preventDefault();
+                onOpenAuth("login");
+              }
+            }}
             className="px-3 py-1.5 text-xs font-semibold text-slate-300 hover:text-white transition-colors cursor-pointer"
           >
             Log in
-          </button>
+          </Link>
 
           {/* Inset White Pill CTA */}
-          <button
-            type="button"
-            onClick={() => onOpenAuth?.("signup")}
+          <Link
+            href="/signup"
+            onClick={(e) => {
+              if (onOpenAuth) {
+                e.preventDefault();
+                onOpenAuth("signup");
+              }
+            }}
             className="h-10 px-5 rounded-full bg-white hover:bg-slate-100 text-black font-bold text-xs tracking-tight transition-all duration-200 cursor-pointer shadow-md hover:shadow-lg active:scale-95 flex items-center gap-1.5 shrink-0"
           >
             <span>Start Free</span>
             <ArrowRight className="w-3.5 h-3.5 text-black" />
-          </button>
+          </Link>
         </div>
       </nav>
 
@@ -191,13 +201,18 @@ export default function FloatingCapsuleNavbar({
 
         {/* Right: Quick Action Pill + Hamburger Toggle */}
         <div className="flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => onOpenAuth?.("signup")}
+          <Link
+            href="/signup"
+            onClick={(e) => {
+              if (onOpenAuth) {
+                e.preventDefault();
+                onOpenAuth("signup");
+              }
+            }}
             className="h-8 px-3.5 rounded-full bg-white hover:bg-slate-100 text-black font-bold text-[11px] tracking-tight transition-all active:scale-95 flex items-center justify-center shadow-sm"
           >
             Start Free
-          </button>
+          </Link>
 
           <button
             type="button"
@@ -246,26 +261,20 @@ export default function FloatingCapsuleNavbar({
           </div>
 
           <div className="pt-3 mt-1 border-t border-white/[0.08] flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                onOpenAuth?.("login");
-                setMobileMenuOpen(false);
-              }}
+            <Link
+              href="/login"
+              onClick={() => setMobileMenuOpen(false)}
               className="flex-1 py-3 rounded-2xl text-center text-xs font-semibold text-slate-300 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] transition-colors cursor-pointer"
             >
               Log in
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                onOpenAuth?.("signup");
-                setMobileMenuOpen(false);
-              }}
+            </Link>
+            <Link
+              href="/signup"
+              onClick={() => setMobileMenuOpen(false)}
               className="flex-1 py-3 rounded-2xl bg-white hover:bg-slate-100 text-black text-xs font-bold text-center transition-all cursor-pointer shadow-md"
             >
               Start Free
-            </button>
+            </Link>
           </div>
         </div>
       )}
