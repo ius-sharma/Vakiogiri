@@ -123,12 +123,13 @@ export default function SidebarNav({
               title="Click to expand panel"
             >
               <Image
-                src="/logo.png"
+                src="/brand_logo.png?v=3"
                 alt="Logo"
-                width={30}
-                height={30}
+                width={36}
+                height={36}
                 priority
-                className="w-7 h-7 object-contain drop-shadow-[0_2px_8px_rgba(255,116,39,0.4)]"
+                unoptimized
+                className="w-8 h-8 object-contain drop-shadow-[0_2px_10px_rgba(255,116,39,0.5)]"
               />
             </button>
           </div>
@@ -263,12 +264,13 @@ export default function SidebarNav({
               >
                 <div className="w-8 h-8 flex items-center justify-center transition-transform group-hover:scale-105">
                   <Image
-                    src="/logo.png"
+                    src="/brand_logo.png?v=3"
                     alt="Logo"
-                    width={32}
-                    height={32}
+                    width={36}
+                    height={36}
                     priority
-                    className="w-7 h-7 object-contain drop-shadow-[0_2px_8px_rgba(255,116,39,0.4)]"
+                    unoptimized
+                    className="w-8 h-8 object-contain drop-shadow-[0_2px_10px_rgba(255,116,39,0.5)]"
                   />
                 </div>
                 <span className="font-bold text-lg tracking-tight text-white group-hover:text-[#ff7427] transition-colors">
