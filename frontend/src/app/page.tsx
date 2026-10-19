@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import TopNavBar from "@/components/TopNavBar";
+import SidebarNav from "@/components/navigation/SidebarNav";
+import TopUtilityHeader from "@/components/navigation/TopUtilityHeader";
 import HeroInputBar from "@/components/studio/HeroInputBar";
 import QuickPresetBar from "@/components/studio/QuickPresetBar";
 import AdvancedDrawer from "@/components/studio/AdvancedDrawer";
@@ -401,67 +402,51 @@ export default function Home() {
   }
 
   return (
-    <div className={`min-h-screen flex flex-col font-sans antialiased relative selection:bg-[#ff7427]/30 selection:text-white ${theme === "dark" ? "dark bg-black text-white" : "light bg-[#f8fafc] text-[#0f172a]"}`}>
+    <div className={`min-h-screen flex font-sans antialiased relative selection:bg-[#ff7427]/30 selection:text-white ${theme === "dark" ? "dark bg-black text-white" : "light bg-[#f8fafc] text-[#0f172a]"}`}>
       
       {/* Ambient Studio Spotlight Backdrop */}
       <div className="fixed inset-0 ambient-spotlight pointer-events-none -z-10" />
 
-      {/* Modern Top Navigation Bar */}
-      <TopNavBar
-        logo={{
-          name: "Vakiogiri",
-          icon: "auto_awesome",
-          onClick: handleReset,
-        }}
-        navItems={[
-          {
-            id: "studio",
-            label: "Shorts Studio",
-            isActive: activeView === "studio",
-            onClick: () => setActiveView("studio"),
-          },
-          {
-            id: "stream",
-            label: "Stream Studio",
-            href: "/stream",
-          },
-          {
-            id: "history",
-            label: "My Clips",
-            badgeCount: history.length > 0 ? history.length : undefined,
-            isActive: activeView === "history",
-            onClick: () => {
-              if (!session) {
-                setAuthModalMode("login");
-                setIsAuthModalOpen(true);
-              } else {
-                setActiveView("history");
-                fetchUserHistory();
-              }
-            },
-          },
-        ]}
-        authActions={{
-          loginLabel: "Log in",
-          onLogin: () => {
+      {/* Floating Iconsax-style Sidebar Rail */}
+      <SidebarNav
+        activeView={activeView}
+        onSelectView={(view) => {
+          if (view === "history" && !session) {
             setAuthModalMode("login");
             setIsAuthModalOpen(true);
-          },
-          signupLabel: "Start for free",
-          onSignup: () => {
-            setAuthModalMode("signup");
-            setIsAuthModalOpen(true);
-          },
+          } else {
+            setActiveView(view as any);
+            if (view === "history") fetchUserHistory();
+          }
         }}
+        historyCount={history.length}
         session={session}
         userProfile={userProfile}
+        onOpenAuth={() => {
+          setAuthModalMode("login");
+          setIsAuthModalOpen(true);
+        }}
         onSignOut={handleSignOut}
-        theme={theme}
-        onToggleTheme={toggleTheme}
       />
 
-      {/* Main Canvas */}
-      <main className="flex-grow flex flex-col items-center justify-start px-4 sm:px-6 lg:px-8 py-8 md:py-12 max-w-7xl mx-auto w-full">
+      {/* Main Studio Canvas Area (beside Sidebar) */}
+      <div className="flex-1 flex flex-col min-w-0 pl-0 md:pl-24 transition-all duration-300">
+        <TopUtilityHeader
+          title={activeView === "history" ? "My Clips Library" : "Shorts Studio"}
+          badge="AI Best Moments"
+          userProfile={userProfile}
+          session={session}
+          onOpenAuth={() => {
+            setAuthModalMode("login");
+            setIsAuthModalOpen(true);
+          }}
+          onSignOut={handleSignOut}
+          theme={theme}
+          onToggleTheme={toggleTheme}
+        />
+
+        {/* Main Canvas */}
+        <main className="flex-grow flex flex-col items-center justify-start px-4 sm:px-6 lg:px-8 py-8 md:py-12 max-w-6xl mx-auto w-full">
         
         {/* VIEW 1: MY CLIPS / HISTORY */}
         {activeView === "history" && (
@@ -583,7 +568,9 @@ export default function Home() {
           </div>
         )}
 
+        {/* Main Canvas */}
       </main>
+      </div>
 
       {/* Supabase Authentication Modal */}
       <AuthModal
