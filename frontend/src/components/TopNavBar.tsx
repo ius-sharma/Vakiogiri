@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import {
   Sparkles,
   Scissors,
@@ -126,13 +127,19 @@ export default function TopNavBar({
               onClick={logo.onClick}
               className="flex items-center gap-2.5 cursor-pointer group focus:outline-none"
             >
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-cyan-400 flex items-center justify-center text-white shadow-md shadow-indigo-500/25 group-hover:scale-105 transition-transform">
-                <Sparkles className="w-5 h-5 fill-current/20" />
+              <div className="relative w-8 h-8 rounded-full overflow-hidden ring-2 ring-blue-500/40 shadow-lg shadow-blue-500/30 group-hover:scale-105 group-hover:ring-blue-400 transition-all flex items-center justify-center bg-black">
+                <Image
+                  src="/logo.png"
+                  alt="Vakiogiri AI Logo"
+                  width={32}
+                  height={32}
+                  className="w-full h-full object-cover"
+                />
               </div>
-              <span className="font-extrabold text-lg tracking-tight text-white group-hover:text-indigo-300 transition-colors">
+              <span className="font-extrabold text-lg tracking-tight text-white group-hover:text-blue-400 transition-colors">
                 {logo.name || "Vakiogiri"}
               </span>
-              <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 uppercase">
+              <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md bg-blue-500/15 text-blue-400 border border-blue-500/30 uppercase tracking-wider">
                 AI Studio
               </span>
             </button>
@@ -141,13 +148,19 @@ export default function TopNavBar({
               href={logo.href || "/"}
               className="flex items-center gap-2.5 group focus:outline-none"
             >
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-cyan-400 flex items-center justify-center text-white shadow-md shadow-indigo-500/25 group-hover:scale-105 transition-transform">
-                <Sparkles className="w-5 h-5 fill-current/20" />
+              <div className="relative w-8 h-8 rounded-full overflow-hidden ring-2 ring-blue-500/40 shadow-lg shadow-blue-500/30 group-hover:scale-105 group-hover:ring-blue-400 transition-all flex items-center justify-center bg-black">
+                <Image
+                  src="/logo.png"
+                  alt="Vakiogiri AI Logo"
+                  width={32}
+                  height={32}
+                  className="w-full h-full object-cover"
+                />
               </div>
-              <span className="font-extrabold text-lg tracking-tight text-white group-hover:text-indigo-300 transition-colors">
+              <span className="font-extrabold text-lg tracking-tight text-white group-hover:text-blue-400 transition-colors">
                 {logo.name || "Vakiogiri"}
               </span>
-              <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 uppercase">
+              <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md bg-blue-500/15 text-blue-400 border border-blue-500/30 uppercase tracking-wider">
                 AI Studio
               </span>
             </Link>
@@ -166,7 +179,7 @@ export default function TopNavBar({
                 {getNavIcon(item.id)}
                 <span>{item.label}</span>
                 {typeof item.badgeCount === "number" && item.badgeCount > 0 && (
-                  <span className="w-5 h-5 rounded-full bg-indigo-500/30 text-indigo-300 text-[10px] font-bold flex items-center justify-center">
+                  <span className="w-5 h-5 rounded-full bg-blue-500/30 text-blue-300 text-[10px] font-bold flex items-center justify-center">
                     {item.badgeCount}
                   </span>
                 )}
@@ -181,7 +194,7 @@ export default function TopNavBar({
                   onClick={item.onClick}
                   className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
                     isActive
-                      ? "bg-indigo-600 text-white shadow-sm shadow-indigo-600/30"
+                      ? "bg-blue-600 text-white shadow-sm shadow-blue-500/40 font-bold"
                       : "text-slate-400 hover:text-white hover:bg-white/5"
                   }`}
                 >
@@ -196,7 +209,7 @@ export default function TopNavBar({
                 href={item.href || "#"}
                 className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
                   isActive
-                    ? "bg-indigo-600 text-white shadow-sm shadow-indigo-600/30"
+                    ? "bg-blue-600 text-white shadow-sm shadow-blue-500/40 font-bold"
                     : "text-slate-400 hover:text-white hover:bg-white/5"
                 }`}
               >
@@ -236,7 +249,7 @@ export default function TopNavBar({
           {session ? (
             <div className="flex items-center gap-2">
               <div className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/[0.04] text-xs font-medium text-slate-300 border border-white/8">
-                <User className="w-3.5 h-3.5 text-indigo-400" />
+                <User className="w-3.5 h-3.5 text-blue-400" />
                 <span className="truncate max-w-[120px]">{session.user?.email || "User"}</span>
               </div>
 
@@ -267,7 +280,7 @@ export default function TopNavBar({
                 <button
                   type="button"
                   onClick={authActions.onSignup}
-                  className="px-4 py-1.5 rounded-xl text-xs font-bold bg-white text-black hover:bg-slate-200 transition-all cursor-pointer shadow-md active:scale-95"
+                  className="px-4 py-1.5 rounded-xl text-xs font-bold bg-blue-600 text-white hover:bg-blue-500 transition-all cursor-pointer shadow-md shadow-blue-500/30 active:scale-95"
                 >
                   {authActions.signupLabel || "Start for free"}
                 </button>
@@ -289,7 +302,7 @@ export default function TopNavBar({
 
       {/* Mobile Navigation Drawer */}
       {mobileMenuOpen && (
-        <div className="md:hidden border-t border-white/8 px-4 py-4 flex flex-col gap-2 bg-[#0c0c14]/95 backdrop-blur-2xl animate-in slide-in-from-top-2">
+        <div className="md:hidden border-t border-white/8 px-4 py-4 flex flex-col gap-2 bg-black/95 backdrop-blur-2xl animate-in slide-in-from-top-2">
           {navItems.map((item) => (
             <button
               key={item.id}
@@ -299,7 +312,7 @@ export default function TopNavBar({
                 setMobileMenuOpen(false);
               }}
               className={`flex items-center justify-between p-3 rounded-xl text-sm font-semibold transition-all ${
-                item.isActive ? "bg-indigo-600 text-white" : "text-slate-300 hover:bg-white/5"
+                item.isActive ? "bg-blue-600 text-white" : "text-slate-300 hover:bg-white/5"
               }`}
             >
               <div className="flex items-center gap-2.5">
