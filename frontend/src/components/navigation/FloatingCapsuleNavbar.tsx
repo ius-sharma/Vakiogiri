@@ -61,8 +61,8 @@ export default function FloatingCapsuleNavbar({
     <header
       className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ease-out flex flex-col items-center ${
         isScrolled
-          ? "w-full bg-black/90 backdrop-blur-xl border-b border-white/[0.08] shadow-[0_10px_30px_rgba(0,0,0,0.8)] py-0 px-0 pointer-events-auto"
-          : "pt-4 sm:pt-6 px-3 sm:px-6 pointer-events-none"
+          ? "w-full bg-black/95 backdrop-blur-2xl shadow-[0_12px_40px_rgba(0,0,0,0.9)] py-0 px-0 pointer-events-auto border-none"
+          : "pt-4 sm:pt-6 px-3 sm:px-6 pointer-events-none border-none"
       } ${className}`}
     >
       {/* ============================================================== */}
@@ -72,7 +72,7 @@ export default function FloatingCapsuleNavbar({
         aria-label="Main Navigation"
         className={`pointer-events-auto hidden md:flex items-center justify-between transition-all duration-500 ease-out ${
           isScrolled
-            ? "w-full max-w-7xl h-[64px] px-6 lg:px-8 rounded-none bg-transparent border-transparent shadow-none"
+            ? "w-full max-w-7xl h-[64px] px-6 lg:px-8 rounded-none bg-transparent border-0 shadow-none"
             : "w-full max-w-4xl lg:max-w-5xl h-[58px] px-3 py-2 rounded-full bg-[#111111]/95 border border-white/[0.12] backdrop-blur-2xl shadow-[0_20px_60px_rgba(0,0,0,0.8)] hover:border-white/25"
         }`}
       >
@@ -164,7 +164,7 @@ export default function FloatingCapsuleNavbar({
         aria-label="Mobile Navigation"
         className={`pointer-events-auto md:hidden flex items-center justify-between w-full transition-all duration-500 ease-out ${
           isScrolled
-            ? "h-[56px] px-4 rounded-none bg-transparent border-transparent shadow-none"
+            ? "h-[56px] px-4 rounded-none bg-transparent border-0 shadow-none"
             : "h-[52px] px-3 py-1.5 rounded-full bg-[#111111]/95 border border-white/[0.14] backdrop-blur-2xl shadow-[0_16px_40px_rgba(0,0,0,0.85)]"
         }`}
       >
