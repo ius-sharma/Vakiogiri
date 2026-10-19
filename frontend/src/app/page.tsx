@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import SidebarNav from "@/components/navigation/SidebarNav";
 import TopUtilityHeader from "@/components/navigation/TopUtilityHeader";
-import TopNavBar from "@/components/TopNavBar";
+import FloatingCapsuleNavbar from "@/components/navigation/FloatingCapsuleNavbar";
 import HeroInputBar from "@/components/studio/HeroInputBar";
 import QuickPresetBar from "@/components/studio/QuickPresetBar";
 import AdvancedDrawer from "@/components/studio/AdvancedDrawer";
@@ -577,51 +577,52 @@ export default function Home() {
       </div>
     </>
   ) : (
-    <div className="flex-1 flex flex-col min-w-0 w-full">
-      {/* Guest Public Top Navigation Bar (Before Login) */}
-      <TopNavBar
-        logo={{
-          name: "Vakiogiri",
-          href: "/",
-        }}
+    <div className="flex-1 flex flex-col min-w-0 w-full relative">
+      {/* Floating Capsule Navbar (Before Login - Exact Design Replicated) */}
+      <FloatingCapsuleNavbar
         navItems={[
           {
             id: "studio",
-            label: "AI Studio",
+            label: "Studio",
             isActive: activeView === "studio",
             onClick: () => setActiveView("studio"),
           },
           {
-            id: "history",
+            id: "features",
+            label: "Features",
+            onClick: () => {
+              const el = document.getElementById("features");
+              if (el) el.scrollIntoView({ behavior: "smooth" });
+            },
+          },
+          {
+            id: "pricing",
+            label: "Pricing",
+            onClick: () => {
+              setAuthModalMode("signup");
+              setIsAuthModalOpen(true);
+            },
+          },
+          {
+            id: "library",
             label: "Library",
             isActive: activeView === "history",
-            badgeCount: history.length,
             onClick: () => {
               setAuthModalMode("login");
               setIsAuthModalOpen(true);
             },
           },
         ]}
-        authActions={{
-          loginLabel: "Log in",
-          onLogin: () => {
-            setAuthModalMode("login");
-            setIsAuthModalOpen(true);
-          },
-          signupLabel: "Start for free",
-          onSignup: () => {
-            setAuthModalMode("signup");
-            setIsAuthModalOpen(true);
-          },
+        onOpenAuth={(mode) => {
+          setAuthModalMode(mode);
+          setIsAuthModalOpen(true);
         }}
-        session={null}
-        userProfile={userProfile}
         theme={theme}
         onToggleTheme={toggleTheme}
       />
 
       {/* Main Canvas for Guest */}
-      <main className="flex-grow flex flex-col items-center justify-start px-4 sm:px-6 lg:px-8 py-8 md:py-12 max-w-6xl mx-auto w-full">
+      <main className="flex-grow flex flex-col items-center justify-start px-4 sm:px-6 lg:px-8 pt-24 sm:pt-28 pb-12 md:pb-16 max-w-6xl mx-auto w-full">
         {/* VIEW 1: MY CLIPS / HISTORY */}
         {activeView === "history" && (
           <HistoryView
