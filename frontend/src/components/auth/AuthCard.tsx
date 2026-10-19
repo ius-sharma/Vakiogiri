@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Mail, Lock, AlertCircle, CheckCircle2, Loader2, ArrowRight, Sparkles } from "lucide-react";
+import { Mail, Lock, AlertCircle, CheckCircle2, Loader2, ArrowRight } from "lucide-react";
 import { signInWithGoogle, signInWithEmail, signUpWithEmail, isSupabaseConfigured } from "@/lib/supabase";
 import ParticleOrbCanvas from "./ParticleOrbCanvas";
 
@@ -56,7 +56,6 @@ export default function AuthCard({ initialMode }: AuthCardProps) {
         if (error) throw error;
         setSuccessMsg("Account created! Check your email to confirm or sign in.");
         
-        // Trigger Orb explosion
         setIsExploding(true);
         setTimeout(() => {
           if (data.session) router.push("/");
@@ -65,7 +64,6 @@ export default function AuthCard({ initialMode }: AuthCardProps) {
         const { error } = await signInWithEmail(email, password);
         if (error) throw error;
         
-        // Trigger Orb explosion
         setIsExploding(true);
         setTimeout(() => {
           router.push("/");
@@ -78,75 +76,29 @@ export default function AuthCard({ initialMode }: AuthCardProps) {
   };
 
   return (
-    <main className="min-h-screen w-full relative flex items-center justify-center p-4 sm:p-6 lg:p-10 bg-black overflow-hidden select-none">
+    <main className="min-h-screen w-full relative flex items-center justify-center p-4 sm:p-8 bg-black overflow-hidden select-none">
       
-      {/* Background Subtle Radial Glow & Micro Dots */}
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_25%_50%,rgba(255,116,39,0.08)_0%,transparent_60%)] pointer-events-none -z-10" />
-      <div className="absolute inset-0 bg-[radial-gradient(rgba(255,255,255,0.03)_1px,transparent_1px)] [background-size:24px_24px] pointer-events-none -z-10" />
-
-      {/* Main Container: Split 2-Column Showcase (Left: Orb Canvas, Right: Frosted Login) */}
-      <div className="w-full max-w-5xl grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center relative z-10">
-
-        {/* ============================================================== */}
-        {/* LEFT COLUMN: 3D Particle Orb & Brand Value Headline             */}
-        {/* ============================================================== */}
-        <div className="lg:col-span-7 flex flex-col items-center lg:items-start text-center lg:text-left relative">
-          
-          {/* Subtle Top Badge */}
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#ff7427]/10 border border-[#ff7427]/25 text-[#ff7427] text-xs font-semibold mb-4">
-            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            <span>AI Virality Engine</span>
-          </div>
-
-          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black text-white tracking-tight leading-[1.12]">
-            Turn Long Form Content Into{" "}
-            <span className="bg-gradient-to-r from-[#ff7427] via-amber-400 to-white bg-clip-text text-transparent">
-              Viral Shorts
-            </span>
-          </h2>
-
-          <p className="text-sm sm:text-base text-slate-400 max-w-md mt-3 leading-relaxed">
-            AI analyzes speech cadence, facial expressions, and speaker energy to instantly craft viral ready vertical clips.
-          </p>
-
-          {/* Dedicated 3D Orb Stage */}
-          <div className="w-full h-[320px] sm:h-[380px] lg:h-[440px] relative mt-2 flex items-center justify-center">
-            <ParticleOrbCanvas
-              isExploding={isExploding}
-              onExplodeComplete={() => {
-                router.push("/");
-              }}
-            />
-          </div>
-
-          {/* Micro Stat Pills below Orb */}
-          <div className="hidden sm:flex items-center gap-6 mt-1 text-xs text-slate-400">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-[#ff7427] animate-pulse" />
-              <span>3 Free Daily Credits</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-400" />
-              <span>4K 60FPS AI Upscaling</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-white" />
-              <span>Auto Face-Tracking</span>
-            </div>
-          </div>
+      {/* Side-by-Side: Left Orb, Right Login Card */}
+      <div className="w-full max-w-5xl grid grid-cols-1 md:grid-cols-2 gap-8 items-center relative z-10">
+        
+        {/* LEFT: 3D Particle Orb */}
+        <div className="w-full h-[380px] sm:h-[460px] md:h-[520px] flex items-center justify-center">
+          <ParticleOrbCanvas
+            isExploding={isExploding}
+            onExplodeComplete={() => {
+              router.push("/");
+            }}
+          />
         </div>
 
-        {/* ============================================================== */}
-        {/* RIGHT COLUMN: Frosted Glass Auth Card                           */}
-        {/* ============================================================== */}
-        <div className="lg:col-span-5 w-full flex justify-center">
-          <div className={`w-full max-w-[430px] bg-[#09090c]/80 border border-white/[0.12] backdrop-blur-2xl rounded-[32px] p-7 sm:p-9 shadow-[0_30px_90px_rgba(0,0,0,0.95)] flex flex-col gap-6 transition-all duration-500 hover:border-white/[0.18] ${
+        {/* RIGHT: Simple Pure Frosted Login/Signup Card */}
+        <div className="w-full flex justify-center">
+          <div className={`w-full max-w-[420px] bg-[#09090c]/80 border border-white/[0.12] backdrop-blur-2xl rounded-[32px] p-7 sm:p-9 shadow-[0_30px_90px_rgba(0,0,0,0.95)] flex flex-col gap-6 transition-all duration-500 hover:border-white/[0.18] ${
             isExploding ? "scale-105 opacity-90 transition-all duration-700" : ""
           }`}>
             
             {/* Brand Header */}
             <div className="text-center flex flex-col items-center gap-3">
-              {/* Circular Brand Logo with Golden Orange border, pure solid black bg, zero glow */}
               <Link
                 href="/"
                 className="w-12 h-12 rounded-full bg-black border-[1.5px] border-[#ff7427] flex items-center justify-center shrink-0 overflow-hidden shadow-none transition-none focus:outline-none"
@@ -165,12 +117,12 @@ export default function AuthCard({ initialMode }: AuthCardProps) {
 
               <div className="space-y-1">
                 <h1 className="text-2xl font-black text-white tracking-tight">
-                  {mode === "login" ? "Welcome back" : "Create creator account"}
+                  {mode === "login" ? "Welcome back" : "Create account"}
                 </h1>
-                <p className="text-xs text-slate-400 max-w-xs leading-relaxed">
+                <p className="text-xs text-slate-400">
                   {mode === "login"
-                    ? "Sign in to access your library, presets, and daily free AI clips."
-                    : "Get 3 free AI video generations every day with cloud sync."}
+                    ? "Sign in to access your video studio"
+                    : "Get 3 free video clips daily"}
                 </p>
               </div>
             </div>
@@ -308,8 +260,8 @@ export default function AuthCard({ initialMode }: AuthCardProps) {
                     : loading
                     ? "Please wait..."
                     : mode === "login"
-                    ? "Sign in to Studio"
-                    : "Create Free Account"}
+                    ? "Sign in"
+                    : "Create Account"}
                 </span>
                 {!loading && !isExploding && <ArrowRight className="w-3.5 h-3.5" />}
               </button>
