@@ -125,15 +125,18 @@ export default function TopNavBar({
             <button
               type="button"
               onClick={logo.onClick}
-              className="flex items-center gap-2.5 cursor-pointer group focus:outline-none"
+              className="flex items-center gap-3 cursor-pointer group focus:outline-none"
             >
-              <Image
-                src="/logo.png"
-                alt="Vakiogiri Logo"
-                width={34}
-                height={34}
-                className="w-8 h-8 object-contain transition-transform group-hover:scale-105"
-              />
+              <div className="w-9 h-9 rounded-full bg-black border-[1.5px] border-[#ff7427] flex items-center justify-center shrink-0 overflow-hidden shadow-none transition-none">
+                <Image
+                  src="/brand_logo.png?v=3"
+                  alt="Vakiogiri Logo"
+                  width={24}
+                  height={24}
+                  unoptimized={true}
+                  className="w-5 h-5 object-contain transition-none"
+                />
+              </div>
               <span className="font-bold text-lg tracking-tight text-white group-hover:text-[#ff7427] transition-colors">
                 {logo.name || "Vakiogiri"}
               </span>
@@ -141,15 +144,18 @@ export default function TopNavBar({
           ) : (
             <Link
               href={logo.href || "/"}
-              className="flex items-center gap-2.5 group focus:outline-none"
+              className="flex items-center gap-3 group focus:outline-none"
             >
-              <Image
-                src="/logo.png"
-                alt="Vakiogiri Logo"
-                width={34}
-                height={34}
-                className="w-8 h-8 object-contain transition-transform group-hover:scale-105"
-              />
+              <div className="w-9 h-9 rounded-full bg-black border-[1.5px] border-[#ff7427] flex items-center justify-center shrink-0 overflow-hidden shadow-none transition-none">
+                <Image
+                  src="/brand_logo.png?v=3"
+                  alt="Vakiogiri Logo"
+                  width={24}
+                  height={24}
+                  unoptimized={true}
+                  className="w-5 h-5 object-contain transition-none"
+                />
+              </div>
               <span className="font-bold text-lg tracking-tight text-white group-hover:text-[#ff7427] transition-colors">
                 {logo.name || "Vakiogiri"}
               </span>
