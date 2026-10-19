@@ -230,7 +230,7 @@ export default function ParticleOrbCanvas({
       const distFromCenter = Math.sqrt(dx * dx + dy * dy);
       let targetMagX = 0;
       let targetMagY = 0;
-      if (distFromCenter < 400 && !isMobile) {
+      if (distFromCenter > 0.001 && distFromCenter < 400 && !isMobile) {
         const pull = Math.min(18, distFromCenter * 0.04);
         targetMagX = (dx / distFromCenter) * pull;
         targetMagY = (dy / distFromCenter) * pull;
@@ -238,8 +238,8 @@ export default function ParticleOrbCanvas({
       currentMagneticX += (targetMagX - currentMagneticX) * 0.05;
       currentMagneticY += (targetMagY - currentMagneticY) * 0.05;
 
-      const centerX = baseCenterX + currentMagneticX;
-      const centerY = baseCenterY + currentMagneticY;
+      const centerX = baseCenterX + (Number.isNaN(currentMagneticX) ? 0 : currentMagneticX);
+      const centerY = baseCenterY + (Number.isNaN(currentMagneticY) ? 0 : currentMagneticY);
 
       rotY += 0.0022;
       rotX += 0.0005;
