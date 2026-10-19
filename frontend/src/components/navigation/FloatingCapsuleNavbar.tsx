@@ -70,10 +70,10 @@ export default function FloatingCapsuleNavbar({
       {/* ============================================================== */}
       <nav
         aria-label="Main Navigation"
-        className={`pointer-events-auto hidden md:flex items-center justify-between transition-all duration-500 ease-out ${
+        className={`pointer-events-auto hidden md:flex items-center justify-between transition-all duration-500 ease-out border ${
           isScrolled
-            ? "w-full max-w-7xl h-[64px] px-6 lg:px-8 rounded-none bg-transparent border-0 shadow-none"
-            : "w-full max-w-4xl lg:max-w-5xl h-[58px] px-3 py-2 rounded-full bg-[#111111]/95 border border-white/[0.12] backdrop-blur-2xl shadow-[0_20px_60px_rgba(0,0,0,0.8)] hover:border-white/25"
+            ? "w-full max-w-7xl h-[64px] px-6 lg:px-8 rounded-none bg-transparent border-transparent shadow-none"
+            : "w-full max-w-4xl lg:max-w-5xl h-[58px] px-3 py-2 rounded-full bg-[#111111]/95 border-white/[0.12] backdrop-blur-2xl shadow-[0_20px_60px_rgba(0,0,0,0.8)] hover:border-white/25"
         }`}
       >
         {/* Left Section: Circular Brand Badge + Brand Title */}
@@ -162,10 +162,10 @@ export default function FloatingCapsuleNavbar({
       {/* ============================================================== */}
       <nav
         aria-label="Mobile Navigation"
-        className={`pointer-events-auto md:hidden flex items-center justify-between w-full transition-all duration-500 ease-out ${
+        className={`pointer-events-auto md:hidden flex items-center justify-between w-full transition-all duration-500 ease-out border ${
           isScrolled
-            ? "h-[56px] px-4 rounded-none bg-transparent border-0 shadow-none"
-            : "h-[52px] px-3 py-1.5 rounded-full bg-[#111111]/95 border border-white/[0.14] backdrop-blur-2xl shadow-[0_16px_40px_rgba(0,0,0,0.85)]"
+            ? "h-[56px] px-4 rounded-none bg-transparent border-transparent shadow-none"
+            : "h-[52px] px-3 py-1.5 rounded-full bg-[#111111]/95 border-white/[0.14] backdrop-blur-2xl shadow-[0_16px_40px_rgba(0,0,0,0.85)]"
         }`}
       >
         {/* Left: Logo & Brand Name */}
