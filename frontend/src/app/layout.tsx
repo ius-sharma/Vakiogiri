@@ -39,7 +39,7 @@ export default function RootLayout({
       </head>
       <body
         suppressHydrationWarning
-        className={`${inter.variable} ${plusJakarta.variable} ${jetbrainsMono.variable} font-sans min-h-full flex flex-col bg-[#08080c] text-[#f8fafc]`}
+        className={`${inter.variable} ${plusJakarta.variable} ${jetbrainsMono.variable} font-sans min-h-full flex flex-col bg-black text-white`}
       >
         <UIFeedbackProvider>
           {children}
