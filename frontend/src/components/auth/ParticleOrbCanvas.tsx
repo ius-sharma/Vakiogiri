@@ -78,14 +78,14 @@ export default function ParticleOrbCanvas({
     const count = 800;
     const particles: MorphParticle[] = [];
     
-    // Scale definition:
-    // Circle/Sphere: Full majestic size
-    // Video icon & Login icon: Compact & tight (0.68x scale)
+    // Base radii:
+    // Circle/Sphere: Full majestic original radius
+    // Icons: Clean, elegant compact size (0.64x scale)
     const sphereRadius = Math.max(140, Math.min(window.innerWidth, window.innerHeight) * 0.22);
-    const compactScale = 0.68;
+    const compactScale = 0.64;
     const compactRadius = sphereRadius * compactScale;
 
-    // Helper: sample points on a line segment in 3D
+    // Helper: sample points on a line segment in 3D with clean precision
     const sampleLine = (p1: Vec3, p2: Vec3, n: number): Vec3[] => {
       const pts: Vec3[] = [];
       for (let i = 0; i < n; i++) {
@@ -93,13 +93,30 @@ export default function ParticleOrbCanvas({
         pts.push({
           x: p1.x + (p2.x - p1.x) * t,
           y: p1.y + (p2.y - p1.y) * t,
-          z: p1.z + (p2.z - p1.z) * t + (Math.random() - 0.5) * 6,
+          z: p1.z + (p2.z - p1.z) * t + (Math.random() - 0.5) * 3,
         });
       }
       return pts;
     };
 
-    // --- Shape 1: Sphere Targets (Full Original Size) ---
+    // Helper: sample points on a 3D circle/arc with clean precision
+    const sampleArc = (cx: number, cy: number, r: number, startA: number, endA: number, n: number): Vec3[] => {
+      const pts: Vec3[] = [];
+      for (let i = 0; i < n; i++) {
+        const t = i / n;
+        const angle = startA + (endA - startA) * t;
+        pts.push({
+          x: cx + r * Math.cos(angle),
+          y: cy + r * Math.sin(angle),
+          z: (Math.random() - 0.5) * 4,
+        });
+      }
+      return pts;
+    };
+
+    // ==============================================================
+    // 1. SHAPE 1: Sphere Targets (Full Original Size - Fibonacci Lattice)
+    // ==============================================================
     const sphereTargets: Vec3[] = [];
     for (let i = 0; i < count; i++) {
       const y = 1 - (i / (count - 1)) * 2;
@@ -112,70 +129,106 @@ export default function ParticleOrbCanvas({
       });
     }
 
-    // --- Shape 2: Video Editing (Film Slate / Play Frame) (Compact Size) ---
+    // ==============================================================
+    // 2. SHAPE 2: Video Film Slate / Clapperboard Icon (Crisp, High-Detail)
+    // ==============================================================
+    // Composed of:
+    // - Outer Film Slate Frame: w = 1.35 * compactRadius, h = 1.05 * compactRadius
+    // - Diagonal Clapper Stripe Marks across the top bar
+    // - Center Crisp Play Triangle with clean inner vertices
     const videoTargets: Vec3[] = [];
-    const frameW = compactRadius * 1.35;
-    const frameH = compactRadius * 1.0;
+    const slateW = compactRadius * 1.30;
+    const slateH = compactRadius * 1.00;
+    const clapperH = compactRadius * 0.32;
 
-    const ptsTop = sampleLine({ x: -frameW, y: -frameH, z: 0 }, { x: frameW, y: -frameH, z: 0 }, 100);
-    const ptsRight = sampleLine({ x: frameW, y: -frameH, z: 0 }, { x: frameW, y: frameH, z: 0 }, 80);
-    const ptsBottom = sampleLine({ x: frameW, y: frameH, z: 0 }, { x: -frameW, y: frameH, z: 0 }, 100);
-    const ptsLeft = sampleLine({ x: -frameW, y: frameH, z: 0 }, { x: -frameW, y: -frameH, z: 0 }, 80);
-    videoTargets.push(...ptsTop, ...ptsRight, ...ptsBottom, ...ptsLeft);
+    // Body bottom rectangle (3 lines: left, bottom, right)
+    videoTargets.push(...sampleLine({ x: -slateW, y: -slateH + clapperH, z: 0 }, { x: -slateW, y: slateH, z: 0 }, 75));
+    videoTargets.push(...sampleLine({ x: -slateW, y: slateH, z: 0 }, { x: slateW, y: slateH, z: 0 }, 100));
+    videoTargets.push(...sampleLine({ x: slateW, y: slateH, z: 0 }, { x: slateW, y: -slateH + clapperH, z: 0 }, 75));
 
-    const triX1 = -compactRadius * 0.45, triY1 = -compactRadius * 0.55;
-    const triX2 = -compactRadius * 0.45, triY2 = compactRadius * 0.55;
-    const triX3 = compactRadius * 0.65, triY3 = 0;
-    const triSide1 = sampleLine({ x: triX1, y: triY1, z: 0 }, { x: triX2, y: triY2, z: 0 }, 80);
-    const triSide2 = sampleLine({ x: triX2, y: triY2, z: 0 }, { x: triX3, y: triY3, z: 0 }, 70);
-    const triSide3 = sampleLine({ x: triX3, y: triY3, z: 0 }, { x: triX1, y: triY1, z: 0 }, 70);
-    videoTargets.push(...triSide1, ...triSide2, ...triSide3);
+    // Clapper top bar (hinged bar at top)
+    videoTargets.push(...sampleLine({ x: -slateW, y: -slateH, z: 0 }, { x: slateW, y: -slateH, z: 0 }, 100));
+    videoTargets.push(...sampleLine({ x: -slateW, y: -slateH + clapperH, z: 0 }, { x: slateW, y: -slateH + clapperH, z: 0 }, 90));
+    videoTargets.push(...sampleLine({ x: -slateW, y: -slateH, z: 0 }, { x: -slateW, y: -slateH + clapperH, z: 0 }, 25));
+    videoTargets.push(...sampleLine({ x: slateW, y: -slateH, z: 0 }, { x: slateW, y: -slateH + clapperH, z: 0 }, 25));
 
+    // 4 Diagonal Clapper Stripes
+    const stripeXs = [-slateW * 0.65, -slateW * 0.20, slateW * 0.25, slateW * 0.70];
+    for (const sx of stripeXs) {
+      videoTargets.push(...sampleLine({ x: sx, y: -slateH + clapperH, z: 0 }, { x: sx + 18, y: -slateH, z: 0 }, 20));
+    }
+
+    // Centered Equilateral Play Triangle
+    const triR = compactRadius * 0.50;
+    const triV1 = { x: -triR * 0.55, y: -triR * 0.75, z: 0 };
+    const triV2 = { x: -triR * 0.55, y: triR * 0.75, z: 0 };
+    const triV3 = { x: triR * 0.85, y: 0, z: 0 };
+    videoTargets.push(...sampleLine(triV1, triV2, 60));
+    videoTargets.push(...sampleLine(triV2, triV3, 60));
+    videoTargets.push(...sampleLine(triV3, triV1, 60));
+
+    // Fill remaining points with balanced inner film timeline tracks
     while (videoTargets.length < count) {
-      const side = Math.random() < 0.5 ? -1 : 1;
+      const t = Math.random();
+      const dotX = -slateW * 0.75 + t * (slateW * 1.5);
       videoTargets.push({
-        x: (Math.random() - 0.5) * frameW * 1.4,
-        y: side * (frameH + 12),
-        z: (Math.random() - 0.5) * 12,
+        x: dotX,
+        y: slateH * 0.78,
+        z: (Math.random() - 0.5) * 4,
       });
     }
 
-    // --- Shape 3: Login Icon (Profile Avatar Head & Shoulder Arc + Keyhole) (Compact Size) ---
+    // ==============================================================
+    // 3. SHAPE 3: Sleek Modern Login / Security Shield & Keyhole Icon
+    // ==============================================================
+    // Composed of:
+    // - Elegant Security Shield Outer Silhouette
+    // - Centered Keyhole / User Avatar Node
+    // - Radiating Orbit Arc
     const loginTargets: Vec3[] = [];
-    const headRadius = compactRadius * 0.50;
-    const headY = -compactRadius * 0.45;
-    for (let i = 0; i < 280; i++) {
-      const angle = (i / 280) * Math.PI * 2;
-      loginTargets.push({
-        x: headRadius * Math.cos(angle),
-        y: headY + headRadius * Math.sin(angle),
-        z: (Math.random() - 0.5) * 12,
-      });
-    }
+    const shieldW = compactRadius * 1.15;
+    const shieldTopY = -compactRadius * 1.15;
+    const shieldCornerY = -compactRadius * 0.35;
+    const shieldBottomY = compactRadius * 1.25;
 
-    const shoulderRadius = compactRadius * 1.25;
-    const shoulderCenterY = compactRadius * 0.95;
-    for (let i = 0; i < 320; i++) {
-      const t = i / 320;
-      const angle = Math.PI * 1.15 + t * (Math.PI * 0.7);
-      loginTargets.push({
-        x: shoulderRadius * Math.cos(angle),
-        y: shoulderCenterY + shoulderRadius * Math.sin(angle),
-        z: (Math.random() - 0.5) * 14,
-      });
-    }
+    // Shield Top edge
+    loginTargets.push(...sampleLine({ x: -shieldW, y: shieldTopY, z: 0 }, { x: shieldW, y: shieldTopY, z: 0 }, 90));
+    // Shield Upper Sides
+    loginTargets.push(...sampleLine({ x: -shieldW, y: shieldTopY, z: 0 }, { x: -shieldW, y: shieldCornerY, z: 0 }, 50));
+    loginTargets.push(...sampleLine({ x: shieldW, y: shieldTopY, z: 0 }, { x: shieldW, y: shieldCornerY, z: 0 }, 50));
+    // Shield Lower Converging Curves to bottom tip
+    loginTargets.push(...sampleLine({ x: -shieldW, y: shieldCornerY, z: 0 }, { x: 0, y: shieldBottomY, z: 0 }, 100));
+    loginTargets.push(...sampleLine({ x: shieldW, y: shieldCornerY, z: 0 }, { x: 0, y: shieldBottomY, z: 0 }, 100));
 
-    const ringRadius = compactRadius * 1.45;
+    // Center User Head / Lock Shackle Circle
+    const lockHeadR = compactRadius * 0.38;
+    const lockHeadY = -compactRadius * 0.25;
+    loginTargets.push(...sampleArc(0, lockHeadY, lockHeadR, 0, Math.PI * 2, 130));
+
+    // Keyhole / User Body Trapezoid below head
+    const bodyTopW = compactRadius * 0.22;
+    const bodyBotW = compactRadius * 0.55;
+    const bodyTopY = lockHeadY + lockHeadR + 4;
+    const bodyBotY = compactRadius * 0.65;
+    loginTargets.push(...sampleLine({ x: -bodyTopW, y: bodyTopY, z: 0 }, { x: bodyTopW, y: bodyTopY, z: 0 }, 30));
+    loginTargets.push(...sampleLine({ x: bodyTopW, y: bodyTopY, z: 0 }, { x: bodyBotW, y: bodyBotY, z: 0 }, 50));
+    loginTargets.push(...sampleLine({ x: bodyBotW, y: bodyBotY, z: 0 }, { x: -bodyBotW, y: bodyBotY, z: 0 }, 60));
+    loginTargets.push(...sampleLine({ x: -bodyBotW, y: bodyBotY, z: 0 }, { x: -bodyTopW, y: bodyTopY, z: 0 }, 50));
+
+    // Fill remaining points with concentric inner verification glow ring
+    const innerRingR = compactRadius * 0.75;
     while (loginTargets.length < count) {
       const angle = Math.random() * Math.PI * 2;
       loginTargets.push({
-        x: ringRadius * Math.cos(angle),
-        y: ringRadius * Math.sin(angle) * 0.9,
-        z: (Math.random() - 0.5) * 14,
+        x: innerRingR * Math.cos(angle),
+        y: innerRingR * Math.sin(angle) * 0.85,
+        z: (Math.random() - 0.5) * 6,
       });
     }
 
-    // --- Initialize particles with cosmic dispersal ---
+    // ==============================================================
+    // 4. PARTICLES INITIALIZATION: SMALLER, CRISP, ELEGANT DOTS
+    // ==============================================================
     const maxDimension = Math.max(window.innerWidth, window.innerHeight);
     for (let i = 0; i < count; i++) {
       const u = Math.random();
@@ -190,6 +243,9 @@ export default function ParticleOrbCanvas({
 
       const isOrange = Math.random() < 0.65;
 
+      // NOTICE: Dots are made noticeably smaller, crisper, and refined
+      // Orange dots: ~0.95px to 1.35px (reduced from 3.0px)
+      // White dots: ~0.80px to 1.15px
       particles.push({
         sphere: sphereTargets[i],
         videoIcon: videoTargets[i],
@@ -205,8 +261,8 @@ export default function ParticleOrbCanvas({
         vz: 0,
 
         color: isOrange ? "orange" : "white",
-        size: isOrange ? 1.5 + Math.random() * 1.5 : 1.2 + Math.random() * 1.2,
-        baseAlpha: 0.65 + Math.random() * 0.35,
+        size: isOrange ? 0.95 + Math.random() * 0.40 : 0.80 + Math.random() * 0.35,
+        baseAlpha: 0.70 + Math.random() * 0.30,
       });
     }
 
@@ -214,12 +270,9 @@ export default function ParticleOrbCanvas({
     let rotX = 0.15;
     
     // Cycle Timing:
-    // Each of the 3 shapes stays for a full complete 3D revolution (~2850 frames total = ~950 frames per shape, ~15 seconds per shape)
-    // In each stage:
-    // - First 65% of the time: shape stays stabilized and revolves completely
-    // - Remaining 35% of the time: smooth, graceful transition to the next shape
+    // Full 360 degree rotation per shape before leisurely morphing
     let morphTime = 0;
-    const stageDuration = 800; // ~13.3 seconds per shape (complete 360 rotation)
+    const stageDuration = 800; // ~13.3 seconds per shape
     const morphCycleDuration = stageDuration * 3; // 2400 frames total loop
 
     let entranceProgress = 0;
@@ -255,7 +308,7 @@ export default function ParticleOrbCanvas({
       const centerX = baseCenterX + (Number.isNaN(currentMagneticX) ? 0 : currentMagneticX);
       const centerY = baseCenterY + (Number.isNaN(currentMagneticY) ? 0 : currentMagneticY);
 
-      // Slow 3D Rotation (0.0022 radians/frame -> ~2855 frames for full 360 degree revolution)
+      // Slow 3D Rotation
       rotY += 0.0022;
       rotX += 0.0005;
       const cosY = Math.cos(rotY);
@@ -266,22 +319,20 @@ export default function ParticleOrbCanvas({
       const fov = 450;
       const isCurrentlyExploding = explodingRef.current;
 
-      // Inward assembly lerp from 0 to 1
       if (entranceProgress < 1) {
         entranceProgress += (1 - entranceProgress) * 0.045;
       }
 
       // Morphing time progression
       morphTime = (morphTime + 1) % morphCycleDuration;
-      const currentStage = Math.floor(morphTime / stageDuration); // 0, 1, or 2
-      const timeInStage = morphTime % stageDuration; // 0 to stageDuration
+      const currentStage = Math.floor(morphTime / stageDuration);
+      const timeInStage = morphTime % stageDuration;
 
       // Hold stabilized for 65% of the stage, then transition over the remaining 35%
-      const holdTime = stageDuration * 0.65; // ~520 frames stable complete revolution
+      const holdTime = stageDuration * 0.65;
       let morphWeight = 0;
       if (timeInStage > holdTime) {
-        const transitionProgress = (timeInStage - holdTime) / (stageDuration - holdTime); // 0 to 1
-        // Smooth Hermite cubic interpolation for transition
+        const transitionProgress = (timeInStage - holdTime) / (stageDuration - holdTime);
         morphWeight = transitionProgress * transitionProgress * (3 - 2 * transitionProgress);
       }
 
@@ -300,21 +351,18 @@ export default function ParticleOrbCanvas({
         if (!isCurrentlyExploding) {
           let target: Vec3;
           if (currentStage === 0) {
-            // Stage 0: Sphere rotates fully, then slowly morphs to Video Icon
             target = {
               x: p.sphere.x + (p.videoIcon.x - p.sphere.x) * morphWeight,
               y: p.sphere.y + (p.videoIcon.y - p.sphere.y) * morphWeight,
               z: p.sphere.z + (p.videoIcon.z - p.sphere.z) * morphWeight,
             };
           } else if (currentStage === 1) {
-            // Stage 1: Compact Video Icon rotates fully, then slowly morphs to Compact Login Icon
             target = {
               x: p.videoIcon.x + (p.loginIcon.x - p.videoIcon.x) * morphWeight,
               y: p.videoIcon.y + (p.loginIcon.y - p.videoIcon.y) * morphWeight,
               z: p.videoIcon.z + (p.loginIcon.z - p.videoIcon.z) * morphWeight,
             };
           } else {
-            // Stage 2: Compact Login Icon rotates fully, then slowly expands back to Full Sphere
             target = {
               x: p.loginIcon.x + (p.sphere.x - p.loginIcon.x) * morphWeight,
               y: p.loginIcon.y + (p.sphere.y - p.loginIcon.y) * morphWeight,
@@ -338,7 +386,6 @@ export default function ParticleOrbCanvas({
           pos.y = y1;
           pos.z = z2;
         } else {
-          // Outward explosion
           if (p.vx === 0 && p.vy === 0 && p.vz === 0) {
             const mag = Math.sqrt(pos.x * pos.x + pos.y * pos.y + pos.z * pos.z) || 1;
             const speed = 16 + Math.random() * 32;
@@ -356,20 +403,22 @@ export default function ParticleOrbCanvas({
         const screenX = centerX + pos.x * scale;
         const screenY = centerY + pos.y * scale;
 
-        const depthAlpha = Math.max(0.45, Math.min(1, (pos.z + sphereRadius) / (sphereRadius * 2))) * p.baseAlpha;
-        const dotRadius = Math.max(1.0, p.size * scale);
+        const depthAlpha = Math.max(0.40, Math.min(1, (pos.z + sphereRadius) / (sphereRadius * 2))) * p.baseAlpha;
+        
+        // Smaller, refined dot radius for clean starry aesthetics
+        const dotRadius = Math.max(0.65, p.size * scale);
 
         ctx.beginPath();
         ctx.arc(screenX, screenY, dotRadius, 0, Math.PI * 2);
 
         if (p.color === "orange") {
           ctx.fillStyle = `rgba(255, 116, 39, ${depthAlpha})`;
-          ctx.shadowColor = `rgba(255, 116, 39, ${depthAlpha * 0.8})`;
-          ctx.shadowBlur = 8;
+          ctx.shadowColor = `rgba(255, 116, 39, ${depthAlpha * 0.75})`;
+          ctx.shadowBlur = 5;
         } else {
           ctx.fillStyle = `rgba(255, 255, 255, ${depthAlpha})`;
-          ctx.shadowColor = `rgba(255, 255, 255, ${depthAlpha * 0.5})`;
-          ctx.shadowBlur = 6;
+          ctx.shadowColor = `rgba(255, 255, 255, ${depthAlpha * 0.55})`;
+          ctx.shadowBlur = 3;
         }
 
         ctx.fill();
