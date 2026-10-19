@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Menu, X, ArrowRight, Sparkles, Film, Library, ShieldCheck } from "lucide-react";
+import { Menu, X, ArrowRight } from "lucide-react";
 
 export interface CapsuleNavItem {
   id: string;
@@ -31,6 +31,22 @@ export default function FloatingCapsuleNavbar({
   className = "",
 }: FloatingCapsuleNavbarProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isScrolled, setIsScrolled] = useState(false);
+
+  // Detect scroll position to trigger morphing into full-width sticky navbar
+  useEffect(() => {
+    const handleScroll = () => {
+      if (window.scrollY > 40) {
+        setIsScrolled(true);
+      } else {
+        setIsScrolled(false);
+      }
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    handleScroll(); // Initial check
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
 
   // Close mobile drawer on escape
   useEffect(() => {
@@ -42,14 +58,23 @@ export default function FloatingCapsuleNavbar({
   }, []);
 
   return (
-    <div className={`fixed top-4 sm:top-6 left-0 right-0 z-50 flex flex-col items-center px-3 sm:px-6 pointer-events-none ${className}`}>
-      
+    <header
+      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ease-out flex flex-col items-center ${
+        isScrolled
+          ? "w-full bg-black/90 backdrop-blur-xl border-b border-white/[0.08] shadow-[0_10px_30px_rgba(0,0,0,0.8)] py-0 px-0 pointer-events-auto"
+          : "pt-4 sm:pt-6 px-3 sm:px-6 pointer-events-none"
+      } ${className}`}
+    >
       {/* ============================================================== */}
-      {/* DESKTOP & TABLET: Elongated, Sleek Floating Capsule Bar         */}
+      {/* DESKTOP & TABLET: Morphing Capsule -> Full Header               */}
       {/* ============================================================== */}
       <nav
         aria-label="Main Navigation"
-        className="pointer-events-auto hidden md:flex items-center justify-between w-full max-w-4xl lg:max-w-5xl h-[58px] px-3 py-2 rounded-full bg-[#111111]/95 border border-white/[0.12] backdrop-blur-2xl shadow-[0_20px_60px_rgba(0,0,0,0.8)] transition-all duration-300 hover:border-white/25"
+        className={`pointer-events-auto hidden md:flex items-center justify-between transition-all duration-500 ease-out ${
+          isScrolled
+            ? "w-full max-w-7xl h-[64px] px-6 lg:px-8 rounded-none bg-transparent border-transparent shadow-none"
+            : "w-full max-w-4xl lg:max-w-5xl h-[58px] px-3 py-2 rounded-full bg-[#111111]/95 border border-white/[0.12] backdrop-blur-2xl shadow-[0_20px_60px_rgba(0,0,0,0.8)] hover:border-white/25"
+        }`}
       >
         {/* Left Section: Circular Brand Badge + Brand Title */}
         <Link
@@ -74,7 +99,7 @@ export default function FloatingCapsuleNavbar({
         </Link>
 
         {/* Center Section: Balanced, Generously Spaced Nav Links */}
-        <div className="flex items-center gap-2 lg:gap-4 px-4">
+        <div className="flex items-center gap-1 lg:gap-3 px-4">
           {navItems.map((item) => {
             const isActive = item.isActive;
             if (item.onClick) {
@@ -83,7 +108,7 @@ export default function FloatingCapsuleNavbar({
                   key={item.id}
                   type="button"
                   onClick={item.onClick}
-                  className={`px-4 py-2 rounded-full text-sm font-medium tracking-normal transition-all duration-150 cursor-pointer select-none ${
+                  className={`px-4 py-2 rounded-full text-sm font-medium tracking-normal transition-all duration-200 cursor-pointer select-none ${
                     isActive
                       ? "text-white font-semibold bg-white/[0.08]"
                       : "text-slate-300 hover:text-white hover:bg-white/[0.04]"
@@ -98,7 +123,7 @@ export default function FloatingCapsuleNavbar({
               <a
                 key={item.id}
                 href={item.href || `#${item.id}`}
-                className={`px-4 py-2 rounded-full text-sm font-medium tracking-normal transition-all duration-150 cursor-pointer select-none ${
+                className={`px-4 py-2 rounded-full text-sm font-medium tracking-normal transition-all duration-200 cursor-pointer select-none ${
                   isActive
                     ? "text-white font-semibold bg-white/[0.08]"
                     : "text-slate-300 hover:text-white hover:bg-white/[0.04]"
@@ -111,20 +136,20 @@ export default function FloatingCapsuleNavbar({
         </div>
 
         {/* Right Section: Log In Trigger + Inset Pure White Capsule */}
-        <div className="flex items-center gap-2 pl-2 pr-1">
+        <div className="flex items-center gap-3 pl-2 pr-1">
           <button
             type="button"
             onClick={() => onOpenAuth?.("login")}
-            className="px-4 py-2 text-xs font-semibold text-slate-300 hover:text-white transition-colors cursor-pointer"
+            className="px-3 py-1.5 text-xs font-semibold text-slate-300 hover:text-white transition-colors cursor-pointer"
           >
             Log in
           </button>
 
-          {/* Inset White Pill Capsule */}
+          {/* Inset White Pill CTA */}
           <button
             type="button"
             onClick={() => onOpenAuth?.("signup")}
-            className="h-10 px-6 rounded-full bg-white hover:bg-slate-100 text-black font-bold text-xs tracking-tight transition-all duration-200 cursor-pointer shadow-md hover:shadow-lg active:scale-95 flex items-center gap-1.5 shrink-0"
+            className="h-10 px-5 rounded-full bg-white hover:bg-slate-100 text-black font-bold text-xs tracking-tight transition-all duration-200 cursor-pointer shadow-md hover:shadow-lg active:scale-95 flex items-center gap-1.5 shrink-0"
           >
             <span>Start Free</span>
             <ArrowRight className="w-3.5 h-3.5 text-black" />
@@ -133,11 +158,15 @@ export default function FloatingCapsuleNavbar({
       </nav>
 
       {/* ============================================================== */}
-      {/* MOBILE: Ultra-Compact Native Floating Header                   */}
+      {/* MOBILE: Morphing Floating Island -> Fixed Sticky Top Bar        */}
       {/* ============================================================== */}
       <nav
         aria-label="Mobile Navigation"
-        className="pointer-events-auto md:hidden flex items-center justify-between w-full h-[52px] px-2.5 py-1.5 rounded-full bg-[#111111]/95 border border-white/[0.14] backdrop-blur-2xl shadow-[0_16px_40px_rgba(0,0,0,0.85)]"
+        className={`pointer-events-auto md:hidden flex items-center justify-between w-full transition-all duration-500 ease-out ${
+          isScrolled
+            ? "h-[56px] px-4 rounded-none bg-transparent border-transparent shadow-none"
+            : "h-[52px] px-3 py-1.5 rounded-full bg-[#111111]/95 border border-white/[0.14] backdrop-blur-2xl shadow-[0_16px_40px_rgba(0,0,0,0.85)]"
+        }`}
       >
         {/* Left: Logo & Brand Name */}
         <Link
@@ -185,8 +214,11 @@ export default function FloatingCapsuleNavbar({
       {/* MOBILE EXPANDED DRAWER: Smooth Slide-down Island Sheet         */}
       {/* ============================================================== */}
       {mobileMenuOpen && (
-        <div className="pointer-events-auto md:hidden mt-2 w-full p-4 rounded-3xl bg-[#141414]/98 border border-white/12 backdrop-blur-2xl shadow-[0_24px_60px_rgba(0,0,0,0.9)] flex flex-col gap-2 animate-in fade-in slide-in-from-top-3 duration-200">
-          
+        <div className={`pointer-events-auto md:hidden w-full transition-all duration-300 animate-in fade-in slide-in-from-top-3 ${
+          isScrolled 
+            ? "border-t border-white/[0.08] bg-black/98 px-5 py-4 flex flex-col gap-2" 
+            : "mt-2 px-4 py-4 rounded-3xl bg-[#141414]/98 border border-white/12 backdrop-blur-2xl shadow-[0_24px_60px_rgba(0,0,0,0.9)] flex flex-col gap-2"
+        }`}>
           <div className="flex flex-col gap-1">
             {navItems.map((item) => {
               const isActive = item.isActive;
@@ -238,6 +270,6 @@ export default function FloatingCapsuleNavbar({
         </div>
       )}
 
-    </div>
+    </header>
   );
 }
