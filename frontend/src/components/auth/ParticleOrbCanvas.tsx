@@ -77,7 +77,13 @@ export default function ParticleOrbCanvas({
 
     const count = 800;
     const particles: MorphParticle[] = [];
-    const baseRadius = Math.max(140, Math.min(window.innerWidth, window.innerHeight) * 0.22);
+    
+    // Scale definition:
+    // Circle/Sphere: Full majestic size
+    // Video icon & Login icon: Compact & tight (0.68x scale)
+    const sphereRadius = Math.max(140, Math.min(window.innerWidth, window.innerHeight) * 0.22);
+    const compactScale = 0.68;
+    const compactRadius = sphereRadius * compactScale;
 
     // Helper: sample points on a line segment in 3D
     const sampleLine = (p1: Vec3, p2: Vec3, n: number): Vec3[] => {
@@ -87,29 +93,29 @@ export default function ParticleOrbCanvas({
         pts.push({
           x: p1.x + (p2.x - p1.x) * t,
           y: p1.y + (p2.y - p1.y) * t,
-          z: p1.z + (p2.z - p1.z) * t + (Math.random() - 0.5) * 8,
+          z: p1.z + (p2.z - p1.z) * t + (Math.random() - 0.5) * 6,
         });
       }
       return pts;
     };
 
-    // --- Shape 1: Sphere Targets ---
+    // --- Shape 1: Sphere Targets (Full Original Size) ---
     const sphereTargets: Vec3[] = [];
     for (let i = 0; i < count; i++) {
       const y = 1 - (i / (count - 1)) * 2;
       const radiusAtY = Math.sqrt(1 - y * y);
       const theta = i * 2.399963229728653;
       sphereTargets.push({
-        x: baseRadius * radiusAtY * Math.cos(theta),
-        y: baseRadius * y,
-        z: baseRadius * radiusAtY * Math.sin(theta),
+        x: sphereRadius * radiusAtY * Math.cos(theta),
+        y: sphereRadius * y,
+        z: sphereRadius * radiusAtY * Math.sin(theta),
       });
     }
 
-    // --- Shape 2: Video Editing (Film Slate / Play Frame) ---
+    // --- Shape 2: Video Editing (Film Slate / Play Frame) (Compact Size) ---
     const videoTargets: Vec3[] = [];
-    const frameW = baseRadius * 1.45;
-    const frameH = baseRadius * 1.05;
+    const frameW = compactRadius * 1.35;
+    const frameH = compactRadius * 1.0;
 
     const ptsTop = sampleLine({ x: -frameW, y: -frameH, z: 0 }, { x: frameW, y: -frameH, z: 0 }, 100);
     const ptsRight = sampleLine({ x: frameW, y: -frameH, z: 0 }, { x: frameW, y: frameH, z: 0 }, 80);
@@ -117,9 +123,9 @@ export default function ParticleOrbCanvas({
     const ptsLeft = sampleLine({ x: -frameW, y: frameH, z: 0 }, { x: -frameW, y: -frameH, z: 0 }, 80);
     videoTargets.push(...ptsTop, ...ptsRight, ...ptsBottom, ...ptsLeft);
 
-    const triX1 = -baseRadius * 0.45, triY1 = -baseRadius * 0.55;
-    const triX2 = -baseRadius * 0.45, triY2 = baseRadius * 0.55;
-    const triX3 = baseRadius * 0.65, triY3 = 0;
+    const triX1 = -compactRadius * 0.45, triY1 = -compactRadius * 0.55;
+    const triX2 = -compactRadius * 0.45, triY2 = compactRadius * 0.55;
+    const triX3 = compactRadius * 0.65, triY3 = 0;
     const triSide1 = sampleLine({ x: triX1, y: triY1, z: 0 }, { x: triX2, y: triY2, z: 0 }, 80);
     const triSide2 = sampleLine({ x: triX2, y: triY2, z: 0 }, { x: triX3, y: triY3, z: 0 }, 70);
     const triSide3 = sampleLine({ x: triX3, y: triY3, z: 0 }, { x: triX1, y: triY1, z: 0 }, 70);
@@ -128,44 +134,44 @@ export default function ParticleOrbCanvas({
     while (videoTargets.length < count) {
       const side = Math.random() < 0.5 ? -1 : 1;
       videoTargets.push({
-        x: (Math.random() - 0.5) * frameW * 1.5,
-        y: side * (frameH + 16),
-        z: (Math.random() - 0.5) * 16,
+        x: (Math.random() - 0.5) * frameW * 1.4,
+        y: side * (frameH + 12),
+        z: (Math.random() - 0.5) * 12,
       });
     }
 
-    // --- Shape 3: Login Icon (Profile Avatar Head & Shoulder Arc + Keyhole) ---
+    // --- Shape 3: Login Icon (Profile Avatar Head & Shoulder Arc + Keyhole) (Compact Size) ---
     const loginTargets: Vec3[] = [];
-    const headRadius = baseRadius * 0.52;
-    const headY = -baseRadius * 0.45;
+    const headRadius = compactRadius * 0.50;
+    const headY = -compactRadius * 0.45;
     for (let i = 0; i < 280; i++) {
       const angle = (i / 280) * Math.PI * 2;
       loginTargets.push({
         x: headRadius * Math.cos(angle),
         y: headY + headRadius * Math.sin(angle),
-        z: (Math.random() - 0.5) * 16,
+        z: (Math.random() - 0.5) * 12,
       });
     }
 
-    const shoulderRadius = baseRadius * 1.3;
-    const shoulderCenterY = baseRadius * 1.0;
+    const shoulderRadius = compactRadius * 1.25;
+    const shoulderCenterY = compactRadius * 0.95;
     for (let i = 0; i < 320; i++) {
       const t = i / 320;
       const angle = Math.PI * 1.15 + t * (Math.PI * 0.7);
       loginTargets.push({
         x: shoulderRadius * Math.cos(angle),
         y: shoulderCenterY + shoulderRadius * Math.sin(angle),
-        z: (Math.random() - 0.5) * 18,
+        z: (Math.random() - 0.5) * 14,
       });
     }
 
-    const ringRadius = baseRadius * 1.5;
+    const ringRadius = compactRadius * 1.45;
     while (loginTargets.length < count) {
       const angle = Math.random() * Math.PI * 2;
       loginTargets.push({
         x: ringRadius * Math.cos(angle),
         y: ringRadius * Math.sin(angle) * 0.9,
-        z: (Math.random() - 0.5) * 18,
+        z: (Math.random() - 0.5) * 14,
       });
     }
 
@@ -199,15 +205,23 @@ export default function ParticleOrbCanvas({
         vz: 0,
 
         color: isOrange ? "orange" : "white",
-        size: isOrange ? 1.6 + Math.random() * 1.6 : 1.3 + Math.random() * 1.3,
+        size: isOrange ? 1.5 + Math.random() * 1.5 : 1.2 + Math.random() * 1.2,
         baseAlpha: 0.65 + Math.random() * 0.35,
       });
     }
 
     let rotY = 0;
     let rotX = 0.15;
+    
+    // Cycle Timing:
+    // Each of the 3 shapes stays for a full complete 3D revolution (~2850 frames total = ~950 frames per shape, ~15 seconds per shape)
+    // In each stage:
+    // - First 65% of the time: shape stays stabilized and revolves completely
+    // - Remaining 35% of the time: smooth, graceful transition to the next shape
     let morphTime = 0;
-    const morphCycleDuration = 600;
+    const stageDuration = 800; // ~13.3 seconds per shape (complete 360 rotation)
+    const morphCycleDuration = stageDuration * 3; // 2400 frames total loop
+
     let entranceProgress = 0;
     let explodeTimer = 0;
     let hasTriggeredExplodeComplete = false;
@@ -241,6 +255,7 @@ export default function ParticleOrbCanvas({
       const centerX = baseCenterX + (Number.isNaN(currentMagneticX) ? 0 : currentMagneticX);
       const centerY = baseCenterY + (Number.isNaN(currentMagneticY) ? 0 : currentMagneticY);
 
+      // Slow 3D Rotation (0.0022 radians/frame -> ~2855 frames for full 360 degree revolution)
       rotY += 0.0022;
       rotX += 0.0005;
       const cosY = Math.cos(rotY);
@@ -258,10 +273,17 @@ export default function ParticleOrbCanvas({
 
       // Morphing time progression
       morphTime = (morphTime + 1) % morphCycleDuration;
-      const cycleStage = (morphTime / morphCycleDuration) * 3;
-      const stageIndex = Math.floor(cycleStage);
-      const rawT = cycleStage - stageIndex;
-      const smoothT = rawT * rawT * (3 - 2 * rawT);
+      const currentStage = Math.floor(morphTime / stageDuration); // 0, 1, or 2
+      const timeInStage = morphTime % stageDuration; // 0 to stageDuration
+
+      // Hold stabilized for 65% of the stage, then transition over the remaining 35%
+      const holdTime = stageDuration * 0.65; // ~520 frames stable complete revolution
+      let morphWeight = 0;
+      if (timeInStage > holdTime) {
+        const transitionProgress = (timeInStage - holdTime) / (stageDuration - holdTime); // 0 to 1
+        // Smooth Hermite cubic interpolation for transition
+        morphWeight = transitionProgress * transitionProgress * (3 - 2 * transitionProgress);
+      }
 
       if (isCurrentlyExploding) {
         explodeTimer++;
@@ -277,23 +299,26 @@ export default function ParticleOrbCanvas({
 
         if (!isCurrentlyExploding) {
           let target: Vec3;
-          if (stageIndex === 0) {
+          if (currentStage === 0) {
+            // Stage 0: Sphere rotates fully, then slowly morphs to Video Icon
             target = {
-              x: p.sphere.x + (p.videoIcon.x - p.sphere.x) * smoothT,
-              y: p.sphere.y + (p.videoIcon.y - p.sphere.y) * smoothT,
-              z: p.sphere.z + (p.videoIcon.z - p.sphere.z) * smoothT,
+              x: p.sphere.x + (p.videoIcon.x - p.sphere.x) * morphWeight,
+              y: p.sphere.y + (p.videoIcon.y - p.sphere.y) * morphWeight,
+              z: p.sphere.z + (p.videoIcon.z - p.sphere.z) * morphWeight,
             };
-          } else if (stageIndex === 1) {
+          } else if (currentStage === 1) {
+            // Stage 1: Compact Video Icon rotates fully, then slowly morphs to Compact Login Icon
             target = {
-              x: p.videoIcon.x + (p.loginIcon.x - p.videoIcon.x) * smoothT,
-              y: p.videoIcon.y + (p.loginIcon.y - p.videoIcon.y) * smoothT,
-              z: p.videoIcon.z + (p.loginIcon.z - p.videoIcon.z) * smoothT,
+              x: p.videoIcon.x + (p.loginIcon.x - p.videoIcon.x) * morphWeight,
+              y: p.videoIcon.y + (p.loginIcon.y - p.videoIcon.y) * morphWeight,
+              z: p.videoIcon.z + (p.loginIcon.z - p.videoIcon.z) * morphWeight,
             };
           } else {
+            // Stage 2: Compact Login Icon rotates fully, then slowly expands back to Full Sphere
             target = {
-              x: p.loginIcon.x + (p.sphere.x - p.loginIcon.x) * smoothT,
-              y: p.loginIcon.y + (p.sphere.y - p.loginIcon.y) * smoothT,
-              z: p.loginIcon.z + (p.sphere.z - p.loginIcon.z) * smoothT,
+              x: p.loginIcon.x + (p.sphere.x - p.loginIcon.x) * morphWeight,
+              y: p.loginIcon.y + (p.sphere.y - p.loginIcon.y) * morphWeight,
+              z: p.loginIcon.z + (p.sphere.z - p.loginIcon.z) * morphWeight,
             };
           }
 
@@ -303,6 +328,7 @@ export default function ParticleOrbCanvas({
           const currentBaseY = target.y + p.dirY * currentDist;
           const currentBaseZ = target.z + p.dirZ * currentDist;
 
+          // Rotate around Y and X
           const x1 = currentBaseX * cosY + currentBaseZ * sinY;
           const z1 = -currentBaseX * sinY + currentBaseZ * cosY;
           const y1 = currentBaseY * cosX - z1 * sinX;
@@ -330,7 +356,7 @@ export default function ParticleOrbCanvas({
         const screenX = centerX + pos.x * scale;
         const screenY = centerY + pos.y * scale;
 
-        const depthAlpha = Math.max(0.45, Math.min(1, (pos.z + baseRadius) / (baseRadius * 2))) * p.baseAlpha;
+        const depthAlpha = Math.max(0.45, Math.min(1, (pos.z + sphereRadius) / (sphereRadius * 2))) * p.baseAlpha;
         const dotRadius = Math.max(1.0, p.size * scale);
 
         ctx.beginPath();
@@ -342,7 +368,7 @@ export default function ParticleOrbCanvas({
           ctx.shadowBlur = 8;
         } else {
           ctx.fillStyle = `rgba(255, 255, 255, ${depthAlpha})`;
-          ctx.shadowColor = `rgba(255, 255, 255, ${depthAlpha * 0.6})`;
+          ctx.shadowColor = `rgba(255, 255, 255, ${depthAlpha * 0.5})`;
           ctx.shadowBlur = 6;
         }
 
