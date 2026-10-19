@@ -114,23 +114,34 @@ export default function SidebarNav({
             WebkitBackdropFilter: "blur(40px) saturate(180%)",
           }}
         >
-          {/* Top Logo */}
+          {/* Top Logo in Golden Orange Circle with No Hover Animation */}
           <div className="flex flex-col items-center">
             <button
               type="button"
               onClick={() => setIsExpanded(true)}
-              className="w-10 h-10 flex items-center justify-center transition-transform hover:scale-105 cursor-pointer focus:outline-none"
+              className="cursor-pointer focus:outline-none"
               title="Click to expand panel"
             >
-              <Image
-                src="/brand_logo.png?v=3"
-                alt="Logo"
-                width={36}
-                height={36}
-                priority
-                unoptimized
-                className="w-8 h-8 object-contain drop-shadow-[0_2px_10px_rgba(255,116,39,0.5)]"
-              />
+              <div
+                className="w-9 h-9 rounded-full flex items-center justify-center relative"
+                style={{
+                  background:
+                    "radial-gradient(circle at 35% 35%, rgba(255, 138, 61, 0.35) 0%, rgba(255, 116, 39, 0.15) 60%, rgba(20, 14, 10, 0.9) 100%)",
+                  border: "1.5px solid rgba(255, 116, 39, 0.65)",
+                  boxShadow:
+                    "0 0 16px rgba(255, 116, 39, 0.4), inset 0 0 8px rgba(255, 116, 39, 0.2)",
+                }}
+              >
+                <Image
+                  src="/brand_logo.png?v=3"
+                  alt="Logo"
+                  width={22}
+                  height={22}
+                  priority
+                  unoptimized
+                  className="w-5 h-5 object-contain"
+                />
+              </div>
             </button>
           </div>
 
@@ -259,21 +270,30 @@ export default function SidebarNav({
               <button
                 type="button"
                 onClick={() => setIsExpanded(false)}
-                className="flex items-center gap-3 group focus:outline-none cursor-pointer"
+                className="flex items-center gap-3 focus:outline-none cursor-pointer"
                 title="Click to collapse rail"
               >
-                <div className="w-8 h-8 flex items-center justify-center transition-transform group-hover:scale-105">
+                <div
+                  className="w-9 h-9 rounded-full flex items-center justify-center relative"
+                  style={{
+                    background:
+                      "radial-gradient(circle at 35% 35%, rgba(255, 138, 61, 0.35) 0%, rgba(255, 116, 39, 0.15) 60%, rgba(20, 14, 10, 0.9) 100%)",
+                    border: "1.5px solid rgba(255, 116, 39, 0.65)",
+                    boxShadow:
+                      "0 0 16px rgba(255, 116, 39, 0.4), inset 0 0 8px rgba(255, 116, 39, 0.2)",
+                  }}
+                >
                   <Image
                     src="/brand_logo.png?v=3"
                     alt="Logo"
-                    width={36}
-                    height={36}
+                    width={22}
+                    height={22}
                     priority
                     unoptimized
-                    className="w-8 h-8 object-contain drop-shadow-[0_2px_10px_rgba(255,116,39,0.5)]"
+                    className="w-5 h-5 object-contain"
                   />
                 </div>
-                <span className="font-bold text-lg tracking-tight text-white group-hover:text-[#ff7427] transition-colors">
+                <span className="font-bold text-lg tracking-tight text-white transition-colors">
                   Vakiogiri
                 </span>
               </button>
