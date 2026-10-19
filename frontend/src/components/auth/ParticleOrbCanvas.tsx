@@ -9,29 +9,25 @@ interface Vec3 {
 }
 
 interface MorphParticle {
-  // Target shape targets
+  // Target shape coordinates
   sphere: Vec3;
   videoIcon: Vec3;
   loginIcon: Vec3;
 
-  // Initial random entry coordinates from whole screen boundaries
-  startX: number;
-  startY: number;
-  startZ: number;
+  // Stored random unit direction for cosmic entry
+  dirX: number;
+  dirY: number;
+  dirZ: number;
+  dispersalDist: number;
 
-  // Current interpolated state
-  x: number;
-  y: number;
-  z: number;
-
-  // Explosion velocity
+  // Explosion physics
   vx: number;
   vy: number;
   vz: number;
 
   color: "orange" | "white";
   size: number;
-  alpha: number;
+  baseAlpha: number;
 }
 
 interface ParticleOrbCanvasProps {
@@ -43,7 +39,7 @@ interface ParticleOrbCanvasProps {
 export default function ParticleOrbCanvas({
   isExploding = false,
   onExplodeComplete,
-  targetCenterRatioX = 0.30,
+  targetCenterRatioX = 0.28,
 }: ParticleOrbCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const explodingRef = useRef(isExploding);
@@ -56,26 +52,21 @@ export default function ParticleOrbCanvas({
     if (!ctx) return;
 
     let animationFrameId: number;
-    let width = window.innerWidth;
-    let height = window.innerHeight;
 
     const resize = () => {
       const dpr = window.devicePixelRatio || 1;
-      width = window.innerWidth;
-      height = window.innerHeight;
-      canvas.width = width * dpr;
-      canvas.height = height * dpr;
-      ctx.scale(dpr, dpr);
+      canvas.width = window.innerWidth * dpr;
+      canvas.height = window.innerHeight * dpr;
+      // Do not call ctx.scale repeatedly to prevent cumulative scaling
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     };
 
     resize();
     window.addEventListener("resize", resize);
 
-    // Mouse tracking for minimal magnetic hover effect
-    let mouseX = width * targetCenterRatioX;
-    let mouseY = height / 2;
-    let targetMagneticX = 0;
-    let targetMagneticY = 0;
+    // Mouse tracking for subtle magnetic hover pull
+    let mouseX = window.innerWidth * targetCenterRatioX;
+    let mouseY = window.innerHeight / 2;
     let currentMagneticX = 0;
     let currentMagneticY = 0;
 
@@ -85,14 +76,9 @@ export default function ParticleOrbCanvas({
     };
     window.addEventListener("mousemove", handleMouseMove);
 
-    // 850 particles for crisp shape recognition and smooth morphing
-    const count = 850;
+    const count = 800;
     const particles: MorphParticle[] = [];
-    const baseRadius = Math.min(width, height) * 0.22;
-
-    // ==============================================================
-    // 1. GENERATE SHAPE TARGETS (Sphere, Video Editing, Login Icon)
-    // ==============================================================
+    const baseRadius = Math.min(window.innerWidth, window.innerHeight) * 0.22;
 
     // Helper: sample points on a line segment in 3D
     const sampleLine = (p1: Vec3, p2: Vec3, n: number): Vec3[] => {
@@ -103,20 +89,6 @@ export default function ParticleOrbCanvas({
           x: p1.x + (p2.x - p1.x) * t,
           y: p1.y + (p2.y - p1.y) * t,
           z: p1.z + (p2.z - p1.z) * t + (Math.random() - 0.5) * 8,
-        });
-      }
-      return pts;
-    };
-
-    // Helper: sample points on a 3D circle
-    const sampleCircle = (radius: number, centerY: number, n: number): Vec3[] => {
-      const pts: Vec3[] = [];
-      for (let i = 0; i < n; i++) {
-        const angle = (i / n) * Math.PI * 2;
-        pts.push({
-          x: radius * Math.cos(angle),
-          y: centerY,
-          z: radius * Math.sin(angle) * 0.4, // subtle 3D tilt
         });
       }
       return pts;
@@ -136,19 +108,17 @@ export default function ParticleOrbCanvas({
     }
 
     // --- Shape 2: Video Editing (Scissors & Film Slate / Play Frame) ---
-    // Outer video frame (rounded rectangle) + Play triangle in center + Cutter timeline
     const videoTargets: Vec3[] = [];
-    const frameW = baseRadius * 1.5;
-    const frameH = baseRadius * 1.1;
+    const frameW = baseRadius * 1.45;
+    const frameH = baseRadius * 1.05;
 
-    // 4 edges of the video frame (400 points)
     const ptsTop = sampleLine({ x: -frameW, y: -frameH, z: 0 }, { x: frameW, y: -frameH, z: 0 }, 100);
     const ptsRight = sampleLine({ x: frameW, y: -frameH, z: 0 }, { x: frameW, y: frameH, z: 0 }, 80);
     const ptsBottom = sampleLine({ x: frameW, y: frameH, z: 0 }, { x: -frameW, y: frameH, z: 0 }, 100);
     const ptsLeft = sampleLine({ x: -frameW, y: frameH, z: 0 }, { x: -frameW, y: -frameH, z: 0 }, 80);
     videoTargets.push(...ptsTop, ...ptsRight, ...ptsBottom, ...ptsLeft);
 
-    // Center Play Triangle (Scissors/Cut Symbol) (220 points)
+    // Center Play Triangle
     const triX1 = -baseRadius * 0.45, triY1 = -baseRadius * 0.55;
     const triX2 = -baseRadius * 0.45, triY2 = baseRadius * 0.55;
     const triX3 = baseRadius * 0.65, triY3 = 0;
@@ -157,69 +127,62 @@ export default function ParticleOrbCanvas({
     const triSide3 = sampleLine({ x: triX3, y: triY3, z: 0 }, { x: triX1, y: triY1, z: 0 }, 70);
     videoTargets.push(...triSide1, ...triSide2, ...triSide3);
 
-    // Film perforations dots (remaining points)
     while (videoTargets.length < count) {
       const side = Math.random() < 0.5 ? -1 : 1;
       videoTargets.push({
-        x: (Math.random() - 0.5) * frameW * 1.6,
-        y: side * (frameH + 18),
+        x: (Math.random() - 0.5) * frameW * 1.5,
+        y: side * (frameH + 16),
         z: (Math.random() - 0.5) * 16,
       });
     }
 
-    // --- Shape 3: Login Icon (Profile Avatar Head & Shoulder Arc + Keyhole/Arrow) ---
+    // --- Shape 3: Login Icon (Profile Avatar Head & Shoulder Arc + Keyhole) ---
     const loginTargets: Vec3[] = [];
-    // User Head: Circle at top (280 points)
-    const headRadius = baseRadius * 0.55;
+    const headRadius = baseRadius * 0.52;
     const headY = -baseRadius * 0.45;
     for (let i = 0; i < 280; i++) {
       const angle = (i / 280) * Math.PI * 2;
       loginTargets.push({
         x: headRadius * Math.cos(angle),
         y: headY + headRadius * Math.sin(angle),
-        z: (Math.random() - 0.5) * 18,
+        z: (Math.random() - 0.5) * 16,
       });
     }
 
-    // User Shoulders: Arc at bottom (320 points)
-    const shoulderRadius = baseRadius * 1.35;
-    const shoulderCenterY = baseRadius * 1.05;
+    const shoulderRadius = baseRadius * 1.3;
+    const shoulderCenterY = baseRadius * 1.0;
     for (let i = 0; i < 320; i++) {
-      // Arc from PI*1.2 to PI*1.8 (upper hemisphere of lower body)
       const t = i / 320;
       const angle = Math.PI * 1.15 + t * (Math.PI * 0.7);
       loginTargets.push({
         x: shoulderRadius * Math.cos(angle),
         y: shoulderCenterY + shoulderRadius * Math.sin(angle),
-        z: (Math.random() - 0.5) * 20,
+        z: (Math.random() - 0.5) * 18,
       });
     }
 
-    // Surrounding Portal/Key Ring (remaining points to reach count)
-    const ringRadius = baseRadius * 1.55;
+    const ringRadius = baseRadius * 1.5;
     while (loginTargets.length < count) {
       const angle = Math.random() * Math.PI * 2;
       loginTargets.push({
         x: ringRadius * Math.cos(angle),
         y: ringRadius * Math.sin(angle) * 0.9,
-        z: (Math.random() - 0.5) * 20,
+        z: (Math.random() - 0.5) * 18,
       });
     }
 
-    // ==============================================================
-    // 2. INITIALIZE PARTICLES (Dispersed from full screen viewport)
-    // ==============================================================
-    const maxDimension = Math.max(width, height);
+    // --- Initialize particles with cosmic dispersal ---
+    const maxDimension = Math.max(window.innerWidth, window.innerHeight);
     for (let i = 0; i < count; i++) {
       const u = Math.random();
       const v = Math.random();
       const randomTheta = u * 2 * Math.PI;
       const randomPhi = Math.acos(2 * v - 1);
-      const randomDist = maxDimension * (0.8 + Math.random() * 0.6);
 
-      const startX = randomDist * Math.sin(randomPhi) * Math.cos(randomTheta);
-      const startY = randomDist * Math.cos(randomPhi);
-      const startZ = randomDist * Math.sin(randomPhi) * Math.sin(randomTheta);
+      const dirX = Math.sin(randomPhi) * Math.cos(randomTheta);
+      const dirY = Math.cos(randomPhi);
+      const dirZ = Math.sin(randomPhi) * Math.sin(randomTheta);
+      const dispersalDist = maxDimension * (0.9 + Math.random() * 0.6);
 
       const isOrange = Math.random() < 0.65;
 
@@ -228,65 +191,55 @@ export default function ParticleOrbCanvas({
         videoIcon: videoTargets[i],
         loginIcon: loginTargets[i],
 
-        startX,
-        startY,
-        startZ,
-
-        x: startX,
-        y: startY,
-        z: startZ,
+        dirX,
+        dirY,
+        dirZ,
+        dispersalDist,
 
         vx: 0,
         vy: 0,
         vz: 0,
 
         color: isOrange ? "orange" : "white",
-        size: isOrange ? 1.4 + Math.random() * 1.5 : 1.1 + Math.random() * 1.2,
-        alpha: 0.25 + Math.random() * 0.75,
+        size: isOrange ? 1.5 + Math.random() * 1.5 : 1.2 + Math.random() * 1.2,
+        baseAlpha: 0.5 + Math.random() * 0.5,
       });
     }
 
-    // ==============================================================
-    // 3. ANIMATION LOOP WITH SHAPE MORPHING & MAGNETIC HOVER
-    // ==============================================================
     let rotY = 0;
     let rotX = 0.15;
-    let hasTriggeredExplodeComplete = false;
-    let explodeTimer = 0;
-
-    // Time cycle for 3-stage morphing:
-    // Stage 0: Sphere (0 -> 1)
-    // Stage 1: Video Editing (1 -> 2)
-    // Stage 2: Login Icon (2 -> 3) -> wraps back to 0
     let morphTime = 0;
-    const morphCycleDuration = 600; // ~10 seconds per full 3-icon rotation
-
-    // Entrance assembly lerp factor
+    const morphCycleDuration = 600;
     let entranceProgress = 0;
+    let explodeTimer = 0;
+    let hasTriggeredExplodeComplete = false;
+
+    // Direct positions during explosion
+    const currentPositions: Vec3[] = particles.map(() => ({ x: 0, y: 0, z: 0 }));
 
     const render = () => {
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+
       ctx.clearRect(0, 0, width, height);
 
       const isMobile = width < 768;
       const baseCenterX = isMobile ? width / 2 : width * targetCenterRatioX;
       const baseCenterY = isMobile ? height * 0.28 : height / 2;
 
-      // Subtle Minimal Magnetic Hover:
-      // When mouse moves, calculate gentle offset towards mouse (max 18px pull)
+      // Subtle Minimal Magnetic Hover
       const dx = mouseX - baseCenterX;
       const dy = mouseY - baseCenterY;
       const distFromCenter = Math.sqrt(dx * dx + dy * dy);
-      if (distFromCenter < 400) {
+      let targetMagX = 0;
+      let targetMagY = 0;
+      if (distFromCenter < 400 && !isMobile) {
         const pull = Math.min(18, distFromCenter * 0.04);
-        targetMagneticX = (dx / distFromCenter) * pull;
-        targetMagneticY = (dy / distFromCenter) * pull;
-      } else {
-        targetMagneticX = 0;
-        targetMagneticY = 0;
+        targetMagX = (dx / distFromCenter) * pull;
+        targetMagY = (dy / distFromCenter) * pull;
       }
-
-      currentMagneticX += (targetMagneticX - currentMagneticX) * 0.05;
-      currentMagneticY += (targetMagneticY - currentMagneticY) * 0.05;
+      currentMagneticX += (targetMagX - currentMagneticX) * 0.05;
+      currentMagneticY += (targetMagY - currentMagneticY) * 0.05;
 
       const centerX = baseCenterX + currentMagneticX;
       const centerY = baseCenterY + currentMagneticY;
@@ -299,21 +252,19 @@ export default function ParticleOrbCanvas({
       const cosX = Math.cos(rotX);
       const sinX = Math.sin(rotX);
 
-      const fov = 420;
+      const fov = 450;
       const isCurrentlyExploding = explodingRef.current;
 
-      // Entrance assembly lerp
+      // Inward assembly lerp from 0 to 1
       if (entranceProgress < 1) {
-        entranceProgress += (1 - entranceProgress) * 0.042;
+        entranceProgress += (1 - entranceProgress) * 0.038;
       }
 
       // Morphing time progression
       morphTime = (morphTime + 1) % morphCycleDuration;
-      const cycleStage = (morphTime / morphCycleDuration) * 3; // 0 to 3
-      const stageIndex = Math.floor(cycleStage); // 0, 1, or 2
-      const rawT = cycleStage - stageIndex; // 0 to 1 transition within the stage
-
-      // Smooth S-Curve (Hermite ease) for morphing transition
+      const cycleStage = (morphTime / morphCycleDuration) * 3;
+      const stageIndex = Math.floor(cycleStage);
+      const rawT = cycleStage - stageIndex;
       const smoothT = rawT * rawT * (3 - 2 * rawT);
 
       if (isCurrentlyExploding) {
@@ -326,84 +277,81 @@ export default function ParticleOrbCanvas({
 
       for (let i = 0; i < count; i++) {
         const p = particles[i];
+        const pos = currentPositions[i];
 
         if (!isCurrentlyExploding) {
-          // Calculate current morphed target based on stage
-          let targetPos: Vec3;
+          // Determine morphed target
+          let target: Vec3;
           if (stageIndex === 0) {
-            // Morph Sphere -> Video Icon
-            targetPos = {
+            target = {
               x: p.sphere.x + (p.videoIcon.x - p.sphere.x) * smoothT,
               y: p.sphere.y + (p.videoIcon.y - p.sphere.y) * smoothT,
               z: p.sphere.z + (p.videoIcon.z - p.sphere.z) * smoothT,
             };
           } else if (stageIndex === 1) {
-            // Morph Video Icon -> Login Icon
-            targetPos = {
+            target = {
               x: p.videoIcon.x + (p.loginIcon.x - p.videoIcon.x) * smoothT,
               y: p.videoIcon.y + (p.loginIcon.y - p.videoIcon.y) * smoothT,
               z: p.videoIcon.z + (p.loginIcon.z - p.videoIcon.z) * smoothT,
             };
           } else {
-            // Morph Login Icon -> Sphere (Loop)
-            targetPos = {
+            target = {
               x: p.loginIcon.x + (p.sphere.x - p.loginIcon.x) * smoothT,
               y: p.loginIcon.y + (p.sphere.y - p.loginIcon.y) * smoothT,
               z: p.loginIcon.z + (p.sphere.z - p.loginIcon.z) * smoothT,
             };
           }
 
-          // Initial fluid assembly from screen viewport
-          const currentBaseX = p.startX + (targetPos.x - p.startX) * entranceProgress;
-          const currentBaseY = p.startY + (targetPos.y - p.startY) * entranceProgress;
-          const currentBaseZ = p.startZ + (targetPos.z - p.startZ) * entranceProgress;
+          // Cosmic Dispersal -> Target Lerp:
+          // Distance from target smoothly converges from dispersalDist to 0
+          const currentDist = p.dispersalDist * (1 - entranceProgress);
+          const currentBaseX = target.x + p.dirX * currentDist;
+          const currentBaseY = target.y + p.dirY * currentDist;
+          const currentBaseZ = target.z + p.dirZ * currentDist;
 
-          // 3D Rotation
+          // Rotate around Y and X
           const x1 = currentBaseX * cosY + currentBaseZ * sinY;
           const z1 = -currentBaseX * sinY + currentBaseZ * cosY;
           const y1 = currentBaseY * cosX - z1 * sinX;
           const z2 = currentBaseY * sinX + z1 * cosX;
 
-          p.x = x1;
-          p.y = y1;
-          p.z = z2;
+          pos.x = x1;
+          pos.y = y1;
+          pos.z = z2;
         } else {
-          // EXPLOSION BURST on success
+          // Outward explosion
           if (p.vx === 0 && p.vy === 0 && p.vz === 0) {
-            const mag = Math.sqrt(p.x * p.x + p.y * p.y + p.z * p.z) || 1;
+            const mag = Math.sqrt(pos.x * pos.x + pos.y * pos.y + pos.z * pos.z) || 1;
             const speed = 16 + Math.random() * 32;
-            p.vx = (p.x / mag) * speed;
-            p.vy = (p.y / mag) * speed;
-            p.vz = (p.z / mag) * speed;
+            p.vx = (pos.x / mag) * speed;
+            p.vy = (pos.y / mag) * speed;
+            p.vz = (pos.z / mag) * speed;
           }
-
-          p.x += p.vx;
-          p.y += p.vy;
-          p.z += p.vz;
-          p.alpha = Math.max(0, p.alpha - 0.02);
+          pos.x += p.vx;
+          pos.y += p.vy;
+          pos.z += p.vz;
+          p.baseAlpha = Math.max(0, p.baseAlpha - 0.02);
         }
 
-        // Perspective Projection
-        const distance = fov + p.z;
-        if (distance <= 0) continue;
+        // Orthographic + subtle depth projection so particles are ALWAYS crisp and visible
+        // Depth cueing with guarantee of minimum visibility
+        const scale = fov / (fov + Math.max(-300, Math.min(300, pos.z)));
+        const screenX = centerX + pos.x * scale;
+        const screenY = centerY + pos.y * scale;
 
-        const scale = fov / distance;
-        const screenX = centerX + p.x * scale;
-        const screenY = centerY + p.y * scale;
-
-        const depthAlpha = Math.max(0.12, Math.min(1, (p.z + baseRadius) / (baseRadius * 2))) * p.alpha;
-        const dotRadius = Math.max(0.6, p.size * scale);
+        const depthAlpha = Math.max(0.35, Math.min(1, (pos.z + baseRadius) / (baseRadius * 2))) * p.baseAlpha;
+        const dotRadius = Math.max(0.8, p.size * scale);
 
         ctx.beginPath();
         ctx.arc(screenX, screenY, dotRadius, 0, Math.PI * 2);
 
         if (p.color === "orange") {
           ctx.fillStyle = `rgba(255, 116, 39, ${depthAlpha})`;
-          ctx.shadowColor = `rgba(255, 116, 39, ${depthAlpha * 0.65})`;
+          ctx.shadowColor = `rgba(255, 116, 39, ${depthAlpha * 0.7})`;
           ctx.shadowBlur = 6;
         } else {
           ctx.fillStyle = `rgba(255, 255, 255, ${depthAlpha})`;
-          ctx.shadowColor = `rgba(255, 255, 255, ${depthAlpha * 0.45})`;
+          ctx.shadowColor = `rgba(255, 255, 255, ${depthAlpha * 0.5})`;
           ctx.shadowBlur = 4;
         }
 
