@@ -33,7 +33,7 @@ interface MorphParticle {
 interface ParticleOrbCanvasProps {
   isExploding?: boolean;
   onExplodeComplete?: () => void;
-  targetCenterRatioX?: number; // 0.28 for left column on desktop
+  targetCenterRatioX?: number;
 }
 
 export default function ParticleOrbCanvas({
@@ -54,10 +54,9 @@ export default function ParticleOrbCanvas({
     let animationFrameId: number;
 
     const resize = () => {
-      const dpr = window.devicePixelRatio || 1;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
       canvas.width = window.innerWidth * dpr;
       canvas.height = window.innerHeight * dpr;
-      // Do not call ctx.scale repeatedly to prevent cumulative scaling
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     };
 
@@ -78,7 +77,7 @@ export default function ParticleOrbCanvas({
 
     const count = 800;
     const particles: MorphParticle[] = [];
-    const baseRadius = Math.min(window.innerWidth, window.innerHeight) * 0.22;
+    const baseRadius = Math.max(140, Math.min(window.innerWidth, window.innerHeight) * 0.22);
 
     // Helper: sample points on a line segment in 3D
     const sampleLine = (p1: Vec3, p2: Vec3, n: number): Vec3[] => {
@@ -107,7 +106,7 @@ export default function ParticleOrbCanvas({
       });
     }
 
-    // --- Shape 2: Video Editing (Scissors & Film Slate / Play Frame) ---
+    // --- Shape 2: Video Editing (Film Slate / Play Frame) ---
     const videoTargets: Vec3[] = [];
     const frameW = baseRadius * 1.45;
     const frameH = baseRadius * 1.05;
@@ -118,7 +117,6 @@ export default function ParticleOrbCanvas({
     const ptsLeft = sampleLine({ x: -frameW, y: frameH, z: 0 }, { x: -frameW, y: -frameH, z: 0 }, 80);
     videoTargets.push(...ptsTop, ...ptsRight, ...ptsBottom, ...ptsLeft);
 
-    // Center Play Triangle
     const triX1 = -baseRadius * 0.45, triY1 = -baseRadius * 0.55;
     const triX2 = -baseRadius * 0.45, triY2 = baseRadius * 0.55;
     const triX3 = baseRadius * 0.65, triY3 = 0;
@@ -182,7 +180,7 @@ export default function ParticleOrbCanvas({
       const dirX = Math.sin(randomPhi) * Math.cos(randomTheta);
       const dirY = Math.cos(randomPhi);
       const dirZ = Math.sin(randomPhi) * Math.sin(randomTheta);
-      const dispersalDist = maxDimension * (0.9 + Math.random() * 0.6);
+      const dispersalDist = maxDimension * (0.6 + Math.random() * 0.4);
 
       const isOrange = Math.random() < 0.65;
 
@@ -201,8 +199,8 @@ export default function ParticleOrbCanvas({
         vz: 0,
 
         color: isOrange ? "orange" : "white",
-        size: isOrange ? 1.5 + Math.random() * 1.5 : 1.2 + Math.random() * 1.2,
-        baseAlpha: 0.5 + Math.random() * 0.5,
+        size: isOrange ? 1.6 + Math.random() * 1.6 : 1.3 + Math.random() * 1.3,
+        baseAlpha: 0.65 + Math.random() * 0.35,
       });
     }
 
@@ -214,7 +212,6 @@ export default function ParticleOrbCanvas({
     let explodeTimer = 0;
     let hasTriggeredExplodeComplete = false;
 
-    // Direct positions during explosion
     const currentPositions: Vec3[] = particles.map(() => ({ x: 0, y: 0, z: 0 }));
 
     const render = () => {
@@ -244,7 +241,6 @@ export default function ParticleOrbCanvas({
       const centerX = baseCenterX + currentMagneticX;
       const centerY = baseCenterY + currentMagneticY;
 
-      // Slow 3D Rotation
       rotY += 0.0022;
       rotX += 0.0005;
       const cosY = Math.cos(rotY);
@@ -257,7 +253,7 @@ export default function ParticleOrbCanvas({
 
       // Inward assembly lerp from 0 to 1
       if (entranceProgress < 1) {
-        entranceProgress += (1 - entranceProgress) * 0.038;
+        entranceProgress += (1 - entranceProgress) * 0.045;
       }
 
       // Morphing time progression
@@ -280,7 +276,6 @@ export default function ParticleOrbCanvas({
         const pos = currentPositions[i];
 
         if (!isCurrentlyExploding) {
-          // Determine morphed target
           let target: Vec3;
           if (stageIndex === 0) {
             target = {
@@ -303,13 +298,11 @@ export default function ParticleOrbCanvas({
           }
 
           // Cosmic Dispersal -> Target Lerp:
-          // Distance from target smoothly converges from dispersalDist to 0
           const currentDist = p.dispersalDist * (1 - entranceProgress);
           const currentBaseX = target.x + p.dirX * currentDist;
           const currentBaseY = target.y + p.dirY * currentDist;
           const currentBaseZ = target.z + p.dirZ * currentDist;
 
-          // Rotate around Y and X
           const x1 = currentBaseX * cosY + currentBaseZ * sinY;
           const z1 = -currentBaseX * sinY + currentBaseZ * cosY;
           const y1 = currentBaseY * cosX - z1 * sinX;
@@ -333,26 +326,24 @@ export default function ParticleOrbCanvas({
           p.baseAlpha = Math.max(0, p.baseAlpha - 0.02);
         }
 
-        // Orthographic + subtle depth projection so particles are ALWAYS crisp and visible
-        // Depth cueing with guarantee of minimum visibility
         const scale = fov / (fov + Math.max(-300, Math.min(300, pos.z)));
         const screenX = centerX + pos.x * scale;
         const screenY = centerY + pos.y * scale;
 
-        const depthAlpha = Math.max(0.35, Math.min(1, (pos.z + baseRadius) / (baseRadius * 2))) * p.baseAlpha;
-        const dotRadius = Math.max(0.8, p.size * scale);
+        const depthAlpha = Math.max(0.45, Math.min(1, (pos.z + baseRadius) / (baseRadius * 2))) * p.baseAlpha;
+        const dotRadius = Math.max(1.0, p.size * scale);
 
         ctx.beginPath();
         ctx.arc(screenX, screenY, dotRadius, 0, Math.PI * 2);
 
         if (p.color === "orange") {
           ctx.fillStyle = `rgba(255, 116, 39, ${depthAlpha})`;
-          ctx.shadowColor = `rgba(255, 116, 39, ${depthAlpha * 0.7})`;
-          ctx.shadowBlur = 6;
+          ctx.shadowColor = `rgba(255, 116, 39, ${depthAlpha * 0.8})`;
+          ctx.shadowBlur = 8;
         } else {
           ctx.fillStyle = `rgba(255, 255, 255, ${depthAlpha})`;
-          ctx.shadowColor = `rgba(255, 255, 255, ${depthAlpha * 0.5})`;
-          ctx.shadowBlur = 4;
+          ctx.shadowColor = `rgba(255, 255, 255, ${depthAlpha * 0.6})`;
+          ctx.shadowBlur = 6;
         }
 
         ctx.fill();
@@ -374,7 +365,7 @@ export default function ParticleOrbCanvas({
   return (
     <canvas
       ref={canvasRef}
-      className="fixed inset-0 w-full h-full pointer-events-none z-0"
+      className="fixed inset-0 w-full h-full pointer-events-none z-20"
       style={{ display: "block" }}
     />
   );
