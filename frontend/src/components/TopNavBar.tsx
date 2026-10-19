@@ -130,11 +130,11 @@ export default function TopNavBar({
               <Image
                 src="/logo.png"
                 alt="Vakiogiri Logo"
-                width={32}
-                height={32}
+                width={34}
+                height={34}
                 className="w-8 h-8 object-contain transition-transform group-hover:scale-105"
               />
-              <span className="font-bold text-lg tracking-tight text-white group-hover:text-blue-400 transition-colors">
+              <span className="font-bold text-lg tracking-tight text-white group-hover:text-[#ff7427] transition-colors">
                 {logo.name || "Vakiogiri"}
               </span>
             </button>
@@ -146,11 +146,11 @@ export default function TopNavBar({
               <Image
                 src="/logo.png"
                 alt="Vakiogiri Logo"
-                width={32}
-                height={32}
+                width={34}
+                height={34}
                 className="w-8 h-8 object-contain transition-transform group-hover:scale-105"
               />
-              <span className="font-bold text-lg tracking-tight text-white group-hover:text-blue-400 transition-colors">
+              <span className="font-bold text-lg tracking-tight text-white group-hover:text-[#ff7427] transition-colors">
                 {logo.name || "Vakiogiri"}
               </span>
             </Link>
@@ -168,7 +168,7 @@ export default function TopNavBar({
                   {getNavIcon(item.id)}
                   <span>{item.label}</span>
                   {typeof item.badgeCount === "number" && item.badgeCount > 0 && (
-                    <span className="px-1.5 py-0.2 rounded-full bg-blue-500/20 text-blue-400 text-[10px] font-bold">
+                    <span className="px-1.5 py-0.2 rounded-full bg-orange-500/20 text-[#ff7427] text-[10px] font-bold">
                       {item.badgeCount}
                     </span>
                   )}
@@ -215,7 +215,7 @@ export default function TopNavBar({
           {/* Credits Counter Pill */}
           {userProfile && (
             <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.04] border border-white/10 text-xs font-mono font-medium text-slate-300">
-              <Zap className="w-3.5 h-3.5 text-blue-400 fill-blue-400/20" />
+              <Zap className="w-3.5 h-3.5 text-[#ff7427] fill-[#ff7427]/20" />
               <span>
                 {userProfile.credits_remaining ?? 3}/
                 {userProfile.max_daily_credits || 3} Clips
@@ -231,7 +231,7 @@ export default function TopNavBar({
               className="w-8 h-8 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] border border-white/8 text-slate-400 hover:text-white flex items-center justify-center transition-all cursor-pointer"
               title="Toggle theme"
             >
-              {theme === "dark" ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-blue-400" />}
+              {theme === "dark" ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-[#ff7427]" />}
             </button>
           )}
 
@@ -239,7 +239,7 @@ export default function TopNavBar({
           {session ? (
             <div className="flex items-center gap-2">
               <div className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.04] text-xs font-medium text-slate-300 border border-white/8">
-                <User className="w-3.5 h-3.5 text-blue-400" />
+                <User className="w-3.5 h-3.5 text-[#ff7427]" />
                 <span className="truncate max-w-[120px]">{session.user?.email || "User"}</span>
               </div>
 
@@ -270,7 +270,7 @@ export default function TopNavBar({
                 <button
                   type="button"
                   onClick={authActions.onSignup}
-                  className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-500 transition-all cursor-pointer shadow-sm shadow-blue-500/25 active:scale-95"
+                  className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-[#ff7427] text-white hover:bg-[#e65c00] transition-all cursor-pointer shadow-sm shadow-orange-500/25 active:scale-95"
                 >
                   {authActions.signupLabel || "Start for free"}
                 </button>
