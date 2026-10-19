@@ -78,21 +78,23 @@ export default function AuthCard({ initialMode }: AuthCardProps) {
   return (
     <main className="min-h-screen w-full relative flex items-center justify-center p-4 sm:p-8 bg-black overflow-hidden select-none">
       
-      {/* Side-by-Side: Left Orb, Right Login Card */}
-      <div className="w-full max-w-5xl grid grid-cols-1 md:grid-cols-2 gap-8 items-center relative z-10">
-        
-        {/* LEFT: 3D Particle Orb */}
-        <div className="w-full h-[380px] sm:h-[460px] md:h-[520px] flex items-center justify-center">
-          <ParticleOrbCanvas
-            isExploding={isExploding}
-            onExplodeComplete={() => {
-              router.push("/");
-            }}
-          />
-        </div>
+      {/* Full-Screen 3D Particle Orb: Particles flow across entire screen converging to the left orb */}
+      <ParticleOrbCanvas
+        isExploding={isExploding}
+        targetCenterRatioX={0.28}
+        onExplodeComplete={() => {
+          router.push("/");
+        }}
+      />
 
-        {/* RIGHT: Simple Pure Frosted Login/Signup Card */}
-        <div className="w-full flex justify-center">
+      {/* Side-by-Side: Left space reserved for the rotating Orb, Right has the clean frosted Auth Card */}
+      <div className="w-full max-w-6xl grid grid-cols-1 md:grid-cols-2 gap-8 items-center relative z-10 pointer-events-none">
+        
+        {/* LEFT COLUMN: Empty transparent stage where the 3D Orb revolves smoothly */}
+        <div className="w-full h-[320px] md:h-[540px] pointer-events-none" />
+
+        {/* RIGHT COLUMN: Interactive Frosted Glass Login/Signup Card */}
+        <div className="w-full flex justify-center md:justify-end pointer-events-auto">
           <div className={`w-full max-w-[420px] bg-[#09090c]/80 border border-white/[0.12] backdrop-blur-2xl rounded-[32px] p-7 sm:p-9 shadow-[0_30px_90px_rgba(0,0,0,0.95)] flex flex-col gap-6 transition-all duration-500 hover:border-white/[0.18] ${
             isExploding ? "scale-105 opacity-90 transition-all duration-700" : ""
           }`}>
