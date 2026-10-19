@@ -8,11 +8,12 @@ interface Vec3 {
   z: number;
 }
 
-interface MorphParticle {
-  // Target 3D continuous mathematical shapes
-  sphere: Vec3;
-  infinity: Vec3;
-  saturn: Vec3;
+interface OrbParticle {
+  // Unit vector on sphere (Fibonacci lattice)
+  nx: number;
+  ny: number;
+  nz: number;
+  theta: number;
 
   // Stored random unit direction for cosmic entry
   dirX: number;
@@ -28,6 +29,7 @@ interface MorphParticle {
   color: "orange" | "white";
   size: number;
   baseAlpha: number;
+  harmonicPhase: number;
 }
 
 interface ParticleOrbCanvasProps {
@@ -78,126 +80,41 @@ export default function ParticleOrbCanvas({
     window.addEventListener("mousemove", handleMouseMove);
     window.addEventListener("mouseleave", handleMouseLeave);
 
-    const count = 800;
-    const particles: MorphParticle[] = [];
+    const count = 850;
+    const particles: OrbParticle[] = [];
 
     // Base radius: Majestic 3D scale
     const baseRadius = Math.max(140, Math.min(window.innerWidth, window.innerHeight) * 0.22);
-
-    // ==============================================================
-    // 1. SHAPE 1: 3D Cosmic Sphere Orb (Fibonacci Lattice)
-    // ==============================================================
-    const sphereTargets: Vec3[] = [];
-    for (let i = 0; i < count; i++) {
-      const y = 1 - (i / (count - 1)) * 2;
-      const radiusAtY = Math.sqrt(1 - y * y);
-      const theta = i * 2.399963229728653; // Golden angle
-      sphereTargets.push({
-        x: baseRadius * radiusAtY * Math.cos(theta),
-        y: baseRadius * y,
-        z: baseRadius * radiusAtY * Math.sin(theta),
-      });
-    }
-
-    // ==============================================================
-    // 2. SHAPE 2: 3D Infinity Loop / Mobius Ribbon (∞)
-    // ==============================================================
-    // Continuous 3D Lemniscate ribbon with volumetric tube depth
-    const infinityTargets: Vec3[] = [];
-    const infW = baseRadius * 1.38;
-    const infH = baseRadius * 0.72;
-    for (let i = 0; i < count; i++) {
-      const t = (i / count) * Math.PI * 2;
-      const denom = 1 + Math.sin(t) * Math.sin(t);
-      // Lemniscate of Bernoulli base curve
-      const baseX = (infW * Math.SQRT2 * Math.cos(t)) / denom;
-      const baseY = (infW * Math.SQRT2 * Math.cos(t) * Math.sin(t)) / denom;
-      const baseZ = infH * Math.sin(2 * t);
-
-      // Add gentle ribbon thickness so it's a solid 3D ribbon in space
-      const crossAngle = 2 * t;
-      const tubeRadius = (Math.sin(i * 11.3) * 0.5 + 0.5) * 11;
-      const offsetX = tubeRadius * Math.cos(crossAngle);
-      const offsetY = tubeRadius * Math.sin(crossAngle) * 0.6;
-      const offsetZ = tubeRadius * Math.sin(crossAngle);
-
-      infinityTargets.push({
-        x: baseX + offsetX,
-        y: baseY + offsetY,
-        z: baseZ + offsetZ,
-      });
-    }
-
-    // ==============================================================
-    // 3. SHAPE 3: 3D Saturn Ring / Celestial Orbit
-    // ==============================================================
-    // Composed of:
-    // - Inner Planet Core (300 particles): Fibonacci sphere with compact radius
-    // - Outer Planetary Halo Ring (500 particles): Tilted multi-layered particle disc
-    const saturnTargets: Vec3[] = [];
-    const coreCount = 300;
-    const coreRadius = baseRadius * 0.46;
-
-    for (let i = 0; i < coreCount; i++) {
-      const y = 1 - (i / (coreCount - 1)) * 2;
-      const radiusAtY = Math.sqrt(1 - y * y);
-      const theta = i * 2.399963229728653;
-      saturnTargets.push({
-        x: coreRadius * radiusAtY * Math.cos(theta),
-        y: coreRadius * y,
-        z: coreRadius * radiusAtY * Math.sin(theta),
-      });
-    }
-
-    const ringCount = count - coreCount;
-    const innerRingR = baseRadius * 0.78;
-    const outerRingR = baseRadius * 1.62;
-    const ringTilt = 0.42; // ~24 degree permanent tilt for the halo disc
-    const cosRingTilt = Math.cos(ringTilt);
-    const sinRingTilt = Math.sin(ringTilt);
-
-    for (let i = 0; i < ringCount; i++) {
-      const frac = i / ringCount;
-      const phi = frac * Math.PI * 2 + (Math.sin(i * 7.1) * 0.05);
-      // Density distributed across the ring disc
-      const radialT = Math.sqrt((i % 50) / 50);
-      const r = innerRingR + radialT * (outerRingR - innerRingR);
-      const zJitter = (Math.sin(i * 13.9) * 0.5) * 8;
-
-      const rawX = r * Math.cos(phi);
-      const rawY = r * Math.sin(phi);
-      const rawZ = zJitter;
-
-      // Apply tilted disc orientation
-      saturnTargets.push({
-        x: rawX,
-        y: rawY * cosRingTilt - rawZ * sinRingTilt,
-        z: rawY * sinRingTilt + rawZ * cosRingTilt,
-      });
-    }
-
-    // ==============================================================
-    // 4. PARTICLES INITIALIZATION
-    // ==============================================================
     const maxDimension = Math.max(window.innerWidth, window.innerHeight);
+
+    // ==============================================================
+    // FIBONACCI SPHERE LATTICE INITIALIZATION
+    // ==============================================================
     for (let i = 0; i < count; i++) {
+      const ny = 1 - (i / (count - 1)) * 2;
+      const radiusAtY = Math.sqrt(Math.max(0, 1 - ny * ny));
+      const theta = i * 2.399963229728653; // Golden angle
+
+      const nx = radiusAtY * Math.cos(theta);
+      const nz = radiusAtY * Math.sin(theta);
+
+      // Random unit vector for cosmic entry from outer space
       const u = Math.random();
       const v = Math.random();
-      const randomTheta = u * 2 * Math.PI;
-      const randomPhi = Math.acos(2 * v - 1);
-
-      const dirX = Math.sin(randomPhi) * Math.cos(randomTheta);
-      const dirY = Math.cos(randomPhi);
-      const dirZ = Math.sin(randomPhi) * Math.sin(randomTheta);
+      const rTheta = u * 2 * Math.PI;
+      const rPhi = Math.acos(2 * v - 1);
+      const dirX = Math.sin(rPhi) * Math.cos(rTheta);
+      const dirY = Math.cos(rPhi);
+      const dirZ = Math.sin(rPhi) * Math.sin(rTheta);
       const dispersalDist = maxDimension * (0.6 + Math.random() * 0.4);
 
       const isOrange = Math.random() < 0.65;
 
-      // Dots are crisp, refined, and delicate
       particles.push({
-        sphere: sphereTargets[i],
-        infinity: infinityTargets[i],
-        saturn: saturnTargets[i],
+        nx,
+        ny,
+        nz,
+        theta,
 
         dirX,
         dirY,
@@ -209,23 +126,19 @@ export default function ParticleOrbCanvas({
         vz: 0,
 
         color: isOrange ? "orange" : "white",
-        size: isOrange ? 0.90 + Math.random() * 0.40 : 0.75 + Math.random() * 0.35,
+        size: isOrange ? 0.90 + Math.random() * 0.38 : 0.75 + Math.random() * 0.32,
         baseAlpha: 0.70 + Math.random() * 0.30,
+        harmonicPhase: Math.random() * Math.PI * 2,
       });
     }
 
-    // Steady, rock-solid rotation parameters (no wobbling, no tumbling!)
+    // Steady, rock-solid rotation parameters (no wobbling!)
     let rotY = 0;
-    const fixedTiltAngle = 0.22; // ~12.6 degree fixed aesthetic tilt
-    const cosTilt = Math.cos(fixedTiltAngle);
-    const sinTilt = Math.sin(fixedTiltAngle);
+    const fixedTilt = 0.23; // ~13.2 degree fixed aesthetic polar tilt
+    const cosTilt = Math.cos(fixedTilt);
+    const sinTilt = Math.sin(fixedTilt);
 
-    // Cycle Timing:
-    // Each shape rotates smoothly for a full leisurely round before transitioning
-    let morphTime = 0;
-    const stageDuration = 1000; // ~16.6 seconds per shape at 60fps
-    const morphCycleDuration = stageDuration * 3; // 3000 frames total loop (~50s)
-
+    let livingTime = 0;
     let entranceProgress = 0;
     let explodeTimer = 0;
     let hasTriggeredExplodeComplete = false;
@@ -239,34 +152,22 @@ export default function ParticleOrbCanvas({
       ctx.clearRect(0, 0, width, height);
 
       const isMobile = width < 768;
-      // Fixed, completely stable center coordinate (ZERO shaking or wobbling)
+      // Fixed, stable center coordinate (ZERO shaking or wobbling)
       const centerX = isMobile ? width / 2 : width * targetCenterRatioX;
       const centerY = isMobile ? height * 0.28 : height / 2;
 
-      // Clean, constant polar rotation around Y-axis (rock solid, steady)
-      rotY += 0.0019;
+      // Clean, constant polar rotation around Y-axis
+      rotY += 0.0020;
       const cosY = Math.cos(rotY);
       const sinY = Math.sin(rotY);
+
+      livingTime += 0.018;
 
       const fov = 460;
       const isCurrentlyExploding = explodingRef.current;
 
       if (entranceProgress < 1) {
         entranceProgress += (1 - entranceProgress) * 0.045;
-      }
-
-      // Morphing time progression:
-      morphTime = (morphTime + 1) % morphCycleDuration;
-      const currentStage = Math.floor(morphTime / stageDuration);
-      const timeInStage = morphTime % stageDuration;
-
-      // Hold stabilized for 75% of stage, then smoothly morph during the remaining 25%
-      const holdTime = stageDuration * 0.75;
-      let morphWeight = 0;
-      if (timeInStage > holdTime) {
-        const transitionProgress = (timeInStage - holdTime) / (stageDuration - holdTime);
-        // Hermite smooth cubic easing
-        morphWeight = transitionProgress * transitionProgress * (3 - 2 * transitionProgress);
       }
 
       if (isCurrentlyExploding) {
@@ -277,42 +178,31 @@ export default function ParticleOrbCanvas({
         }
       }
 
+      // Arrays to store screen projection for subtle constellation links
+      const projectedScreenX: number[] = new Array(count);
+      const projectedScreenY: number[] = new Array(count);
+      const projectedDepthAlpha: number[] = new Array(count);
+
       for (let i = 0; i < count; i++) {
         const p = particles[i];
         const pos = currentPositions[i];
 
         if (!isCurrentlyExploding) {
-          let target: Vec3;
-          if (currentStage === 0) {
-            // Sphere -> Infinity Loop
-            target = {
-              x: p.sphere.x + (p.infinity.x - p.sphere.x) * morphWeight,
-              y: p.sphere.y + (p.infinity.y - p.sphere.y) * morphWeight,
-              z: p.sphere.z + (p.infinity.z - p.sphere.z) * morphWeight,
-            };
-          } else if (currentStage === 1) {
-            // Infinity Loop -> Saturn Celestial Orbit
-            target = {
-              x: p.infinity.x + (p.saturn.x - p.infinity.x) * morphWeight,
-              y: p.infinity.y + (p.saturn.y - p.infinity.y) * morphWeight,
-              z: p.infinity.z + (p.saturn.z - p.infinity.z) * morphWeight,
-            };
-          } else {
-            // Saturn Celestial Orbit -> Sphere
-            target = {
-              x: p.saturn.x + (p.sphere.x - p.saturn.x) * morphWeight,
-              y: p.saturn.y + (p.sphere.y - p.saturn.y) * morphWeight,
-              z: p.saturn.z + (p.sphere.z - p.saturn.z) * morphWeight,
-            };
-          }
+          // Living harmonic surface pulse (subtle frequency ripples across sphere)
+          const harmonic = Math.sin(p.ny * 3.5 + livingTime) * Math.cos(p.theta * 2 + livingTime * 0.7);
+          const currentRadius = baseRadius * (1 + harmonic * 0.028);
+
+          const targetX = p.nx * currentRadius;
+          const targetY = p.ny * currentRadius;
+          const targetZ = p.nz * currentRadius;
 
           // Cosmic Dispersal -> Target Lerp:
           const currentDist = p.dispersalDist * (1 - entranceProgress);
-          const currentBaseX = target.x + p.dirX * currentDist;
-          const currentBaseY = target.y + p.dirY * currentDist;
-          const currentBaseZ = target.z + p.dirZ * currentDist;
+          const currentBaseX = targetX + p.dirX * currentDist;
+          const currentBaseY = targetY + p.dirY * currentDist;
+          const currentBaseZ = targetZ + p.dirZ * currentDist;
 
-          // Pure, rock-solid rotation around Y-axis followed by fixed aesthetic tilt
+          // Polar rotation followed by fixed aesthetic tilt
           const xRot = currentBaseX * cosY + currentBaseZ * sinY;
           const zRot = -currentBaseX * sinY + currentBaseZ * cosY;
           const yTilted = currentBaseY * cosTilt - zRot * sinTilt;
@@ -361,6 +251,10 @@ export default function ParticleOrbCanvas({
           Math.min(1, Math.max(0.38, (pos.z + baseRadius) / (baseRadius * 2))) * p.baseAlpha + hoverAlphaBoost;
         const dotRadius = Math.max(0.65, p.size * scale);
 
+        projectedScreenX[i] = screenX;
+        projectedScreenY[i] = screenY;
+        projectedDepthAlpha[i] = depthAlpha;
+
         ctx.beginPath();
         ctx.arc(screenX, screenY, dotRadius, 0, Math.PI * 2);
 
@@ -378,6 +272,36 @@ export default function ParticleOrbCanvas({
       }
 
       ctx.shadowBlur = 0;
+
+      // Draw faint, delicate constellation filament lines between closely neighboring front particles
+      if (entranceProgress > 0.85 && !isCurrentlyExploding) {
+        ctx.lineWidth = 0.5;
+        for (let i = 0; i < count; i += 3) {
+          const depthA = projectedDepthAlpha[i];
+          if (depthA < 0.65) continue; // Only front-facing hemisphere
+
+          // Check consecutive neighbors in lattice
+          for (let step = 1; step <= 2; step++) {
+            const j = (i + step) % count;
+            const depthB = projectedDepthAlpha[j];
+            if (depthB < 0.65) continue;
+
+            const dx = projectedScreenX[i] - projectedScreenX[j];
+            const dy = projectedScreenY[i] - projectedScreenY[j];
+            const distSq = dx * dx + dy * dy;
+
+            if (distSq < 480) { // ~22px screen proximity
+              const lineAlpha = (1 - distSq / 480) * 0.12 * Math.min(depthA, depthB);
+              ctx.strokeStyle = `rgba(255, 116, 39, ${lineAlpha})`;
+              ctx.beginPath();
+              ctx.moveTo(projectedScreenX[i], projectedScreenY[i]);
+              ctx.lineTo(projectedScreenX[j], projectedScreenY[j]);
+              ctx.stroke();
+            }
+          }
+        }
+      }
+
       animationFrameId = requestAnimationFrame(render);
     };
 
