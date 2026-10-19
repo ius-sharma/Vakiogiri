@@ -395,13 +395,13 @@ export default function Home() {
   if (!mounted) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-2 border-[#ff7427] border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className={`min-h-screen flex flex-col font-sans antialiased relative selection:bg-blue-500/30 selection:text-white ${theme === "dark" ? "dark bg-black text-white" : "light bg-[#f8fafc] text-[#0f172a]"}`}>
+    <div className={`min-h-screen flex flex-col font-sans antialiased relative selection:bg-[#ff7427]/30 selection:text-white ${theme === "dark" ? "dark bg-black text-white" : "light bg-[#f8fafc] text-[#0f172a]"}`}>
       
       {/* Ambient Studio Spotlight Backdrop */}
       <div className="fixed inset-0 ambient-spotlight pointer-events-none -z-10" />
@@ -496,14 +496,14 @@ export default function Home() {
               <>
                 {/* Hero Header */}
                 <div className="flex flex-col items-center gap-4 max-w-3xl">
-                  <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 text-xs font-semibold tracking-wide">
-                    <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                  <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#ff7427]/10 text-[#ff7427] border border-[#ff7427]/20 text-xs font-semibold tracking-wide">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
                     <span>3-Stage AI Best Moment & Virality Engine</span>
                   </div>
 
                   <h1 className="text-4xl sm:text-6xl md:text-7xl font-extrabold tracking-tight leading-[1.08] text-white">
                     Turn any YouTube video into shorts,{" "}
-                    <span className="bg-gradient-to-r from-blue-400 via-cyan-400 to-white bg-clip-text text-transparent italic font-serif">
+                    <span className="bg-gradient-to-r from-[#ff7427] via-amber-400 to-white bg-clip-text text-transparent italic font-serif">
                       instantly.
                     </span>
                   </h1>

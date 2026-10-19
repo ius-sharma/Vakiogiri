@@ -1,47 +1,47 @@
 @import "tailwindcss";
 
 @theme {
-  --color-primary: #0080ff;
-  --color-primary-hover: #0066cc;
-  --color-accent-cyan: #00d4ff;
+  --color-primary: #ff7427;
+  --color-primary-hover: #e65c00;
+  --color-accent-cyan: #fbbf24;
   --color-accent-rose: #f43f5e;
   --color-accent-emerald: #10b981;
-  --color-accent-amber: #f59e0b;
+  --color-accent-amber: #ff9e2c;
 
   --color-obsidian-950: #000000;
-  --color-obsidian-900: #07080d;
-  --color-obsidian-850: #0b0d14;
-  --color-obsidian-800: #10131d;
-  --color-obsidian-700: #181d2a;
+  --color-obsidian-900: #080808;
+  --color-obsidian-850: #0e0e10;
+  --color-obsidian-800: #141416;
+  --color-obsidian-700: #1c1c20;
 }
 
 :root {
   --bg-app: #000000;
-  --bg-surface: #07080d;
-  --bg-surface-elevated: #0b0d14;
-  --bg-surface-hover: #10131d;
+  --bg-surface: #080808;
+  --bg-surface-elevated: #0e0e10;
+  --bg-surface-hover: #141416;
   --border-subtle: rgba(255, 255, 255, 0.08);
   --border-strong: rgba(255, 255, 255, 0.16);
-  --border-glow: rgba(0, 128, 255, 0.45);
+  --border-glow: rgba(255, 116, 39, 0.45);
   --text-primary: #ffffff;
   --text-secondary: #94a3b8;
   --text-muted: #64748b;
-  --accent-primary: #0080ff;
-  --accent-cyan: #00d4ff;
+  --accent-primary: #ff7427;
+  --accent-cyan: #fbbf24;
   --accent-emerald: #10b981;
   --accent-rose: #f43f5e;
 
   /* Compatibility tokens */
   --color-background: #000000;
   --color-on-background: #ffffff;
-  --color-surface: #07080d;
+  --color-surface: #080808;
   --color-on-surface: #ffffff;
-  --color-surface-dim: #0b0d14;
+  --color-surface-dim: #0e0e10;
   --color-surface-container-lowest: #000000;
-  --color-surface-container-low: #07080d;
-  --color-surface-container: #0b0d14;
-  --color-surface-container-high: #10131d;
-  --color-surface-container-highest: #181d2a;
+  --color-surface-container-low: #080808;
+  --color-surface-container: #0e0e10;
+  --color-surface-container-high: #141416;
+  --color-surface-container-highest: #1c1c20;
   --color-secondary: #94a3b8;
   --color-outline: #64748b;
   --color-outline-variant: rgba(255, 255, 255, 0.1);
@@ -55,12 +55,12 @@ html.light, body.light {
   --bg-surface-hover: #e2e8f0;
   --border-subtle: rgba(0, 0, 0, 0.08);
   --border-strong: rgba(0, 0, 0, 0.16);
-  --border-glow: rgba(0, 128, 255, 0.35);
+  --border-glow: rgba(255, 116, 39, 0.35);
   --text-primary: #0f172a;
   --text-secondary: #475569;
   --text-muted: #94a3b8;
-  --accent-primary: #0080ff;
-  --accent-cyan: #0891b2;
+  --accent-primary: #ff7427;
+  --accent-cyan: #ea580c;
   --accent-emerald: #059669;
   --accent-rose: #e11d48;
 
@@ -96,7 +96,7 @@ html.light body {
 
 /* Glassmorphism & Modern SaaS Surfaces */
 .studio-glass {
-  background: rgba(7, 8, 13, 0.82);
+  background: rgba(8, 8, 8, 0.82);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -108,14 +108,14 @@ html.light .studio-glass {
 }
 
 .studio-card {
-  background: #07080d;
+  background: #080808;
   border: 1px solid rgba(255, 255, 255, 0.08);
   transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .studio-card:hover {
-  border-color: rgba(0, 128, 255, 0.35);
-  box-shadow: 0 16px 36px -12px rgba(0, 0, 0, 0.8), 0 0 20px -5px rgba(0, 128, 255, 0.15);
+  border-color: rgba(255, 116, 39, 0.4);
+  box-shadow: 0 16px 36px -12px rgba(0, 0, 0, 0.8), 0 0 20px -5px rgba(255, 116, 39, 0.18);
   transform: translateY(-2px);
 }
 
@@ -125,13 +125,13 @@ html.light .studio-card {
 }
 
 html.light .studio-card:hover {
-  border-color: rgba(0, 128, 255, 0.4);
+  border-color: rgba(255, 116, 39, 0.4);
   box-shadow: 0 16px 36px -12px rgba(0, 0, 0, 0.08);
 }
 
 /* Ambient studio spotlight */
 .ambient-spotlight {
-  background: radial-gradient(circle at 50% -10%, rgba(0, 128, 255, 0.18) 0%, rgba(0, 212, 255, 0.04) 40%, transparent 70%);
+  background: radial-gradient(circle at 50% -10%, rgba(255, 116, 39, 0.14) 0%, rgba(251, 191, 36, 0.04) 40%, transparent 70%);
   pointer-events: none;
 }
 
@@ -142,12 +142,12 @@ html.light .studio-card:hover {
 }
 
 .glow-input-container:focus-within {
-  box-shadow: 0 0 0 1.5px rgba(0, 128, 255, 0.9), 0 0 35px -5px rgba(0, 128, 255, 0.35), 0 12px 40px rgba(0, 0, 0, 0.8);
+  box-shadow: 0 0 0 1.5px rgba(255, 116, 39, 0.9), 0 0 35px -5px rgba(255, 116, 39, 0.35), 0 12px 40px rgba(0, 0, 0, 0.8);
 }
 
 /* Pulse bar & shimmer */
 .shimmer-progress {
-  background: linear-gradient(90deg, #0080ff 0%, #00d4ff 50%, #0080ff 100%);
+  background: linear-gradient(90deg, #ff7427 0%, #fbbf24 50%, #ff7427 100%);
   background-size: 200% 100%;
   animation: shimmerMove 2s infinite linear;
 }
