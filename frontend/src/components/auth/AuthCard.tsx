@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Mail, Lock, AlertCircle, CheckCircle2, Loader2, ArrowRight } from "lucide-react";
 import { signInWithGoogle, signInWithEmail, signUpWithEmail, isSupabaseConfigured } from "@/lib/supabase";
-import SineWaveCanvas from "@/components/auth/SineWaveCanvas";
+import ParticleOrbCanvas from "./ParticleOrbCanvas";
 
 interface AuthCardProps {
   initialMode: "login" | "signup";
@@ -21,6 +21,9 @@ export default function AuthCard({ initialMode }: AuthCardProps) {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
+  // Particle Orb explosion state on successful authentication
+  const [isExploding, setIsExploding] = useState(false);
+
   const handleGoogleSignIn = async () => {
     setLoading(true);
     setErrorMsg(null);
@@ -28,10 +31,11 @@ export default function AuthCard({ initialMode }: AuthCardProps) {
       const { error } = await signInWithGoogle();
       if (error) {
         setErrorMsg(error.message);
+        setLoading(false);
       }
+      // On OAuth redirect, the provider handles navigation
     } catch (err: any) {
       setErrorMsg(err.message || "Failed to sign in with Google.");
-    } finally {
       setLoading(false);
     }
   };
@@ -52,31 +56,43 @@ export default function AuthCard({ initialMode }: AuthCardProps) {
         const { data, error } = await signUpWithEmail(email, password);
         if (error) throw error;
         setSuccessMsg("Account created! Check your email to confirm or sign in.");
-        if (data.session) {
-          router.push("/");
-        }
+        
+        // Trigger Orb explosion
+        setIsExploding(true);
+        setTimeout(() => {
+          if (data.session) router.push("/");
+        }, 900);
       } else {
         const { error } = await signInWithEmail(email, password);
         if (error) throw error;
-        router.push("/");
+        
+        // Trigger Orb explosion
+        setIsExploding(true);
+        setTimeout(() => {
+          router.push("/");
+        }, 900);
       }
     } catch (err: any) {
       setErrorMsg(err.message || "Authentication failed. Please check credentials.");
-    } finally {
       setLoading(false);
     }
   };
 
   return (
     <main className="min-h-screen w-full relative flex items-center justify-center p-4 bg-black overflow-hidden select-none">
-      {/* Background Animated Dual Sine Waves (Golden Orange & White) */}
-      <SineWaveCanvas />
-
-      {/* Subtle Micro-Grid overlay */}
-      <div className="absolute inset-0 bg-[radial-gradient(rgba(255,255,255,0.03)_1px,transparent_1px)] [background-size:24px_24px] pointer-events-none z-0" />
+      
+      {/* 3D Particle Orb: Slowly rotating Golden Orange & White dots with reverse-assembly and burst */}
+      <ParticleOrbCanvas
+        isExploding={isExploding}
+        onExplodeComplete={() => {
+          router.push("/");
+        }}
+      />
 
       {/* Center Frosted Glass Auth Card */}
-      <div className="w-full max-w-[440px] relative z-10 bg-[#0a0a0c]/65 border border-white/[0.12] backdrop-blur-3xl rounded-[28px] p-7 sm:p-9 shadow-[0_30px_90px_rgba(0,0,0,0.9)] flex flex-col gap-6 transition-all duration-300 hover:border-white/[0.18]">
+      <div className={`w-full max-w-[420px] relative z-10 bg-[#08080a]/75 border border-white/[0.12] backdrop-blur-2xl rounded-[28px] p-7 sm:p-9 shadow-[0_30px_90px_rgba(0,0,0,0.95)] flex flex-col gap-6 transition-all duration-500 hover:border-white/[0.18] ${
+        isExploding ? "scale-105 opacity-90 transition-all duration-700" : ""
+      }`}>
         
         {/* Brand Header */}
         <div className="text-center flex flex-col items-center gap-3">
@@ -98,7 +114,7 @@ export default function AuthCard({ initialMode }: AuthCardProps) {
           </Link>
 
           <div className="space-y-1">
-            <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+            <h1 className="text-2xl font-black text-white tracking-tight">
               {mode === "login" ? "Welcome back" : "Create creator account"}
             </h1>
             <p className="text-xs text-slate-400 max-w-xs leading-relaxed">
@@ -147,7 +163,7 @@ export default function AuthCard({ initialMode }: AuthCardProps) {
         <button
           type="button"
           onClick={handleGoogleSignIn}
-          disabled={loading}
+          disabled={loading || isExploding}
           className="w-full py-3 px-4 bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.1] rounded-2xl flex items-center justify-center gap-3 text-white font-semibold text-xs transition-all shadow-sm active:scale-[0.98] cursor-pointer disabled:opacity-50"
         >
           <svg className="w-4 h-4" viewBox="0 0 24 24">
@@ -192,7 +208,8 @@ export default function AuthCard({ initialMode }: AuthCardProps) {
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
                 required
-                className="w-full pl-10 pr-3.5 py-2.5 bg-black/40 border border-white/[0.1] rounded-xl text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-[#ff7427] transition-colors"
+                disabled={isExploding}
+                className="w-full pl-10 pr-3.5 py-2.5 bg-black/50 border border-white/[0.1] rounded-xl text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-[#ff7427] transition-colors"
               />
             </div>
           </div>
@@ -208,7 +225,8 @@ export default function AuthCard({ initialMode }: AuthCardProps) {
                 placeholder="••••••••"
                 required
                 minLength={6}
-                className="w-full pl-10 pr-3.5 py-2.5 bg-black/40 border border-white/[0.1] rounded-xl text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-[#ff7427] transition-colors"
+                disabled={isExploding}
+                className="w-full pl-10 pr-3.5 py-2.5 bg-black/50 border border-white/[0.1] rounded-xl text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-[#ff7427] transition-colors"
               />
             </div>
           </div>
@@ -230,12 +248,20 @@ export default function AuthCard({ initialMode }: AuthCardProps) {
           {/* Action CTA Button */}
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || isExploding}
             className="w-full mt-1 py-3 px-4 bg-[#ff7427] hover:bg-[#e65c00] text-white font-bold text-xs rounded-xl transition-all duration-200 shadow-md shadow-orange-500/20 active:scale-[0.98] disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
           >
             {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-            <span>{loading ? "Please wait..." : mode === "login" ? "Sign in to Studio" : "Create Free Account"}</span>
-            {!loading && <ArrowRight className="w-3.5 h-3.5" />}
+            <span>
+              {isExploding
+                ? "Entering Studio..."
+                : loading
+                ? "Please wait..."
+                : mode === "login"
+                ? "Sign in to Studio"
+                : "Create Free Account"}
+            </span>
+            {!loading && !isExploding && <ArrowRight className="w-3.5 h-3.5" />}
           </button>
         </form>
 

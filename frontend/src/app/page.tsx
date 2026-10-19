@@ -605,10 +605,6 @@ export default function Home() {
             },
           },
         ]}
-        onOpenAuth={(mode) => {
-          setAuthModalMode(mode);
-          setIsAuthModalOpen(true);
-        }}
         theme={theme}
         onToggleTheme={toggleTheme}
       />
