@@ -114,7 +114,7 @@ export default function SidebarNav({
             WebkitBackdropFilter: "blur(40px) saturate(180%)",
           }}
         >
-          {/* Top Logo in Golden Orange Circle with No Hover Animation */}
+          {/* Top Logo in Golden Orange Circle with Pure Solid Black BG & Zero Glow */}
           <div className="flex flex-col items-center">
             <button
               type="button"
@@ -122,16 +122,7 @@ export default function SidebarNav({
               className="cursor-pointer focus:outline-none"
               title="Click to expand panel"
             >
-              <div
-                className="w-9 h-9 rounded-full flex items-center justify-center relative"
-                style={{
-                  background:
-                    "radial-gradient(circle at 35% 35%, rgba(255, 138, 61, 0.35) 0%, rgba(255, 116, 39, 0.15) 60%, rgba(20, 14, 10, 0.9) 100%)",
-                  border: "1.5px solid rgba(255, 116, 39, 0.65)",
-                  boxShadow:
-                    "0 0 16px rgba(255, 116, 39, 0.4), inset 0 0 8px rgba(255, 116, 39, 0.2)",
-                }}
-              >
+              <div className="w-9 h-9 rounded-full bg-black border-[1.5px] border-[#ff7427] flex items-center justify-center relative">
                 <Image
                   src="/brand_logo.png?v=3"
                   alt="Logo"
@@ -273,16 +264,7 @@ export default function SidebarNav({
                 className="flex items-center gap-3 focus:outline-none cursor-pointer"
                 title="Click to collapse rail"
               >
-                <div
-                  className="w-9 h-9 rounded-full flex items-center justify-center relative"
-                  style={{
-                    background:
-                      "radial-gradient(circle at 35% 35%, rgba(255, 138, 61, 0.35) 0%, rgba(255, 116, 39, 0.15) 60%, rgba(20, 14, 10, 0.9) 100%)",
-                    border: "1.5px solid rgba(255, 116, 39, 0.65)",
-                    boxShadow:
-                      "0 0 16px rgba(255, 116, 39, 0.4), inset 0 0 8px rgba(255, 116, 39, 0.2)",
-                  }}
-                >
+                <div className="w-9 h-9 rounded-full bg-black border-[1.5px] border-[#ff7427] flex items-center justify-center relative">
                   <Image
                     src="/brand_logo.png?v=3"
                     alt="Logo"
