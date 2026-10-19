@@ -1,8 +1,10 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { X, Sparkles, Mail, Lock, AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
+import Image from "next/image";
+import { X, Mail, Lock, AlertCircle, CheckCircle2, Loader2, Sparkles, ArrowRight } from "lucide-react";
 import { signInWithGoogle, signInWithEmail, signUpWithEmail, isSupabaseConfigured } from "../lib/supabase";
+import SineWaveCanvas from "./auth/SineWaveCanvas";
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -23,6 +25,12 @@ export default function AuthModal({
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    setMode(initialMode);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+  }, [initialMode, isOpen]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -88,38 +96,59 @@ export default function AuthModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xl animate-in fade-in duration-200 cursor-pointer"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-300 overflow-hidden cursor-pointer"
       onClick={onClose}
     >
+      {/* Background Animated Dual Sine Waves (Golden Orange & White) */}
+      <SineWaveCanvas />
+
+      {/* Subtle Micro-Grid overlay */}
+      <div className="absolute inset-0 bg-[radial-gradient(rgba(255,255,255,0.03)_1px,transparent_1px)] [background-size:24px_24px] pointer-events-none -z-10" />
+
+      {/* Center Frosted Glass Auth Card */}
       <div
-        className="w-full max-w-[420px] bg-[#101018] border border-white/10 rounded-3xl p-7 shadow-2xl relative flex flex-col gap-5 cursor-default"
+        className="w-full max-w-[440px] relative z-10 bg-[#0a0a0c]/65 border border-white/[0.12] backdrop-blur-3xl rounded-[28px] p-7 sm:p-8 shadow-[0_30px_90px_rgba(0,0,0,0.9)] flex flex-col gap-6 cursor-default transition-all duration-300 hover:border-white/[0.18]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Close Button */}
         <button
           onClick={onClose}
-          className="absolute top-5 right-5 w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+          type="button"
+          aria-label="Close dialog"
+          className="absolute top-5 right-5 w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] transition-colors cursor-pointer focus:outline-none"
         >
           <X className="w-4 h-4" />
         </button>
 
-        {/* Modal Header */}
-        <div className="text-center flex flex-col items-center gap-2">
-          <div className="w-10 h-10 rounded-2xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
-            <Sparkles className="w-5 h-5" />
+        {/* Brand Header */}
+        <div className="text-center flex flex-col items-center gap-2.5 pt-1">
+          {/* Circular Brand Logo with Golden Orange border, pure solid black bg, zero glow */}
+          <div className="w-12 h-12 rounded-full bg-black border-[1.5px] border-[#ff7427] flex items-center justify-center shrink-0 overflow-hidden shadow-none transition-none">
+            <Image
+              src="/brand_logo.png?v=3"
+              alt="Vakiogiri Brand Logo"
+              width={28}
+              height={28}
+              unoptimized={true}
+              className="w-6 h-6 object-contain transition-none"
+              priority
+            />
           </div>
-          <h2 className="text-xl font-extrabold text-white tracking-tight">
-            {mode === "login" ? "Welcome to Vakiogiri" : "Create Creator Account"}
-          </h2>
-          <p className="text-xs text-slate-400 max-w-xs">
-            {mode === "login"
-              ? "Sign in to access your daily free video generations & saved clips"
-              : "Get 3 free AI video generations every single day with cloud sync"}
-          </p>
+
+          <div className="space-y-1">
+            <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+              {mode === "login" ? "Welcome back" : "Create creator account"}
+            </h2>
+            <p className="text-xs text-slate-400 max-w-xs leading-relaxed">
+              {mode === "login"
+                ? "Sign in to access your library, presets, and daily free AI clips."
+                : "Get 3 free AI video generations every day with cloud sync."}
+            </p>
+          </div>
         </div>
 
-        {/* Mode Toggle Pills */}
-        <div className="grid grid-cols-2 bg-white/[0.04] p-1 rounded-xl border border-white/5 text-xs font-semibold">
+        {/* Mode Toggle Switcher Pill */}
+        <div className="grid grid-cols-2 bg-white/[0.04] p-1 rounded-full border border-white/[0.08] text-xs font-semibold">
           <button
             type="button"
             onClick={() => {
@@ -127,9 +156,9 @@ export default function AuthModal({
               setErrorMsg(null);
               setSuccessMsg(null);
             }}
-            className={`py-2 rounded-lg transition-all cursor-pointer ${
+            className={`py-2 rounded-full transition-all duration-200 cursor-pointer ${
               mode === "login"
-                ? "bg-indigo-600 text-white shadow-sm"
+                ? "bg-white text-black font-bold shadow-md"
                 : "text-slate-400 hover:text-white"
             }`}
           >
@@ -142,9 +171,9 @@ export default function AuthModal({
               setErrorMsg(null);
               setSuccessMsg(null);
             }}
-            className={`py-2 rounded-lg transition-all cursor-pointer ${
+            className={`py-2 rounded-full transition-all duration-200 cursor-pointer ${
               mode === "signup"
-                ? "bg-indigo-600 text-white shadow-sm"
+                ? "bg-white text-black font-bold shadow-md"
                 : "text-slate-400 hover:text-white"
             }`}
           >
@@ -152,12 +181,12 @@ export default function AuthModal({
           </button>
         </div>
 
-        {/* Google OAuth Button */}
+        {/* Google 1-Tap OAuth Button */}
         <button
           type="button"
           onClick={handleGoogleSignIn}
           disabled={loading}
-          className="w-full py-3 px-4 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl flex items-center justify-center gap-3 text-white font-semibold text-xs transition-all shadow-sm active:scale-98 cursor-pointer disabled:opacity-50"
+          className="w-full py-3 px-4 bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.1] rounded-2xl flex items-center justify-center gap-3 text-white font-semibold text-xs transition-all shadow-sm active:scale-[0.98] cursor-pointer disabled:opacity-50"
         >
           <svg className="w-4 h-4" viewBox="0 0 24 24">
             <path
@@ -182,17 +211,17 @@ export default function AuthModal({
 
         {/* Divider */}
         <div className="flex items-center gap-3">
-          <div className="flex-grow h-px bg-white/10"></div>
+          <div className="flex-grow h-px bg-white/[0.08]" />
           <span className="text-[10px] text-slate-500 font-medium uppercase tracking-wider">
             or with email
           </span>
-          <div className="flex-grow h-px bg-white/10"></div>
+          <div className="flex-grow h-px bg-white/[0.08]" />
         </div>
 
         {/* Email & Password Form */}
-        <form onSubmit={handleEmailAuth} className="flex flex-col gap-3">
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-semibold text-slate-300">Email address</label>
+        <form onSubmit={handleEmailAuth} className="flex flex-col gap-3.5">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[11px] font-semibold text-slate-300">Email address</label>
             <div className="relative">
               <Mail className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
               <input
@@ -201,13 +230,13 @@ export default function AuthModal({
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
                 required
-                className="w-full pl-10 pr-3.5 py-2.5 bg-white/5 border border-white/10 rounded-xl text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
+                className="w-full pl-10 pr-3.5 py-2.5 bg-black/40 border border-white/[0.1] rounded-xl text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-[#ff7427] transition-colors"
               />
             </div>
           </div>
 
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-semibold text-slate-300">Password</label>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[11px] font-semibold text-slate-300">Password</label>
             <div className="relative">
               <Lock className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
               <input
@@ -217,38 +246,40 @@ export default function AuthModal({
                 placeholder="••••••••"
                 required
                 minLength={6}
-                className="w-full pl-10 pr-3.5 py-2.5 bg-white/5 border border-white/10 rounded-xl text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
+                className="w-full pl-10 pr-3.5 py-2.5 bg-black/40 border border-white/[0.1] rounded-xl text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-[#ff7427] transition-colors"
               />
             </div>
           </div>
 
           {errorMsg && (
-            <div className="p-2.5 bg-rose-500/10 border border-rose-500/20 rounded-xl text-xs text-rose-400 flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0" />
+            <div className="p-3 bg-rose-500/10 border border-rose-500/25 rounded-xl text-xs text-rose-300 flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
               <span>{errorMsg}</span>
             </div>
           )}
 
           {successMsg && (
-            <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-xs text-emerald-400 flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 shrink-0" />
+            <div className="p-3 bg-emerald-500/10 border border-emerald-500/25 rounded-xl text-xs text-emerald-300 flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
               <span>{successMsg}</span>
             </div>
           )}
 
+          {/* Action CTA Button */}
           <button
             type="submit"
             disabled={loading}
-            className="w-full mt-1 py-3 px-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl transition-all shadow-md active:scale-98 disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
+            className="w-full mt-1 py-3 px-4 bg-[#ff7427] hover:bg-[#e65c00] text-white font-bold text-xs rounded-xl transition-all duration-200 shadow-md shadow-orange-500/20 active:scale-[0.98] disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
           >
             {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-            <span>{loading ? "Please wait..." : mode === "login" ? "Sign in" : "Create Account"}</span>
+            <span>{loading ? "Please wait..." : mode === "login" ? "Sign in to Studio" : "Create Free Account"}</span>
+            {!loading && <ArrowRight className="w-3.5 h-3.5" />}
           </button>
         </form>
 
         {!isSupabaseConfigured() && (
           <p className="text-[10px] text-center text-slate-500">
-            Running in local guest preview mode. Add Supabase keys to <code className="font-mono text-slate-400">.env.local</code> to activate live OAuth.
+            Running in preview mode. Configure Supabase keys in <code className="font-mono text-slate-400">.env.local</code> for production OAuth.
           </p>
         )}
       </div>
