@@ -116,31 +116,26 @@ export default function TopNavBar({
   };
 
   return (
-    <header className={`w-full sticky top-0 z-40 studio-glass border-b border-white/8 transition-colors duration-200 ${className}`}>
+    <header className={`w-full sticky top-0 z-40 bg-black/90 backdrop-blur-xl border-b border-white/[0.08] transition-colors duration-200 ${className}`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         
-        {/* Brand Logo */}
-        <div className="flex items-center gap-3">
+        {/* Left Side: Clean Logo + Nav Items (Opus Clip Style) */}
+        <div className="flex items-center gap-8">
           {logo.onClick ? (
             <button
               type="button"
               onClick={logo.onClick}
               className="flex items-center gap-2.5 cursor-pointer group focus:outline-none"
             >
-              <div className="relative w-8 h-8 rounded-full overflow-hidden ring-2 ring-blue-500/40 shadow-lg shadow-blue-500/30 group-hover:scale-105 group-hover:ring-blue-400 transition-all flex items-center justify-center bg-black">
-                <Image
-                  src="/logo.png"
-                  alt="Vakiogiri AI Logo"
-                  width={32}
-                  height={32}
-                  className="w-full h-full object-cover"
-                />
-              </div>
-              <span className="font-extrabold text-lg tracking-tight text-white group-hover:text-blue-400 transition-colors">
+              <Image
+                src="/logo.png"
+                alt="Vakiogiri Logo"
+                width={32}
+                height={32}
+                className="w-8 h-8 object-contain transition-transform group-hover:scale-105"
+              />
+              <span className="font-bold text-lg tracking-tight text-white group-hover:text-blue-400 transition-colors">
                 {logo.name || "Vakiogiri"}
-              </span>
-              <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md bg-blue-500/15 text-blue-400 border border-blue-500/30 uppercase tracking-wider">
-                AI Studio
               </span>
             </button>
           ) : (
@@ -148,84 +143,79 @@ export default function TopNavBar({
               href={logo.href || "/"}
               className="flex items-center gap-2.5 group focus:outline-none"
             >
-              <div className="relative w-8 h-8 rounded-full overflow-hidden ring-2 ring-blue-500/40 shadow-lg shadow-blue-500/30 group-hover:scale-105 group-hover:ring-blue-400 transition-all flex items-center justify-center bg-black">
-                <Image
-                  src="/logo.png"
-                  alt="Vakiogiri AI Logo"
-                  width={32}
-                  height={32}
-                  className="w-full h-full object-cover"
-                />
-              </div>
-              <span className="font-extrabold text-lg tracking-tight text-white group-hover:text-blue-400 transition-colors">
+              <Image
+                src="/logo.png"
+                alt="Vakiogiri Logo"
+                width={32}
+                height={32}
+                className="w-8 h-8 object-contain transition-transform group-hover:scale-105"
+              />
+              <span className="font-bold text-lg tracking-tight text-white group-hover:text-blue-400 transition-colors">
                 {logo.name || "Vakiogiri"}
-              </span>
-              <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md bg-blue-500/15 text-blue-400 border border-blue-500/30 uppercase tracking-wider">
-                AI Studio
               </span>
             </Link>
           )}
-        </div>
 
-        {/* Center Pill Navigation */}
-        <nav
-          ref={dropdownRef}
-          className="hidden md:flex items-center p-1 rounded-full bg-white/[0.04] border border-white/8 backdrop-blur-md"
-        >
-          {navItems.map((item) => {
-            const isActive = item.isActive;
-            const content = (
-              <>
-                {getNavIcon(item.id)}
-                <span>{item.label}</span>
-                {typeof item.badgeCount === "number" && item.badgeCount > 0 && (
-                  <span className="w-5 h-5 rounded-full bg-blue-500/30 text-blue-300 text-[10px] font-bold flex items-center justify-center">
-                    {item.badgeCount}
-                  </span>
-                )}
-              </>
-            );
+          {/* Clean Nav Links (Opus Clip Style - Left Aligned next to Logo) */}
+          <nav
+            ref={dropdownRef}
+            className="hidden md:flex items-center gap-1"
+          >
+            {navItems.map((item) => {
+              const isActive = item.isActive;
+              const content = (
+                <>
+                  {getNavIcon(item.id)}
+                  <span>{item.label}</span>
+                  {typeof item.badgeCount === "number" && item.badgeCount > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full bg-blue-500/20 text-blue-400 text-[10px] font-bold">
+                      {item.badgeCount}
+                    </span>
+                  )}
+                </>
+              );
 
-            if (item.onClick) {
+              if (item.onClick) {
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={item.onClick}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
+                      isActive
+                        ? "text-white font-semibold bg-white/[0.08]"
+                        : "text-slate-400 hover:text-white hover:bg-white/[0.04]"
+                    }`}
+                  >
+                    {content}
+                  </button>
+                );
+              }
+
               return (
-                <button
+                <Link
                   key={item.id}
-                  type="button"
-                  onClick={item.onClick}
-                  className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+                  href={item.href || "#"}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
                     isActive
-                      ? "bg-blue-600 text-white shadow-sm shadow-blue-500/40 font-bold"
-                      : "text-slate-400 hover:text-white hover:bg-white/5"
+                      ? "text-white font-semibold bg-white/[0.08]"
+                      : "text-slate-400 hover:text-white hover:bg-white/[0.04]"
                   }`}
                 >
                   {content}
-                </button>
+                </Link>
               );
-            }
+            })}
+          </nav>
+        </div>
 
-            return (
-              <Link
-                key={item.id}
-                href={item.href || "#"}
-                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
-                  isActive
-                    ? "bg-blue-600 text-white shadow-sm shadow-blue-500/40 font-bold"
-                    : "text-slate-400 hover:text-white hover:bg-white/5"
-                }`}
-              >
-                {content}
-              </Link>
-            );
-          })}
-        </nav>
-
-        {/* Right Zone: Credits, Theme, Auth */}
-        <div className="flex items-center gap-3">
+        {/* Right Zone: Credits, Theme, Auth (Opus Clip Style) */}
+        <div className="flex items-center gap-3.5">
           
           {/* Credits Counter Pill */}
           {userProfile && (
-            <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/[0.04] border border-white/8 text-xs font-mono font-bold text-slate-300">
-              <Zap className="w-3.5 h-3.5 text-amber-400 fill-amber-400/20" />
+            <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.04] border border-white/10 text-xs font-mono font-medium text-slate-300">
+              <Zap className="w-3.5 h-3.5 text-blue-400 fill-blue-400/20" />
               <span>
                 {userProfile.credits_remaining ?? 3}/
                 {userProfile.max_daily_credits || 3} Clips
@@ -238,17 +228,17 @@ export default function TopNavBar({
             <button
               type="button"
               onClick={onToggleTheme}
-              className="w-9 h-9 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/8 text-slate-300 hover:text-white flex items-center justify-center transition-all cursor-pointer"
+              className="w-8 h-8 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] border border-white/8 text-slate-400 hover:text-white flex items-center justify-center transition-all cursor-pointer"
               title="Toggle theme"
             >
-              {theme === "dark" ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-indigo-400" />}
+              {theme === "dark" ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-blue-400" />}
             </button>
           )}
 
           {/* Auth Actions */}
           {session ? (
             <div className="flex items-center gap-2">
-              <div className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/[0.04] text-xs font-medium text-slate-300 border border-white/8">
+              <div className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.04] text-xs font-medium text-slate-300 border border-white/8">
                 <User className="w-3.5 h-3.5 text-blue-400" />
                 <span className="truncate max-w-[120px]">{session.user?.email || "User"}</span>
               </div>
@@ -257,7 +247,7 @@ export default function TopNavBar({
                 <button
                   type="button"
                   onClick={onSignOut}
-                  className="p-2 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
                   title="Sign out"
                 >
                   <LogOut className="w-4 h-4" />
@@ -265,12 +255,12 @@ export default function TopNavBar({
               )}
             </div>
           ) : (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
               {authActions.onLogin && (
                 <button
                   type="button"
                   onClick={authActions.onLogin}
-                  className="hidden sm:inline-block px-3 py-1.5 text-xs font-semibold text-slate-300 hover:text-white transition-colors cursor-pointer"
+                  className="text-sm font-medium text-slate-300 hover:text-white transition-colors cursor-pointer"
                 >
                   {authActions.loginLabel || "Log in"}
                 </button>
@@ -280,7 +270,7 @@ export default function TopNavBar({
                 <button
                   type="button"
                   onClick={authActions.onSignup}
-                  className="px-4 py-1.5 rounded-xl text-xs font-bold bg-blue-600 text-white hover:bg-blue-500 transition-all cursor-pointer shadow-md shadow-blue-500/30 active:scale-95"
+                  className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-500 transition-all cursor-pointer shadow-sm shadow-blue-500/25 active:scale-95"
                 >
                   {authActions.signupLabel || "Start for free"}
                 </button>
@@ -292,7 +282,7 @@ export default function TopNavBar({
           <button
             type="button"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="md:hidden w-9 h-9 rounded-xl bg-white/[0.04] border border-white/8 text-white flex items-center justify-center cursor-pointer"
+            className="md:hidden w-8 h-8 rounded-lg bg-white/[0.04] border border-white/8 text-white flex items-center justify-center cursor-pointer"
           >
             {mobileMenuOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
           </button>
