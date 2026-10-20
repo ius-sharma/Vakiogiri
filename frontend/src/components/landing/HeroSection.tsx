@@ -10,22 +10,46 @@ interface HeroSectionProps {
 
 export default function HeroSection({ onGenerate, onOpenAuth }: HeroSectionProps) {
   const [inputUrl, setInputUrl] = useState("");
-  const [placeholderIndex, setPlaceholderIndex] = useState(0);
 
-  const placeholders = [
-    "Drop a file or paste a link from YouTube...",
-    "Drop a file or paste a link from Twitch...",
-    "Drop a file or paste a link from Loom...",
-    "Drop a file or paste a link from Google Drive...",
-    "Drop a file or paste a link from Vimeo...",
+  const platforms = [
+    "YouTube",
+    "Twitch",
+    "Loom",
+    "Google Drive",
+    "Vimeo",
   ];
 
+  const [platformIndex, setPlatformIndex] = useState(0);
+  const [displayText, setDisplayText] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
+
   useEffect(() => {
-    const timer = setInterval(() => {
-      setPlaceholderIndex((prev) => (prev + 1) % placeholders.length);
-    }, 2800);
-    return () => clearInterval(timer);
-  }, [placeholders.length]);
+    const currentWord = platforms[platformIndex];
+    let timeout: NodeJS.Timeout;
+
+    if (!isDeleting) {
+      if (displayText.length < currentWord.length) {
+        timeout = setTimeout(() => {
+          setDisplayText(currentWord.slice(0, displayText.length + 1));
+        }, 85);
+      } else {
+        timeout = setTimeout(() => {
+          setIsDeleting(true);
+        }, 1800);
+      }
+    } else {
+      if (displayText.length > 0) {
+        timeout = setTimeout(() => {
+          setDisplayText(currentWord.slice(0, displayText.length - 1));
+        }, 45);
+      } else {
+        setIsDeleting(false);
+        setPlatformIndex((prev) => (prev + 1) % platforms.length);
+      }
+    }
+
+    return () => clearTimeout(timeout);
+  }, [displayText, isDeleting, platformIndex]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,14 +100,24 @@ export default function HeroSection({ onGenerate, onOpenAuth }: HeroSectionProps
           <Upload className="w-4 h-4" />
         </button>
 
-        {/* Text Input with rolling animated placeholder */}
-        <div className="flex-1 relative flex items-center overflow-hidden">
+        {/* Text Input with Typewriter Animated Overlay */}
+        <div className="flex-1 relative flex items-center h-10 overflow-hidden px-2">
+          {/* Animated Typewriter Overlay when input is empty */}
+          {!inputUrl && (
+            <div className="pointer-events-none absolute inset-y-0 left-2 right-2 flex items-center text-xs sm:text-sm text-slate-500 select-none">
+              <span className="truncate">Drop a file or paste a link from&nbsp;</span>
+              <span className="font-semibold text-slate-300 shrink-0">
+                {displayText}
+              </span>
+              <span className="inline-block w-1.5 h-3.5 bg-[#ff7427] ml-0.5 rounded-sm animate-pulse shrink-0" />
+            </div>
+          )}
+
           <input
             type="text"
             value={inputUrl}
             onChange={(e) => setInputUrl(e.target.value)}
-            placeholder={placeholders[placeholderIndex]}
-            className="w-full bg-transparent text-sm text-white placeholder-slate-500 focus:outline-none transition-all pr-2"
+            className="w-full bg-transparent text-xs sm:text-sm text-white focus:outline-none transition-all relative z-10"
           />
         </div>
 
