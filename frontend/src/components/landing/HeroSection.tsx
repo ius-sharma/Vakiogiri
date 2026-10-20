@@ -106,10 +106,10 @@ export default function HeroSection({ onGenerate, onOpenAuth }: HeroSectionProps
           {!inputUrl && (
             <div className="pointer-events-none absolute inset-y-0 left-2 right-2 flex items-center text-xs sm:text-sm text-slate-500 select-none">
               <span className="truncate">Drop a file or paste a link from&nbsp;</span>
-              <span className="font-semibold text-slate-300 shrink-0">
+              <span className="font-normal text-slate-400 shrink-0">
                 {displayText}
               </span>
-              <span className="inline-block w-1.5 h-3.5 bg-[#ff7427] ml-0.5 rounded-sm animate-pulse shrink-0" />
+              <span className="inline-block w-[1.5px] h-4 bg-[#ff7427] ml-0.5 animate-pulse shrink-0" />
             </div>
           )}
 
