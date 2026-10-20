@@ -132,7 +132,7 @@ export default function HeroSection({ onGenerate, onOpenAuth }: HeroSectionProps
           </div>
 
           <span className="relative z-10 flex items-center gap-1.5">
-            <span>⚡ Generate</span>
+            <span>Generate</span>
             <ArrowRight className="w-3.5 h-3.5 transition-transform duration-200 group-hover:translate-x-0.5" />
           </span>
         </button>

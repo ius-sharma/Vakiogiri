@@ -207,13 +207,16 @@ html.light .studio-card:hover {
 /* Holographic Shimmer Sweep Animation (Linear / Framer style) */
 @keyframes holographic-sweep {
   0% {
-    transform: translateX(-150%) skewX(-20deg);
+    transform: translateX(-160%) skewX(-20deg);
   }
-  22%, 100% {
-    transform: translateX(250%) skewX(-20deg);
+  42% {
+    transform: translateX(260%) skewX(-20deg);
+  }
+  100% {
+    transform: translateX(260%) skewX(-20deg);
   }
 }
 
 .animate-holographic-sweep {
-  animation: holographic-sweep 3.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  animation: holographic-sweep 4.8s cubic-bezier(0.25, 1, 0.5, 1) infinite;
 }
