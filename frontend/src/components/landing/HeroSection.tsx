@@ -58,7 +58,7 @@ export default function HeroSection({ onGenerate, onOpenAuth }: HeroSectionProps
 
       {/* Subtitle - Compact & Crisp */}
       <p className="mt-4 text-sm sm:text-base text-slate-400 max-w-xl leading-relaxed font-normal">
-        Long Content to Viral Shorts with auto-reframe, dynamic subtitles, and virality scoring.
+        Make TikToks, Reels, and Shorts from any long video in one click.
       </p>
 
       {/* Interactive Floating Input Bar (Klap-style floating pill) */}
