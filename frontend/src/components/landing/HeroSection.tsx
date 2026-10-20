@@ -121,13 +121,20 @@ export default function HeroSection({ onGenerate, onOpenAuth }: HeroSectionProps
           />
         </div>
 
-        {/* Golden Orange Generate Pill */}
+        {/* Holographic Shimmer Sweep Generate Button */}
         <button
           type="submit"
-          className="px-5 py-2.5 rounded-xl bg-[#ff7427] hover:bg-[#ff853f] active:scale-95 text-white font-semibold text-xs sm:text-sm flex items-center gap-2 transition-all cursor-pointer shadow-lg shadow-[#ff7427]/25 shrink-0"
+          className="relative overflow-hidden group px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#ff7427] to-[#ff853f] hover:from-[#ff853f] hover:to-[#ff9454] active:scale-95 text-white font-semibold text-xs sm:text-sm flex items-center gap-2 transition-all cursor-pointer shadow-[inset_0_1px_0_rgba(255,255,255,0.3),0_8px_20px_-4px_rgba(255,116,39,0.45)] shrink-0"
         >
-          <span>⚡ Generate</span>
-          <ArrowRight className="w-3.5 h-3.5" />
+          {/* Holographic Diagonal Light Sweep Beam */}
+          <div className="absolute inset-0 pointer-events-none overflow-hidden">
+            <div className="w-1/2 h-full bg-gradient-to-r from-transparent via-white/35 to-transparent animate-holographic-sweep" />
+          </div>
+
+          <span className="relative z-10 flex items-center gap-1.5">
+            <span>⚡ Generate</span>
+            <ArrowRight className="w-3.5 h-3.5 transition-transform duration-200 group-hover:translate-x-0.5" />
+          </span>
         </button>
       </form>
 
