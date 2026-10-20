@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 import SidebarNav from "@/components/navigation/SidebarNav";
 import TopUtilityHeader from "@/components/navigation/TopUtilityHeader";
 import FloatingCapsuleNavbar from "@/components/navigation/FloatingCapsuleNavbar";
+import LandingPage from "@/components/landing/LandingPage";
 import HeroInputBar from "@/components/studio/HeroInputBar";
 import QuickPresetBar from "@/components/studio/QuickPresetBar";
 import AdvancedDrawer from "@/components/studio/AdvancedDrawer";
@@ -577,15 +578,25 @@ export default function Home() {
       </div>
     </>
   ) : (
-    <div className="flex-1 flex flex-col min-w-0 w-full relative">
-      {/* Floating Capsule Navbar (Before Login - Exact Design Replicated) */}
+    <div className="flex-1 flex flex-col min-w-0 w-full relative bg-black">
+      {/* Floating Capsule Navbar (Before Login - Exact Design Replicated & Preserved) */}
       <FloatingCapsuleNavbar
         navItems={[
           {
-            id: "studio",
-            label: "Studio",
-            isActive: activeView === "studio",
-            onClick: () => setActiveView("studio"),
+            id: "how-it-works",
+            label: "How It Works",
+            onClick: () => {
+              const el = document.getElementById("how-it-works");
+              if (el) el.scrollIntoView({ behavior: "smooth" });
+            },
+          },
+          {
+            id: "styles",
+            label: "Styles",
+            onClick: () => {
+              const el = document.getElementById("styles");
+              if (el) el.scrollIntoView({ behavior: "smooth" });
+            },
           },
           {
             id: "features",
@@ -596,119 +607,94 @@ export default function Home() {
             },
           },
           {
-            id: "library",
-            label: "Library",
-            isActive: activeView === "history",
+            id: "faq",
+            label: "FAQ",
             onClick: () => {
-              setAuthModalMode("login");
-              setIsAuthModalOpen(true);
+              const el = document.getElementById("faq");
+              if (el) el.scrollIntoView({ behavior: "smooth" });
             },
           },
         ]}
+        onOpenAuth={(mode) => {
+          setAuthModalMode(mode);
+          setIsAuthModalOpen(true);
+        }}
         theme={theme}
         onToggleTheme={toggleTheme}
       />
 
       {/* Main Canvas for Guest */}
-      <main className="flex-grow flex flex-col items-center justify-start px-4 sm:px-6 lg:px-8 pt-24 sm:pt-28 pb-12 md:pb-16 max-w-6xl mx-auto w-full">
+      <main className="flex-grow flex flex-col items-center justify-start w-full">
         {/* VIEW 1: MY CLIPS / HISTORY */}
         {activeView === "history" && (
-          <HistoryView
-            history={history}
-            loading={loadingHistory}
-            onDeleteProject={handleDeleteProject}
-            onDownloadSingle={handleDownloadSingle}
-            onBackToStudio={() => setActiveView("studio")}
-            backendUrl={BACKEND_URL}
-          />
+          <div className="px-4 sm:px-6 lg:px-8 pt-24 sm:pt-28 pb-12 md:pb-16 max-w-6xl mx-auto w-full">
+            <HistoryView
+              history={history}
+              loading={loadingHistory}
+              onDeleteProject={handleDeleteProject}
+              onDownloadSingle={handleDownloadSingle}
+              onBackToStudio={() => setActiveView("studio")}
+              backendUrl={BACKEND_URL}
+            />
+          </div>
         )}
 
-        {/* VIEW 2: SHORTS STUDIO */}
+        {/* VIEW 2: SHORTS STUDIO OR FULL LANDING PAGE */}
         {activeView === "studio" && (
-          <div className="w-full flex flex-col items-center gap-8 text-center my-auto">
-            {status === "idle" && (
-              <>
-                {/* Hero Title & Subtitle */}
-                <div className="space-y-3 max-w-2xl mx-auto animate-in fade-in slide-in-from-bottom-2 duration-300">
-                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#ff7427]/10 border border-[#ff7427]/25 text-[#ff7427] text-xs font-semibold uppercase tracking-wider">
-                    <Sparkles className="w-3.5 h-3.5" />
-                    <span>AI Video Repurposing</span>
-                  </div>
-                  <h1 className="text-3xl sm:text-5xl font-black tracking-tight text-white">
-                    Turn Long Videos into Viral Shorts
-                  </h1>
-                  <p className="text-sm sm:text-base text-slate-400">
-                    Drop a YouTube link and our AI analyzes speech, facial cadence, and audio peaks to deliver polished vertical clips in seconds.
-                  </p>
-                </div>
-
-                {/* Primary Hero URL Input Bar */}
-                <HeroInputBar
-                  value={youtubeUrl}
-                  onChange={setYoutubeUrl}
-                  onSubmit={handleGenerate}
-                  isProcessing={false}
-                  onPasteNotification={(msg) => showToast(msg, "info")}
-                />
-
-                {/* Quick Presets (Aspect ratio, Duration, Advanced Drawer) */}
-                <QuickPresetBar
-                  aspectRatio={aspectRatio}
-                  onAspectRatioChange={setAspectRatio}
-                  segmentDuration={segmentDuration}
-                  onSegmentDurationChange={setSegmentDuration}
-                  showAdvanced={showAdvanced}
-                  onToggleAdvanced={() => setShowAdvanced((prev) => !prev)}
-                  disabled={false}
-                />
-
-                {/* Collapsible Advanced Settings Drawer */}
-                <AdvancedDrawer
-                  isOpen={showAdvanced}
-                  quality={quality}
-                  onQualityChange={setQuality}
-                  clippingMode={clippingMode}
-                  onClippingModeChange={setClippingMode}
-                  captionStyle={captionStyle}
-                  onCaptionStyleChange={setCaptionStyle}
-                  disabled={false}
-                />
-              </>
-            )}
-
-            {/* In-Flight Pipeline Tracker */}
-            {status === "processing" && (
-              <LivePipelineTracker
-                progress={progress}
-                step={step}
-                progressMessage={progressMessage}
+          <>
+            {status === "idle" ? (
+              <LandingPage
+                onGenerate={(url) => {
+                  setYoutubeUrl(url);
+                  if (!session) {
+                    setAuthModalMode("signup");
+                    setIsAuthModalOpen(true);
+                  } else {
+                    handleGenerate();
+                  }
+                }}
+                onOpenAuth={(mode) => {
+                  setAuthModalMode(mode || "signup");
+                  setIsAuthModalOpen(true);
+                }}
               />
-            )}
+            ) : (
+              <div className="w-full max-w-6xl mx-auto flex flex-col items-center gap-8 text-center px-4 pt-28 pb-16">
+                {/* In-Flight Pipeline Tracker */}
+                {status === "processing" && (
+                  <LivePipelineTracker
+                    progress={progress}
+                    step={step}
+                    progressMessage={progressMessage}
+                  />
+                )}
 
-            {/* Error State Banner */}
-            {status === "failed" && errorMsg && (
-              <div className="w-full max-w-3xl p-5 rounded-2xl bg-rose-500/10 border border-rose-500/25 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-left animate-in fade-in">
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center shrink-0">
-                    <AlertTriangle className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-white">Generation Failed</h4>
-                    <p className="text-xs text-rose-300 mt-0.5 leading-relaxed">{errorMsg}</p>
-                  </div>
-                </div>
+                {/* Error State Banner */}
+                {status === "failed" && errorMsg && (
+                  <div className="w-full max-w-3xl p-5 rounded-2xl bg-rose-500/10 border border-rose-500/25 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-left animate-in fade-in">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center shrink-0">
+                        <AlertTriangle className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-white">Generation Failed</h4>
+                        <p className="text-xs text-rose-300 mt-0.5 leading-relaxed">{errorMsg}</p>
+                      </div>
+                    </div>
 
-                <button
-                  type="button"
-                  onClick={() => handleGenerate()}
-                  className="shrink-0 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-md"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  <span>Retry</span>
-                </button>
+                    <button
+                      type="button"
+                      onClick={() => handleGenerate()}
+                      className="shrink-0 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-md"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>Retry</span>
+                    </button>
+                  </div>
+                )}
               </div>
             )}
-          </div>
+          </>
         )}
       </main>
     </div>
