@@ -49,15 +49,16 @@ export default function HeroSection({ onGenerate, onOpenAuth }: HeroSectionProps
 
       {/* Main H1 Headline - Clean & High Impact (Zero inline thumbnails) */}
       <h1 className="text-4xl sm:text-6xl lg:text-7xl font-black tracking-tight text-white max-w-4xl leading-[1.12]">
+        10 Viral Clips From <br className="hidden sm:inline" />
+        1 Video,{" "}
         <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#ff7427] via-[#ff9254] to-[#ff7427]">
-          10 Viral Clips
-        </span>{" "}
-        From 1 Video, Instantly
+          Instantly
+        </span>
       </h1>
 
       {/* Subtitle */}
       <p className="mt-5 text-base sm:text-lg lg:text-xl text-slate-400 max-w-2xl leading-relaxed font-normal">
-        Turn hours of podcasts, webinars, and YouTube videos into captivating 9:16 shorts with auto-reframe, dynamic subtitles, and virality scoring.
+        Long Content to Viral Shorts with auto-reframe, dynamic subtitles, and virality scoring.
       </p>
 
       {/* Interactive Floating Input Bar (Klap-style floating pill) */}
