@@ -49,11 +49,10 @@ export default function HeroSection({ onGenerate, onOpenAuth }: HeroSectionProps
 
       {/* Main H1 Headline - Clean & High Impact (Zero inline thumbnails) */}
       <h1 className="text-4xl sm:text-6xl lg:text-7xl font-black tracking-tight text-white max-w-4xl leading-[1.12]">
-        Convert Any Long Video Into{" "}
         <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#ff7427] via-[#ff9254] to-[#ff7427]">
           10 Viral Clips
         </span>{" "}
-        Instantly
+        From 1 Video, Instantly
       </h1>
 
       {/* Subtitle */}
