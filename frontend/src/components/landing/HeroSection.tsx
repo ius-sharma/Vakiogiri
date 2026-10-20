@@ -47,17 +47,17 @@ export default function HeroSection({ onGenerate, onOpenAuth }: HeroSectionProps
         <span>Autonomous Video AI Engine</span>
       </div>
 
-      {/* Main H1 Headline - Clean & High Impact (Zero inline thumbnails) */}
-      <h1 className="text-4xl sm:text-6xl lg:text-7xl font-black tracking-tight text-white max-w-4xl leading-[1.12]">
-        10 Viral Clips From <br className="hidden sm:inline" />
-        1 Video,{" "}
+      {/* Main H1 Headline - Balanced, Sleek & Compact */}
+      <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black tracking-tight text-white max-w-3xl leading-[1.14]">
+        1 Long Video to <br className="hidden sm:inline" />
+        10 Viral Shorts,{" "}
         <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#ff7427] via-[#ff9254] to-[#ff7427]">
           Instantly
         </span>
       </h1>
 
-      {/* Subtitle */}
-      <p className="mt-5 text-base sm:text-lg lg:text-xl text-slate-400 max-w-2xl leading-relaxed font-normal">
+      {/* Subtitle - Compact & Crisp */}
+      <p className="mt-4 text-sm sm:text-base text-slate-400 max-w-xl leading-relaxed font-normal">
         Long Content to Viral Shorts with auto-reframe, dynamic subtitles, and virality scoring.
       </p>
 
