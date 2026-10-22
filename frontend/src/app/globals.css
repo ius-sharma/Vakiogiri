@@ -235,7 +235,7 @@ html.light .studio-card:hover {
 .animate-marquee {
   display: flex;
   width: max-content;
-  animation: marquee-scroll 32s linear infinite;
+  animation: marquee-scroll 55s linear infinite;
 }
 
 .animate-marquee:hover {
