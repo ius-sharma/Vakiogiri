@@ -220,3 +220,23 @@ html.light .studio-card:hover {
 .animate-holographic-sweep {
   animation: holographic-sweep 4.8s cubic-bezier(0.25, 1, 0.5, 1) infinite;
 }
+
+/* Infinite Seamless Marquee Scroll (Right to Left) */
+@keyframes marquee-scroll {
+  0% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-marquee {
+  display: flex;
+  width: max-content;
+  animation: marquee-scroll 32s linear infinite;
+}
+
+.animate-marquee:hover {
+  animation-play-state: paused;
+}
