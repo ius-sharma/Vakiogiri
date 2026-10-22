@@ -16,7 +16,7 @@ export default function PlatformStrip() {
       render: (
         <span
           style={{ fontFamily: "'Grand Hotel', cursive, sans-serif" }}
-          className="text-3xl sm:text-4xl text-white tracking-normal font-normal select-none"
+          className="text-3xl sm:text-4xl text-slate-300 group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-[#f09433] group-hover:via-[#dc2743] group-hover:to-[#bc1888] tracking-normal font-normal select-none transition-all duration-300"
         >
           Instagram
         </span>
@@ -28,9 +28,9 @@ export default function PlatformStrip() {
       render: (
         <span
           style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}
-          className="text-xl sm:text-2xl font-black text-white tracking-tighter select-none"
+          className="text-xl sm:text-2xl font-black text-slate-300 group-hover:text-[#FF0000] tracking-tighter select-none transition-colors duration-300"
         >
-          YouTube <span className="text-[#ff7427] font-bold text-base sm:text-lg tracking-tight uppercase ml-0.5">Shorts</span>
+          YouTube <span className="font-extrabold text-base sm:text-lg tracking-tight uppercase ml-0.5 text-slate-400 group-hover:text-white transition-colors duration-300">Shorts</span>
         </span>
       ),
     },
@@ -40,7 +40,7 @@ export default function PlatformStrip() {
       render: (
         <span
           style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}
-          className="text-xl sm:text-2xl font-black text-white tracking-tight select-none"
+          className="text-xl sm:text-2xl font-black text-slate-300 group-hover:text-[#FE2C55] group-hover:drop-shadow-[2px_0_0_#00F2FE] tracking-tight select-none transition-all duration-300"
         >
           TikTok
         </span>
@@ -52,9 +52,9 @@ export default function PlatformStrip() {
       render: (
         <span
           style={{ fontFamily: "'Inter', sans-serif" }}
-          className="text-xl sm:text-2xl font-bold text-white tracking-tight lowercase select-none"
+          className="text-xl sm:text-2xl font-bold text-slate-300 group-hover:text-[#1877F2] tracking-tight lowercase select-none transition-colors duration-300"
         >
-          facebook <span className="capitalize font-semibold text-slate-400 text-base sm:text-lg ml-0.5">Reels</span>
+          facebook <span className="capitalize font-semibold text-slate-400 group-hover:text-white text-base sm:text-lg ml-0.5 transition-colors duration-300">Reels</span>
         </span>
       ),
     },
@@ -64,7 +64,7 @@ export default function PlatformStrip() {
       render: (
         <span
           style={{ fontFamily: "'Inter', sans-serif", transform: "skewX(-7deg)" }}
-          className="text-lg sm:text-xl font-black uppercase text-white tracking-[0.2em] inline-block select-none"
+          className="text-lg sm:text-xl font-black uppercase text-slate-300 group-hover:text-[#9146FF] tracking-[0.2em] inline-block select-none transition-colors duration-300"
         >
           TWITCH
         </span>
@@ -92,13 +92,13 @@ export default function PlatformStrip() {
         {/* Right Fade-out Mask */}
         <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-24 sm:w-48 bg-gradient-to-l from-black via-black/90 to-transparent z-10" />
 
-        {/* Scrolling Strip: Pure typographic brand names without any boxes or logos */}
+        {/* Scrolling Strip: Pure typographic brand names without scale jumps */}
         <div className="animate-marquee flex items-center gap-14 sm:gap-24 py-2">
           {marqueeItems.map((platform, index) => (
             <div
               key={`${platform.id}-${index}`}
               title={platform.name}
-              className="shrink-0 opacity-65 hover:opacity-100 hover:scale-105 transition-all duration-300 cursor-default"
+              className="group shrink-0 opacity-60 hover:opacity-100 transition-opacity duration-300 cursor-default"
             >
               {platform.render}
             </div>
