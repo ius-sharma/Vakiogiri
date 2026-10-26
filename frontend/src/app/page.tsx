@@ -143,12 +143,55 @@ export default function Home() {
     };
   }, []);
 
-  const toggleTheme = () => {
+  const toggleTheme = (e?: React.MouseEvent) => {
+    if (typeof window === "undefined") return;
+
     const nextTheme = theme === "dark" ? "light" : "dark";
-    setTheme(nextTheme);
-    localStorage.setItem("theme", nextTheme);
-    document.documentElement.classList.toggle("dark", nextTheme === "dark");
-    document.documentElement.classList.toggle("light", nextTheme === "light");
+    const doc = document as any;
+
+    const updateDOM = () => {
+      setTheme(nextTheme);
+      localStorage.setItem("theme", nextTheme);
+      document.documentElement.classList.toggle("dark", nextTheme === "dark");
+      document.documentElement.classList.toggle("light", nextTheme === "light");
+    };
+
+    // Circular Iris Ripple Transition via View Transitions API
+    if (typeof doc.startViewTransition === "function") {
+      const x = e ? e.clientX : window.innerWidth - 60;
+      const y = e ? e.clientY : 32;
+      const endRadius = Math.hypot(
+        Math.max(x, window.innerWidth - x),
+        Math.max(y, window.innerHeight - y)
+      );
+
+      const transition = doc.startViewTransition(() => {
+        updateDOM();
+      });
+
+      transition.ready.then(() => {
+        document.documentElement.animate(
+          {
+            clipPath: [
+              `circle(0px at ${x}px ${y}px)`,
+              `circle(${endRadius}px at ${x}px ${y}px)`,
+            ],
+          },
+          {
+            duration: 550,
+            easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+            pseudoElement: "::view-transition-new(root)",
+          }
+        );
+      });
+    } else {
+      // Fallback with smooth cubic-bezier CSS transition
+      document.documentElement.classList.add("theme-transitioning");
+      updateDOM();
+      setTimeout(() => {
+        document.documentElement.classList.remove("theme-transitioning");
+      }, 500);
+    }
   };
 
   const stopPolling = () => {

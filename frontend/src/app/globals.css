@@ -273,3 +273,33 @@ html.light ::-webkit-scrollbar-thumb:hover {
 .animate-marquee:hover {
   animation-play-state: paused;
 }
+
+
+/* ==============================================================================
+   CIRCULAR IRIS VIEW TRANSITIONS (Dark/Light Ripple Reveal)
+   ============================================================================== */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+::view-transition-old(root) {
+  z-index: 1;
+}
+
+::view-transition-new(root) {
+  z-index: 99999;
+}
+
+/* Smooth CSS Theme Transition Fallback */
+html.theme-transitioning,
+html.theme-transitioning *,
+html.theme-transitioning *::before,
+html.theme-transitioning *::after {
+  transition: background-color 420ms cubic-bezier(0.16, 1, 0.3, 1),
+              border-color 420ms cubic-bezier(0.16, 1, 0.3, 1),
+              color 320ms cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 420ms cubic-bezier(0.16, 1, 0.3, 1) !important;
+  transition-delay: 0s !important;
+}

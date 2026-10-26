@@ -15,7 +15,7 @@ interface TopUtilityHeaderProps {
   onOpenAuth?: () => void;
   onSignOut?: () => void;
   theme?: "light" | "dark";
-  onToggleTheme?: () => void;
+  onToggleTheme?: (e?: React.MouseEvent) => void;
   isSidebarExpanded?: boolean;
   onToggleSidebar?: () => void;
 }
@@ -102,23 +102,25 @@ export default function TopUtilityHeader({
           </span>
         </div>
 
-        {/* Theme Toggle */}
+        {/* Theme Toggle with Spring Micro-Animation & Circular Ripple Trigger */}
         {onToggleTheme && (
           <button
             type="button"
-            onClick={onToggleTheme}
-            className={`w-8 h-8 rounded-xl flex items-center justify-center transition-colors cursor-pointer focus:outline-none ${
+            onClick={(e) => onToggleTheme(e)}
+            className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-300 cursor-pointer focus:outline-none group relative overflow-hidden ${
               isLight
-                ? "bg-slate-100 hover:bg-slate-200/80 border border-slate-200 text-slate-700"
-                : "bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-slate-400 hover:text-white"
+                ? "bg-slate-100 hover:bg-slate-200/90 border border-slate-200 text-slate-700 shadow-xs hover:shadow"
+                : "bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-slate-400 hover:text-white hover:border-white/20"
             }`}
-            title="Toggle theme"
+            title={theme === "dark" ? "Switch to Bright Mode" : "Switch to Dark Mode"}
           >
-            {theme === "dark" ? (
-              <Sun className="w-3.5 h-3.5 text-amber-400" />
-            ) : (
-              <Moon className="w-3.5 h-3.5 text-[#ff7427]" />
-            )}
+            <div className="relative w-4 h-4 flex items-center justify-center transition-transform duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] group-hover:rotate-45 group-active:scale-80">
+              {theme === "dark" ? (
+                <Sun className="w-4 h-4 text-amber-400 drop-shadow-[0_0_6px_rgba(251,191,36,0.45)] transition-all" />
+              ) : (
+                <Moon className="w-4 h-4 text-[#ff7427] drop-shadow-[0_0_6px_rgba(255,116,39,0.45)] transition-all" />
+              )}
+            </div>
           </button>
         )}
 
