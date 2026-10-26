@@ -140,6 +140,38 @@ html.light .studio-card:hover {
   box-shadow: 0 16px 36px -12px rgba(0, 0, 0, 0.08);
 }
 
+/* Light Mode Universal Overrides */
+html.light {
+  color-scheme: light;
+}
+
+html.light .ambient-spotlight {
+  background: radial-gradient(circle at 50% -10%, rgba(255, 116, 39, 0.08) 0%, rgba(251, 191, 36, 0.03) 40%, transparent 70%);
+}
+
+html.light .bg-\[\#101018\],
+html.light .bg-\[\#101018\]\/80,
+html.light .bg-\[\#101018\]\/60 {
+  background-color: #ffffff !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+  box-shadow: 0 4px 16px -2px rgba(0, 0, 0, 0.05);
+}
+
+html.light .border-white\/10,
+html.light .border-white\/\[0\.08\],
+html.light .border-white\/\[0\.06\],
+html.light .border-white\/5 {
+  border-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+html.light ::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+}
+
+html.light ::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.28);
+}
+
 /* Ambient studio spotlight */
 .ambient-spotlight {
   background: radial-gradient(circle at 50% -10%, rgba(255, 116, 39, 0.14) 0%, rgba(251, 191, 36, 0.04) 40%, transparent 70%);

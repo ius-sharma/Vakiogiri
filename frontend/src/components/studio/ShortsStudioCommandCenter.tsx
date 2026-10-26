@@ -67,6 +67,7 @@ interface ShortsStudioCommandCenterProps {
   onStartGeneration: (source: SelectedVideoSource, config: GenerationConfig) => void;
   showToast: (message: string, type?: "success" | "error" | "info") => void;
   sessionToken?: string;
+  theme?: "light" | "dark";
 }
 
 export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps> = ({
@@ -76,7 +77,10 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
   onStartGeneration,
   showToast,
   sessionToken,
+  theme = "dark",
 }) => {
+  const isLight = theme === "light";
+
   // Navigation tabs
   const [activeTab, setActiveTab] = useState<"channel" | "upload" | "url">("channel");
 
@@ -292,7 +296,6 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
         uploader: data.uploader,
       });
     } catch (err) {
-      // Still allow selection even if probe failed
       setSelectedSource({
         sourceType: "url",
         title: "YouTube Video",
@@ -348,49 +351,80 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
     <div className="w-full max-w-6xl mx-auto flex flex-col gap-8 pb-32">
       
       {/* 1. STUDIO HERO HEADER */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-white/[0.06] pb-6">
+      <div
+        className={`flex flex-col md:flex-row md:items-end justify-between gap-4 border-b pb-6 transition-colors ${
+          isLight ? "border-slate-200" : "border-white/[0.06]"
+        }`}
+      >
         <div>
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#ff7427]/10 text-[#ff7427] text-xs font-semibold tracking-wide mb-3">
             <Sparkles className="w-3.5 h-3.5" />
             <span>Shorts Studio 2.0 • AI Virality Ingestion</span>
           </div>
-          <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
+          <h1
+            className={`text-3xl sm:text-4xl font-extrabold tracking-tight transition-colors ${
+              isLight ? "text-slate-900" : "text-white"
+            }`}
+          >
             Creator Ingestion Command Center
           </h1>
-          <p className="text-sm text-slate-400 mt-1 max-w-2xl leading-relaxed">
+          <p
+            className={`text-sm mt-1 max-w-2xl leading-relaxed transition-colors ${
+              isLight ? "text-slate-600" : "text-slate-400"
+            }`}
+          >
             Choose a video from your channel uploads, drag and drop files from your laptop, or paste any video link to extract high-retention 9:16 viral shorts.
           </p>
         </div>
 
         {/* Status Pill on Right */}
         <div className="flex items-center gap-3 shrink-0">
-          <div className="px-4 py-2 rounded-xl bg-white/[0.03] border border-white/[0.08] flex items-center gap-3">
+          <div
+            className={`px-4 py-2 rounded-xl flex items-center gap-3 shadow-xs transition-colors ${
+              isLight
+                ? "bg-white border border-slate-200 text-slate-800"
+                : "bg-white/[0.03] border border-white/[0.08] text-white"
+            }`}
+          >
             <div className="flex flex-col text-right">
-              <span className="text-[10px] text-slate-400 font-medium tracking-wider uppercase">AI Credits</span>
-              <span className="text-xs font-bold text-white flex items-center justify-end gap-1">
+              <span className={`text-[10px] font-medium tracking-wider uppercase ${isLight ? "text-slate-500" : "text-slate-400"}`}>
+                AI Credits
+              </span>
+              <span className={`text-xs font-bold flex items-center justify-end gap-1 ${isLight ? "text-slate-900" : "text-white"}`}>
                 <Flame className="w-3.5 h-3.5 text-[#ff7427]" />
                 {creditsRemaining} / 3 Daily Free
               </span>
             </div>
-            <div className="h-6 w-px bg-white/10" />
+            <div className={`h-6 w-px ${isLight ? "bg-slate-200" : "bg-white/10"}`} />
             <div className="flex flex-col text-right">
-              <span className="text-[10px] text-slate-400 font-medium tracking-wider uppercase">Target Format</span>
-              <span className="text-xs font-bold text-amber-400">9:16 Vertical</span>
+              <span className={`text-[10px] font-medium tracking-wider uppercase ${isLight ? "text-slate-500" : "text-slate-400"}`}>
+                Target Format
+              </span>
+              <span className="text-xs font-bold text-[#ff7427]">9:16 Vertical</span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* 2. INGESTION SOURCE TABS (Clean Linear Tabs, No Harsh Boxes) */}
+      {/* 2. INGESTION SOURCE TABS */}
       <div className="flex flex-col gap-6">
-        <div className="flex items-center gap-8 border-b border-white/[0.08] px-2">
-          
+        <div
+          className={`flex items-center gap-8 border-b px-2 transition-colors ${
+            isLight ? "border-slate-200" : "border-white/[0.08]"
+          }`}
+        >
           {/* Tab 1: Channel Feed */}
           <button
             type="button"
             onClick={() => setActiveTab("channel")}
             className={`pb-3 text-sm font-semibold flex items-center gap-2.5 transition-colors relative cursor-pointer ${
-              activeTab === "channel" ? "text-white" : "text-slate-400 hover:text-slate-200"
+              activeTab === "channel"
+                ? isLight
+                  ? "text-slate-950 font-bold"
+                  : "text-white font-bold"
+                : isLight
+                ? "text-slate-500 hover:text-slate-900"
+                : "text-slate-400 hover:text-slate-200"
             }`}
           >
             <Youtube className={`w-4 h-4 ${activeTab === "channel" ? "text-[#ff7427]" : "text-slate-400"}`} />
@@ -405,13 +439,19 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
             type="button"
             onClick={() => setActiveTab("upload")}
             className={`pb-3 text-sm font-semibold flex items-center gap-2.5 transition-colors relative cursor-pointer ${
-              activeTab === "upload" ? "text-white" : "text-slate-400 hover:text-slate-200"
+              activeTab === "upload"
+                ? isLight
+                  ? "text-slate-950 font-bold"
+                  : "text-white font-bold"
+                : isLight
+                ? "text-slate-500 hover:text-slate-900"
+                : "text-slate-400 hover:text-slate-200"
             }`}
           >
             <Laptop className={`w-4 h-4 ${activeTab === "upload" ? "text-[#ff7427]" : "text-slate-400"}`} />
             <span>Upload from Laptop</span>
             {uploadedFile && (
-              <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" />
+              <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
             )}
             {activeTab === "upload" && (
               <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#ff7427] shadow-[0_0_8px_#ff7427]" />
@@ -423,7 +463,13 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
             type="button"
             onClick={() => setActiveTab("url")}
             className={`pb-3 text-sm font-semibold flex items-center gap-2.5 transition-colors relative cursor-pointer ${
-              activeTab === "url" ? "text-white" : "text-slate-400 hover:text-slate-200"
+              activeTab === "url"
+                ? isLight
+                  ? "text-slate-950 font-bold"
+                  : "text-white font-bold"
+                : isLight
+                ? "text-slate-500 hover:text-slate-900"
+                : "text-slate-400 hover:text-slate-200"
             }`}
           >
             <Link2 className={`w-4 h-4 ${activeTab === "url" ? "text-[#ff7427]" : "text-slate-400"}`} />
@@ -439,7 +485,13 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
           <div className="flex flex-col gap-6">
             
             {/* Channel Handle Bar & Search */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 p-4 rounded-2xl bg-white/[0.02] border border-white/[0.06]">
+            <div
+              className={`flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 p-4 rounded-2xl transition-colors ${
+                isLight
+                  ? "bg-white border border-slate-200/90 shadow-xs"
+                  : "bg-white/[0.02] border border-white/[0.06]"
+              }`}
+            >
               {/* Channel Selector */}
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-red-600/10 text-red-500 flex items-center justify-center shrink-0">
@@ -454,7 +506,11 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
                       value={inputHandle}
                       onChange={(e) => setInputHandle(e.target.value)}
                       placeholder="channel handle"
-                      className="px-2.5 py-1 text-sm bg-black/60 border border-white/20 rounded-lg text-white focus:outline-none focus:border-[#ff7427] w-40"
+                      className={`px-2.5 py-1 text-sm rounded-lg focus:outline-none focus:border-[#ff7427] w-40 ${
+                        isLight
+                          ? "bg-slate-50 border border-slate-300 text-slate-900"
+                          : "bg-black/60 border border-white/20 text-white"
+                      }`}
                       autoFocus
                     />
                     <button
@@ -469,7 +525,7 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
                         setInputHandle(channelHandle);
                         setIsEditingHandle(false);
                       }}
-                      className="text-xs text-slate-400 hover:text-white px-2 py-1 cursor-pointer"
+                      className="text-xs text-slate-500 hover:text-slate-700 px-2 py-1 cursor-pointer"
                     >
                       Cancel
                     </button>
@@ -478,17 +534,27 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
                   <div className="flex items-center gap-2">
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-bold text-white">@{channelHandle}</span>
-                        <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                        <span className={`text-sm font-bold ${isLight ? "text-slate-900" : "text-white"}`}>
+                          @{channelHandle}
+                        </span>
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${
+                            isLight
+                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                              : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                          }`}
+                        >
                           Connected
                         </span>
                       </div>
-                      <p className="text-xs text-slate-400">Showing recent uploads for clipping</p>
+                      <p className={`text-xs ${isLight ? "text-slate-500" : "text-slate-400"}`}>
+                        Showing recent uploads for clipping
+                      </p>
                     </div>
                     <button
                       type="button"
                       onClick={() => setIsEditingHandle(true)}
-                      className="ml-2 text-xs text-[#ff7427] hover:underline cursor-pointer"
+                      className="ml-2 text-xs font-medium text-[#ff7427] hover:underline cursor-pointer"
                     >
                       Change
                     </button>
@@ -505,13 +571,17 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
                     value={searchFilter}
                     onChange={(e) => setSearchFilter(e.target.value)}
                     placeholder="Search recent videos..."
-                    className="w-full pl-9 pr-3 py-1.5 text-xs bg-black/40 border border-white/[0.08] rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-white/20"
+                    className={`w-full pl-9 pr-3 py-1.5 text-xs rounded-xl focus:outline-none transition-colors ${
+                      isLight
+                        ? "bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400 focus:border-slate-300"
+                        : "bg-black/40 border border-white/[0.08] text-white placeholder-slate-500 focus:border-white/20"
+                    }`}
                   />
                   {searchFilter && (
                     <button
                       type="button"
                       onClick={() => setSearchFilter("")}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700"
                     >
                       <X className="w-3 h-3" />
                     </button>
@@ -522,7 +592,11 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
                   type="button"
                   onClick={() => fetchChannelVideos(channelHandle)}
                   disabled={isLoadingChannel}
-                  className="p-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] text-slate-300 hover:text-white border border-white/[0.06] transition-colors cursor-pointer"
+                  className={`p-2 rounded-xl border transition-colors cursor-pointer ${
+                    isLight
+                      ? "bg-slate-100 hover:bg-slate-200 text-slate-600 border-slate-200"
+                      : "bg-white/[0.04] hover:bg-white/[0.08] text-slate-300 hover:text-white border-white/[0.06]"
+                  }`}
                   title="Refresh video list"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isLoadingChannel ? "animate-spin text-[#ff7427]" : ""}`} />
@@ -536,15 +610,27 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
                 {[1, 2, 3, 4, 5, 6].map((idx) => (
                   <div
                     key={idx}
-                    className="aspect-video rounded-2xl bg-white/[0.03] animate-pulse border border-white/[0.05]"
+                    className={`aspect-video rounded-2xl animate-pulse border ${
+                      isLight
+                        ? "bg-slate-100 border-slate-200"
+                        : "bg-white/[0.03] border-white/[0.05]"
+                    }`}
                   />
                 ))}
               </div>
             ) : filteredVideos.length === 0 ? (
-              <div className="p-12 text-center rounded-2xl bg-white/[0.02] border border-white/[0.06] flex flex-col items-center gap-3">
-                <AlertCircle className="w-8 h-8 text-slate-500" />
-                <h3 className="text-base font-bold text-white">No videos found</h3>
-                <p className="text-xs text-slate-400 max-w-sm">
+              <div
+                className={`p-12 text-center rounded-2xl border flex flex-col items-center gap-3 ${
+                  isLight
+                    ? "bg-white border-slate-200 text-slate-800"
+                    : "bg-white/[0.02] border border-white/[0.06] text-white"
+                }`}
+              >
+                <AlertCircle className="w-8 h-8 text-slate-400" />
+                <h3 className={`text-base font-bold ${isLight ? "text-slate-900" : "text-white"}`}>
+                  No videos found
+                </h3>
+                <p className={`text-xs max-w-sm ${isLight ? "text-slate-500" : "text-slate-400"}`}>
                   {searchFilter
                     ? "No video titles match your search query."
                     : "Could not find recent public videos for this handle. Try switching channels or paste a direct video link."}
@@ -570,12 +656,15 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
                       }
                       className={`group relative rounded-2xl overflow-hidden cursor-pointer transition-all border ${
                         isSelected
-                          ? "border-[#ff7427] ring-1 ring-[#ff7427]/50 bg-white/[0.04]"
+                          ? "border-[#ff7427] ring-1 ring-[#ff7427]/50 " +
+                            (isLight ? "bg-[#ff7427]/[0.03] shadow-md" : "bg-white/[0.04]")
+                          : isLight
+                          ? "border-slate-200 bg-white hover:border-slate-300 shadow-xs hover:shadow-md"
                           : "border-white/[0.08] hover:border-white/20 bg-white/[0.02]"
                       }`}
                     >
                       {/* Thumbnail Container */}
-                      <div className="relative aspect-video w-full overflow-hidden bg-black/60">
+                      <div className="relative aspect-video w-full overflow-hidden bg-black/80">
                         {video.thumbnail ? (
                           <img
                             src={video.thumbnail}
@@ -584,7 +673,7 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
                             loading="lazy"
                           />
                         ) : (
-                          <div className="w-full h-full flex items-center justify-center bg-[#09090c] text-slate-600">
+                          <div className="w-full h-full flex items-center justify-center bg-[#09090c] text-slate-500">
                             <FileVideo className="w-10 h-10" />
                           </div>
                         )}
@@ -602,7 +691,7 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
                           </div>
                         )}
 
-                        {/* Select Hover Pill (Revealed on hover when not selected) */}
+                        {/* Select Hover Pill */}
                         {!isSelected && (
                           <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                             <span className="px-3 py-1.5 rounded-full bg-white text-black font-bold text-xs tracking-wide shadow-md">
@@ -616,17 +705,27 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
                       <div className="p-4 flex flex-col gap-1.5">
                         <h4
                           className={`text-xs font-bold line-clamp-2 leading-snug transition-colors ${
-                            isSelected ? "text-white" : "text-slate-200 group-hover:text-white"
+                            isSelected
+                              ? isLight
+                                ? "text-slate-950 font-extrabold"
+                                : "text-white font-extrabold"
+                              : isLight
+                              ? "text-slate-800 group-hover:text-slate-950 font-bold"
+                              : "text-slate-200 group-hover:text-white font-bold"
                           }`}
                           title={video.title}
                         >
                           {video.title}
                         </h4>
-                        <div className="flex items-center justify-between text-[11px] text-slate-400 mt-1">
+                        <div
+                          className={`flex items-center justify-between text-[11px] mt-1 ${
+                            isLight ? "text-slate-500" : "text-slate-400"
+                          }`}
+                        >
                           <span>{video.uploader || channelHandle}</span>
                           {video.view_count ? (
                             <span className="flex items-center gap-1">
-                              <Eye className="w-3 h-3 text-slate-500" />
+                              <Eye className="w-3 h-3 text-slate-400" />
                               {(video.view_count / 1000).toFixed(0)}k views
                             </span>
                           ) : null}
@@ -664,17 +763,23 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
               className={`p-12 sm:p-16 rounded-3xl border-2 border-dashed transition-all flex flex-col items-center justify-center text-center cursor-pointer relative overflow-hidden ${
                 isDragging
                   ? "border-[#ff7427] bg-[#ff7427]/5 shadow-[0_0_24px_rgba(255,116,39,0.15)]"
+                  : isLight
+                  ? "border-slate-300 hover:border-slate-400 bg-white shadow-xs"
                   : "border-white/15 hover:border-white/30 bg-white/[0.02]"
               }`}
             >
-              <div className="w-16 h-16 rounded-2xl bg-white/[0.05] border border-white/10 flex items-center justify-center text-[#ff7427] mb-4">
+              <div
+                className={`w-16 h-16 rounded-2xl flex items-center justify-center text-[#ff7427] mb-4 ${
+                  isLight ? "bg-slate-100 border border-slate-200" : "bg-white/[0.05] border border-white/10"
+                }`}
+              >
                 <Upload className="w-8 h-8" />
               </div>
 
-              <h3 className="text-lg font-bold text-white">
+              <h3 className={`text-lg font-bold ${isLight ? "text-slate-900" : "text-white"}`}>
                 Drag and drop your video file here
               </h3>
-              <p className="text-xs text-slate-400 mt-1 max-w-md leading-relaxed">
+              <p className={`text-xs mt-1 max-w-md leading-relaxed ${isLight ? "text-slate-500" : "text-slate-400"}`}>
                 Supports MP4, MOV, MKV, or WEBM files directly from your laptop. Maximum size up to 2GB.
               </p>
 
@@ -684,7 +789,11 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
                   e.stopPropagation();
                   fileInputRef.current?.click();
                 }}
-                className="mt-6 px-5 py-2.5 rounded-xl bg-white/[0.08] hover:bg-white/[0.12] text-white font-semibold text-xs border border-white/10 transition-colors cursor-pointer"
+                className={`mt-6 px-5 py-2.5 rounded-xl font-semibold text-xs transition-colors cursor-pointer ${
+                  isLight
+                    ? "bg-slate-900 hover:bg-slate-800 text-white shadow-xs"
+                    : "bg-white/[0.08] hover:bg-white/[0.12] text-white border border-white/10"
+                }`}
               >
                 Browse Files from Laptop
               </button>
@@ -700,14 +809,26 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
 
             {/* Uploaded File Confirmation Card */}
             {uploadedFile && (
-              <div className="p-5 rounded-2xl bg-white/[0.03] border border-emerald-500/30 flex items-center justify-between gap-4">
+              <div
+                className={`p-5 rounded-2xl border flex items-center justify-between gap-4 transition-colors ${
+                  isLight
+                    ? "bg-emerald-50/80 border-emerald-300 text-slate-900 shadow-xs"
+                    : "bg-white/[0.03] border-emerald-500/30 text-white"
+                }`}
+              >
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center shrink-0">
+                  <div
+                    className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                      isLight ? "bg-emerald-100 text-emerald-700" : "bg-emerald-500/10 text-emerald-400"
+                    }`}
+                  >
                     <CheckCircle2 className="w-5 h-5" />
                   </div>
                   <div>
-                    <h4 className="text-sm font-bold text-white">{uploadedFile.fileName}</h4>
-                    <p className="text-xs text-slate-400 mt-0.5">
+                    <h4 className={`text-sm font-bold ${isLight ? "text-slate-900" : "text-white"}`}>
+                      {uploadedFile.fileName}
+                    </h4>
+                    <p className={`text-xs mt-0.5 ${isLight ? "text-slate-600" : "text-slate-400"}`}>
                       {uploadedFile.sizeMb} MB • Duration: {uploadedFile.durationFormatted} • Ready for clipping
                     </p>
                   </div>
@@ -716,7 +837,9 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="text-xs text-slate-400 hover:text-white underline cursor-pointer"
+                  className={`text-xs underline cursor-pointer ${
+                    isLight ? "text-slate-500 hover:text-slate-900" : "text-slate-400 hover:text-white"
+                  }`}
                 >
                   Replace file
                 </button>
@@ -728,10 +851,16 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
         {/* TAB 3 CONTENT: PASTE VIDEO URL */}
         {activeTab === "url" && (
           <div className="flex flex-col gap-6">
-            <div className="p-8 rounded-3xl bg-white/[0.02] border border-white/[0.08] flex flex-col gap-5">
+            <div
+              className={`p-8 rounded-3xl border flex flex-col gap-5 transition-colors ${
+                isLight ? "bg-white border-slate-200/90 shadow-xs" : "bg-white/[0.02] border-white/[0.08]"
+              }`}
+            >
               <div>
-                <h3 className="text-base font-bold text-white">Paste Video Link</h3>
-                <p className="text-xs text-slate-400 mt-1">
+                <h3 className={`text-base font-bold ${isLight ? "text-slate-900" : "text-white"}`}>
+                  Paste Video Link
+                </h3>
+                <p className={`text-xs mt-1 ${isLight ? "text-slate-500" : "text-slate-400"}`}>
                   Extract shorts from any YouTube video, podcast episode, or stream recording.
                 </p>
               </div>
@@ -749,12 +878,20 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
                       }
                     }}
                     placeholder="https://www.youtube.com/watch?v=..."
-                    className="w-full pl-11 pr-24 py-3 bg-black/60 border border-white/[0.12] rounded-2xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-[#ff7427]"
+                    className={`w-full pl-11 pr-24 py-3 rounded-2xl text-sm focus:outline-none focus:border-[#ff7427] transition-colors ${
+                      isLight
+                        ? "bg-slate-50 border border-slate-300 text-slate-900 placeholder-slate-400"
+                        : "bg-black/60 border border-white/[0.12] text-white placeholder-slate-500"
+                    }`}
                   />
                   <button
                     type="button"
                     onClick={handlePasteClipboard}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 px-2.5 py-1 text-xs font-semibold rounded-lg bg-white/[0.08] text-slate-300 hover:text-white hover:bg-white/[0.12] cursor-pointer"
+                    className={`absolute right-3 top-1/2 -translate-y-1/2 px-2.5 py-1 text-xs font-semibold rounded-lg cursor-pointer ${
+                      isLight
+                        ? "bg-slate-200 hover:bg-slate-300 text-slate-700"
+                        : "bg-white/[0.08] text-slate-300 hover:text-white hover:bg-white/[0.12]"
+                    }`}
                   >
                     Paste
                   </button>
@@ -764,7 +901,11 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
                   type="button"
                   onClick={() => handleProbeUrl(directUrl)}
                   disabled={!directUrl || isProbingUrl}
-                  className="px-6 py-3 rounded-2xl bg-white text-black font-bold text-xs hover:bg-white/90 disabled:opacity-50 transition-colors cursor-pointer shrink-0"
+                  className={`px-6 py-3 rounded-2xl font-bold text-xs disabled:opacity-50 transition-colors cursor-pointer shrink-0 ${
+                    isLight
+                      ? "bg-slate-900 text-white hover:bg-slate-800"
+                      : "bg-white text-black hover:bg-white/90"
+                  }`}
                 >
                   {isProbingUrl ? "Inspecting..." : "Inspect Link"}
                 </button>
@@ -772,7 +913,11 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
 
               {/* Probed Video Preview */}
               {probedVideo && (
-                <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/[0.08] flex items-center gap-4">
+                <div
+                  className={`p-4 rounded-2xl border flex items-center gap-4 transition-colors ${
+                    isLight ? "bg-slate-50 border-slate-200" : "bg-white/[0.03] border-white/[0.08]"
+                  }`}
+                >
                   {probedVideo.thumbnail && (
                     <img
                       src={probedVideo.thumbnail}
@@ -781,12 +926,20 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
                     />
                   )}
                   <div className="flex-1">
-                    <h4 className="text-xs font-bold text-white line-clamp-1">{probedVideo.title}</h4>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
+                    <h4 className={`text-xs font-bold line-clamp-1 ${isLight ? "text-slate-900" : "text-white"}`}>
+                      {probedVideo.title}
+                    </h4>
+                    <p className={`text-[11px] mt-0.5 ${isLight ? "text-slate-500" : "text-slate-400"}`}>
                       Duration: {probedVideo.durationFormatted} • {probedVideo.uploader || "YouTube"}
                     </p>
                   </div>
-                  <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs font-bold">
+                  <span
+                    className={`px-2.5 py-1 rounded-full text-xs font-bold border ${
+                      isLight
+                        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                        : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                    }`}
+                  >
                     Ready
                   </span>
                 </div>
@@ -796,10 +949,15 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
         )}
       </div>
 
-      {/* 3. PRE-FLIGHT GENERATION DOCK (Fixed Bottom Command Center Dock) */}
+      {/* 3. PRE-FLIGHT GENERATION DOCK */}
       {selectedSource && (
-        <div className="sticky bottom-6 z-30 w-full p-4 sm:p-5 rounded-3xl bg-[#0d0d12]/95 backdrop-blur-2xl border border-white/[0.12] shadow-2xl flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-5">
-          
+        <div
+          className={`sticky bottom-6 z-30 w-full p-4 sm:p-5 rounded-3xl backdrop-blur-2xl transition-all shadow-2xl flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-5 border ${
+            isLight
+              ? "bg-white/95 border-slate-200 text-slate-800"
+              : "bg-[#0d0d12]/95 border-white/[0.12] text-white"
+          }`}
+        >
           {/* Selected Video Summary */}
           <div className="flex items-center gap-3.5 min-w-0">
             {selectedSource.thumbnail ? (
@@ -809,7 +967,11 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
                 className="w-16 h-10 object-cover rounded-lg shrink-0 border border-white/10"
               />
             ) : (
-              <div className="w-16 h-10 rounded-lg bg-white/[0.06] flex items-center justify-center shrink-0 text-slate-400">
+              <div
+                className={`w-16 h-10 rounded-lg flex items-center justify-center shrink-0 ${
+                  isLight ? "bg-slate-100 text-slate-500" : "bg-white/[0.06] text-slate-400"
+                }`}
+              >
                 <FileVideo className="w-5 h-5" />
               </div>
             )}
@@ -824,10 +986,15 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
                     : "Direct Link"}
                 </span>
                 {selectedSource.durationFormatted && (
-                  <span className="text-[10px] text-slate-400">• {selectedSource.durationFormatted}</span>
+                  <span className={`text-[10px] ${isLight ? "text-slate-500" : "text-slate-400"}`}>
+                    • {selectedSource.durationFormatted}
+                  </span>
                 )}
               </div>
-              <h4 className="text-xs font-bold text-white truncate max-w-md" title={selectedSource.title}>
+              <h4
+                className={`text-xs font-bold truncate max-w-md ${isLight ? "text-slate-900" : "text-white"}`}
+                title={selectedSource.title}
+              >
                 {selectedSource.title}
               </h4>
             </div>
@@ -837,31 +1004,57 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
           <div className="flex flex-wrap items-center gap-3 lg:gap-4">
             
             {/* Target Duration Selector */}
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/[0.03] border border-white/[0.08]">
+            <div
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border ${
+                isLight ? "bg-slate-100 border-slate-200" : "bg-white/[0.03] border-white/[0.08]"
+              }`}
+            >
               <Clock className="w-3.5 h-3.5 text-slate-400" />
               <select
                 value={targetDuration}
                 onChange={(e) => setTargetDuration(Number(e.target.value))}
-                className="bg-transparent text-xs font-semibold text-white focus:outline-none cursor-pointer"
+                className={`bg-transparent text-xs font-semibold focus:outline-none cursor-pointer ${
+                  isLight ? "text-slate-800" : "text-white"
+                }`}
               >
-                <option value={30} className="bg-black text-white">Under 30s</option>
-                <option value={45} className="bg-black text-white">30s - 60s (Auto)</option>
-                <option value={60} className="bg-black text-white">60s - 90s</option>
+                <option value={30} className={isLight ? "bg-white text-slate-900" : "bg-black text-white"}>
+                  Under 30s
+                </option>
+                <option value={45} className={isLight ? "bg-white text-slate-900" : "bg-black text-white"}>
+                  30s - 60s (Auto)
+                </option>
+                <option value={60} className={isLight ? "bg-white text-slate-900" : "bg-black text-white"}>
+                  60s - 90s
+                </option>
               </select>
             </div>
 
             {/* Captions Preset Selector */}
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/[0.03] border border-white/[0.08]">
-              <span className="text-xs font-bold text-amber-400">CC</span>
+            <div
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border ${
+                isLight ? "bg-slate-100 border-slate-200" : "bg-white/[0.03] border-white/[0.08]"
+              }`}
+            >
+              <span className="text-xs font-bold text-amber-500">CC</span>
               <select
                 value={captionPreset}
                 onChange={(e) => setCaptionPreset(e.target.value)}
-                className="bg-transparent text-xs font-semibold text-white focus:outline-none cursor-pointer"
+                className={`bg-transparent text-xs font-semibold focus:outline-none cursor-pointer ${
+                  isLight ? "text-slate-800" : "text-white"
+                }`}
               >
-                <option value="hormozi" className="bg-black text-white">Hormozi Punch</option>
-                <option value="beast" className="bg-black text-white">MrBeast Pop</option>
-                <option value="karaoke" className="bg-black text-white">Karaoke Glow</option>
-                <option value="minimal" className="bg-black text-white">Minimal Clean</option>
+                <option value="hormozi" className={isLight ? "bg-white text-slate-900" : "bg-black text-white"}>
+                  Hormozi Punch
+                </option>
+                <option value="beast" className={isLight ? "bg-white text-slate-900" : "bg-black text-white"}>
+                  MrBeast Pop
+                </option>
+                <option value="karaoke" className={isLight ? "bg-white text-slate-900" : "bg-black text-white"}>
+                  Karaoke Glow
+                </option>
+                <option value="minimal" className={isLight ? "bg-white text-slate-900" : "bg-black text-white"}>
+                  Minimal Clean
+                </option>
               </select>
             </div>
 
@@ -874,6 +1067,8 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
               className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 border transition-colors cursor-pointer ${
                 clippingMode === "ai_enhanced"
                   ? "bg-[#ff7427]/10 border-[#ff7427]/40 text-[#ff7427]"
+                  : isLight
+                  ? "bg-slate-100 border-slate-200 text-slate-700"
                   : "bg-white/[0.03] border-white/[0.08] text-slate-300"
               }`}
             >

@@ -533,6 +533,7 @@ export default function Home() {
             onSignOut={handleSignOut}
             isExpanded={isSidebarExpanded}
             onToggleExpand={() => setIsSidebarExpanded((prev) => !prev)}
+            theme={theme}
           />
 
           {/* Main Studio Canvas Area (seamlessly unified with Sidebar and TopUtilityHeader) */}
@@ -579,6 +580,7 @@ export default function Home() {
             onDownloadSingle={handleDownloadSingle}
             onBackToStudio={() => setActiveView("studio")}
             backendUrl={BACKEND_URL}
+            theme={theme}
           />
         )}
 
@@ -629,6 +631,7 @@ export default function Home() {
                 onStartGeneration={handleStartCommandCenterGeneration}
                 showToast={showToast}
                 sessionToken={session?.access_token}
+                theme={theme}
               />
             )}
 
