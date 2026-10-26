@@ -617,7 +617,7 @@ export default function Home() {
             />
 
             {/* Main Canvas */}
-            <main className="flex-grow flex flex-col items-center justify-start px-4 sm:px-6 lg:px-8 py-8 md:py-12 max-w-6xl mx-auto w-full">
+            <main className="flex-grow flex flex-col items-center justify-start px-4 sm:px-6 lg:px-8 py-8 md:py-12 max-w-[1720px] mx-auto w-full transition-all duration-300">
         
         {/* VIEW 1: MY CLIPS / HISTORY */}
         {activeView === "history" && (
@@ -647,7 +647,7 @@ export default function Home() {
 
         {/* VIEW 3: SHORTS STUDIO COMMAND CENTER */}
         {activeView === "studio" && (
-          <div className="w-full flex flex-col items-center gap-8">
+          <div className="w-full flex flex-col gap-8">
             
             {/* Completed Results Showcase */}
             {status === "completed" && clips.length > 0 ? (
@@ -764,7 +764,7 @@ export default function Home() {
       <main className="flex-grow flex flex-col items-center justify-start w-full">
         {/* VIEW 1: MY CLIPS / HISTORY */}
         {activeView === "history" && (
-          <div className="px-4 sm:px-6 lg:px-8 pt-24 sm:pt-28 pb-12 md:pb-16 max-w-6xl mx-auto w-full">
+          <div className="px-4 sm:px-6 lg:px-8 pt-24 sm:pt-28 pb-12 md:pb-16 max-w-[1720px] mx-auto w-full transition-all duration-300">
             <HistoryView
               history={history}
               loading={loadingHistory}

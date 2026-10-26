@@ -16,6 +16,7 @@ import {
   LogOut,
   Zap,
 } from "lucide-react";
+import { useUIFeedback } from "@/components/UIFeedback";
 
 interface SidebarNavProps {
   activeView: string;
@@ -47,6 +48,7 @@ export default function SidebarNav({
   theme = "dark",
 }: SidebarNavProps) {
   const isLight = theme === "light";
+  const { showToast } = useUIFeedback();
   const [internalExpanded, setInternalExpanded] = useState(false);
   const isExpanded = controlledExpanded !== undefined ? controlledExpanded : internalExpanded;
 
@@ -70,8 +72,8 @@ export default function SidebarNav({
       id: "long_studio",
       label: "Long Studio",
       icon: MonitorPlay,
-      badge: undefined,
-      onClick: () => onSelectView("long_studio"),
+      badge: "Soon",
+      onClick: () => showToast("Long Studio is coming soon!", "info"),
     },
     {
       id: "projects",
@@ -85,28 +87,28 @@ export default function SidebarNav({
       label: "Connected Accounts",
       icon: Share2,
       badge: "Soon",
-      onClick: () => {},
+      onClick: () => showToast("Connected Accounts is coming soon!", "info"),
     },
     {
       id: "analytics",
       label: "Analytics",
       icon: BarChart3,
       badge: "Soon",
-      onClick: () => {},
+      onClick: () => showToast("Analytics is coming soon!", "info"),
     },
     {
       id: "calendar",
       label: "Schedule",
       icon: Calendar,
       badge: "Soon",
-      onClick: () => {},
+      onClick: () => showToast("Schedule is coming soon!", "info"),
     },
     {
       id: "archive",
       label: "Archive",
       icon: Archive,
-      badge: undefined,
-      onClick: () => {},
+      badge: "Soon",
+      onClick: () => showToast("Archive is coming soon!", "info"),
     },
   ];
 

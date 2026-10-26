@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
+import { CheckCircle2, AlertCircle, AlertTriangle, Info, X, Trash2, HelpCircle } from "lucide-react";
 
 export type ToastType = "success" | "error" | "info" | "warning";
 
@@ -91,38 +92,45 @@ export function UIFeedbackProvider({ children }: { children: React.ReactNode }) 
       {/* Toast Notification Container (Bottom-Right Floating) */}
       <div className="fixed bottom-5 right-5 z-[9999] flex flex-col gap-2.5 max-w-sm sm:max-w-md w-full pointer-events-none px-4 sm:px-0">
         {toasts.map((toast) => {
-          let badgeColor = "border-sky-500/30 bg-sky-500/10 text-sky-600 dark:text-sky-400";
-          let icon = "info";
-
-          if (toast.type === "success") {
-            badgeColor = "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400";
-            icon = "check_circle";
-          } else if (toast.type === "error") {
-            badgeColor = "border-rose-500/30 bg-rose-500/10 text-rose-600 dark:text-rose-400";
-            icon = "error";
-          } else if (toast.type === "warning") {
-            badgeColor = "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400";
-            icon = "warning";
-          }
-
           return (
             <div
               key={toast.id}
-              className="pointer-events-auto flex items-start gap-3 p-3.5 sm:p-4 rounded-2xl bg-white/95 dark:bg-[#12121b]/95 border border-slate-200/80 dark:border-white/10 shadow-2xl backdrop-blur-xl transition-all duration-300 animate-in fade-in slide-in-from-bottom-3"
+              className="pointer-events-auto flex items-center gap-3 p-3.5 sm:px-4 sm:py-3.5 rounded-2xl bg-[#0e0e14]/95 border border-white/10 shadow-[0_16px_36px_rgba(0,0,0,0.5)] backdrop-blur-2xl transition-all duration-300 animate-in fade-in slide-in-from-bottom-3"
             >
-              <div className={`p-1.5 rounded-xl border shrink-0 ${badgeColor}`}>
-                <span className="material-symbols-outlined text-[19px] block">{icon}</span>
+              <div className="shrink-0 flex items-center justify-center">
+                {toast.type === "success" && (
+                  <div className="w-8 h-8 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center justify-center">
+                    <CheckCircle2 className="w-4 h-4" />
+                  </div>
+                )}
+                {toast.type === "error" && (
+                  <div className="w-8 h-8 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-400 flex items-center justify-center">
+                    <AlertCircle className="w-4 h-4" />
+                  </div>
+                )}
+                {toast.type === "warning" && (
+                  <div className="w-8 h-8 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center">
+                    <AlertTriangle className="w-4 h-4" />
+                  </div>
+                )}
+                {toast.type === "info" && (
+                  <div className="w-8 h-8 rounded-xl bg-[#ff7427]/15 border border-[#ff7427]/30 text-[#ff7427] flex items-center justify-center">
+                    <Info className="w-4 h-4" />
+                  </div>
+                )}
               </div>
-              <div className="flex-1 text-xs sm:text-sm font-medium text-slate-800 dark:text-slate-200 leading-snug pt-0.5">
+
+              <div className="flex-1 text-xs sm:text-sm font-semibold text-white leading-snug">
                 {toast.message}
               </div>
+
               <button
                 type="button"
                 onClick={() => removeToast(toast.id)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-lg transition-colors cursor-pointer"
+                className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition-colors cursor-pointer shrink-0"
                 aria-label="Dismiss toast"
               >
-                <span className="material-symbols-outlined text-[17px] block">close</span>
+                <X className="w-3.5 h-3.5" />
               </button>
             </div>
           );
@@ -139,24 +147,26 @@ export function UIFeedbackProvider({ children }: { children: React.ReactNode }) 
           />
 
           {/* Dialog Container */}
-          <div className="relative w-full max-w-md bg-white dark:bg-[#12121b] border border-slate-200 dark:border-white/10 rounded-3xl p-6 shadow-2xl backdrop-blur-2xl z-10 transition-all transform animate-in zoom-in-95 duration-200">
+          <div className="relative w-full max-w-md bg-[#12121b] border border-white/10 rounded-3xl p-6 shadow-2xl backdrop-blur-2xl z-10 transition-all transform animate-in zoom-in-95 duration-200">
             <div className="flex items-start gap-4">
               <div
                 className={`p-3 rounded-2xl border shrink-0 ${
                   confirmModal.isDanger
-                    ? "bg-rose-500/10 border-rose-500/25 text-rose-600 dark:text-rose-400"
-                    : "bg-indigo-500/10 border-indigo-500/25 text-indigo-600 dark:text-indigo-400"
+                    ? "bg-rose-500/10 border-rose-500/25 text-rose-400"
+                    : "bg-[#ff7427]/10 border-[#ff7427]/25 text-[#ff7427]"
                 }`}
               >
-                <span className="material-symbols-outlined text-[24px] block">
-                  {confirmModal.isDanger ? "delete_forever" : "help"}
-                </span>
+                {confirmModal.isDanger ? (
+                  <Trash2 className="w-5 h-5" />
+                ) : (
+                  <HelpCircle className="w-5 h-5" />
+                )}
               </div>
               <div className="flex-1">
-                <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">
+                <h3 className="text-base sm:text-lg font-bold text-white">
                   {confirmModal.title}
                 </h3>
-                <p className="mt-1.5 text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+                <p className="mt-1.5 text-xs sm:text-sm text-slate-300 leading-relaxed">
                   {confirmModal.message}
                 </p>
               </div>

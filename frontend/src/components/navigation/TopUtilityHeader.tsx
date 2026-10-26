@@ -32,7 +32,7 @@ export default function TopUtilityHeader({
 
   return (
     <header
-      className={`w-full h-16 flex items-center justify-between px-4 sm:px-6 sticky top-0 z-30 transition-all duration-300 backdrop-blur-2xl ${
+      className={`w-full h-16 flex items-center justify-between px-4 sm:px-6 lg:px-8 sticky top-0 z-30 transition-all duration-300 backdrop-blur-2xl ${
         isLight
           ? "bg-white/90 border-b border-slate-200/80 shadow-[0_1px_2px_rgba(0,0,0,0.03)]"
           : "bg-[#09090c]/90 border-b border-white/[0.08]"

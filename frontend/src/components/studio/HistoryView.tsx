@@ -85,7 +85,7 @@ export default function HistoryView({
   }
 
   return (
-    <div className="w-full max-w-6xl mx-auto flex flex-col gap-6 animate-in fade-in duration-200">
+    <div className="w-full max-w-[1720px] mx-auto flex flex-col gap-6 animate-in fade-in duration-200 transition-all duration-300">
       {/* Header */}
       <div
         className={`flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b ${
