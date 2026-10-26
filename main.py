@@ -15,7 +15,8 @@ if sys.platform == "win32":
         pass
 from fastapi import FastAPI, BackgroundTasks, HTTPException, Depends, Query, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse, RedirectResponse
+import time
 from pydantic import BaseModel, Field
 
 load_dotenv()
@@ -38,10 +39,21 @@ from db import (
     record_job,
     update_job_status,
     get_user_history,
-    delete_user_job
+    delete_user_job,
+    save_user_youtube_channel,
+    get_user_youtube_channel,
+    delete_user_youtube_channel
 )
 from auth import get_current_user, get_current_user_optional
 from storage import upload_clips_and_cleanup, delete_job_files_from_supabase
+from youtube_service import (
+    get_oauth_authorization_url,
+    exchange_code_for_tokens,
+    fetch_user_channel_profile,
+    fetch_channel_videos as fetch_auth_channel_videos,
+    get_valid_access_token,
+    FRONTEND_URL
+)
 
 app = FastAPI(title="AI Video Clipping Platform Backend")
 
@@ -229,6 +241,121 @@ def delete_user_clip_project(job_id: str, user: Dict[str, Any] = Depends(get_cur
         del jobs[job_id]
 
     return {"success": True, "message": "Project deleted successfully"}
+
+
+# ==========================================
+# YOUTUBE OAUTH 2.0 & PERSONAL CHANNEL APIs
+# ==========================================
+
+@app.get("/auth/youtube/url")
+def get_youtube_oauth_url(user: Dict[str, Any] = Depends(get_current_user_optional), user_id: Optional[str] = None):
+    """Generate Google OAuth 2.0 authorization URL for authenticating user's YouTube channel."""
+    uid = user.get("id") if user.get("is_authenticated") else (user_id or "guest")
+    auth_url = get_oauth_authorization_url(uid)
+    return {"auth_url": auth_url}
+
+
+@app.get("/auth/youtube/callback")
+def handle_youtube_oauth_callback(code: str, state: Optional[str] = None, error: Optional[str] = None):
+    """
+    Handle Google OAuth 2.0 redirect callback.
+    Exchanges code for access/refresh tokens and fetches the user's OWN channel via mine=true.
+    """
+    import urllib.parse
+
+    if error:
+        return RedirectResponse(url=f"{FRONTEND_URL}/?youtube_error={urllib.parse.quote(error)}")
+
+    if not code:
+        return RedirectResponse(url=f"{FRONTEND_URL}/?youtube_error=missing_code")
+
+    user_id = state or "guest"
+    try:
+        # 1. Exchange code for tokens
+        tokens = exchange_code_for_tokens(code)
+        access_token = tokens["access_token"]
+        refresh_token = tokens.get("refresh_token")
+        expires_in = tokens.get("expires_in", 3600)
+        token_expiry = time.time() + expires_in
+
+        # 2. Fetch user's own channel (mine=true)
+        channel_profile = fetch_user_channel_profile(access_token)
+
+        # 3. Store channel data mapped to this user_id
+        channel_data = {
+            **channel_profile,
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_expiry": token_expiry,
+        }
+        save_user_youtube_channel(user_id, channel_data)
+
+        return RedirectResponse(url=f"{FRONTEND_URL}/?youtube_connected=true")
+    except Exception as e:
+        print(f"[YouTube OAuth] Callback processing error: {e}")
+        return RedirectResponse(url=f"{FRONTEND_URL}/?youtube_error={urllib.parse.quote(str(e))}")
+
+
+@app.get("/auth/youtube/status")
+def get_youtube_channel_status(user: Dict[str, Any] = Depends(get_current_user_optional), user_id: Optional[str] = None):
+    """Check if current user has connected their verified YouTube channel."""
+    uid = user.get("id") if user.get("is_authenticated") else (user_id or "guest")
+    channel = get_user_youtube_channel(uid)
+    if not channel:
+        return {"connected": False, "channel": None}
+
+    return {
+        "connected": True,
+        "channel": {
+            "channel_id": channel.get("channel_id"),
+            "channel_title": channel.get("channel_title"),
+            "channel_handle": channel.get("channel_handle"),
+            "channel_thumbnail": channel.get("channel_thumbnail"),
+            "subscriber_count": channel.get("subscriber_count"),
+            "video_count": channel.get("video_count"),
+            "connected_at": channel.get("connected_at"),
+        }
+    }
+
+
+@app.get("/auth/youtube/my-videos")
+def get_user_authenticated_videos(user: Dict[str, Any] = Depends(get_current_user_optional), user_id: Optional[str] = None):
+    """Retrieve recent uploaded videos directly from the user's connected YouTube channel."""
+    uid = user.get("id") if user.get("is_authenticated") else (user_id or "guest")
+    channel = get_user_youtube_channel(uid)
+    if not channel:
+        return {
+            "connected": False,
+            "videos": [],
+            "message": "No YouTube channel connected. Please connect your channel first."
+        }
+
+    try:
+        access_token = get_valid_access_token(uid, channel)
+        uploads_playlist_id = channel.get("uploads_playlist_id")
+        
+        videos = fetch_auth_channel_videos(access_token, uploads_playlist_id, max_results=24)
+        return {
+            "connected": True,
+            "channel": {
+                "channel_id": channel.get("channel_id"),
+                "channel_title": channel.get("channel_title"),
+                "channel_handle": channel.get("channel_handle"),
+                "channel_thumbnail": channel.get("channel_thumbnail"),
+            },
+            "videos": videos
+        }
+    except Exception as e:
+        print(f"[YouTube Videos] Error fetching channel videos: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch videos from your channel: {str(e)}")
+
+
+@app.post("/auth/youtube/disconnect")
+def disconnect_youtube_channel(user: Dict[str, Any] = Depends(get_current_user_optional), user_id: Optional[str] = None):
+    """Disconnect and unlink the user's YouTube channel."""
+    uid = user.get("id") if user.get("is_authenticated") else (user_id or "guest")
+    deleted = delete_user_youtube_channel(uid)
+    return {"success": deleted, "message": "YouTube channel disconnected successfully."}
 
 
 def is_valid_youtube_url(url: str) -> bool:
