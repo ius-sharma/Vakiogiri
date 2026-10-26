@@ -603,13 +603,6 @@ export default function Home() {
                   ? "Long Studio"
                   : "Shorts Studio"
               }
-              badge={
-                activeView === "history"
-                  ? undefined
-                  : activeView === "long_studio"
-                  ? "Stream & VOD Highlights"
-                  : "AI Best Moments"
-              }
               userProfile={userProfile}
               session={session}
               onOpenAuth={() => {

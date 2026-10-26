@@ -63,17 +63,6 @@ export default function TopUtilityHeader({
           >
             {title}
           </h2>
-          {badge && (
-            <span
-              className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full tracking-wide ${
-                isLight
-                  ? "bg-[#ff7427]/10 text-[#ff7427] border border-[#ff7427]/25"
-                  : "bg-[#ff7427]/15 text-[#ff7427] border border-[#ff7427]/30"
-              }`}
-            >
-              {badge}
-            </span>
-          )}
         </div>
       </div>
 
