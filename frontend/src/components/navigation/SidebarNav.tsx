@@ -3,15 +3,19 @@
 import React, { useState } from "react";
 import Image from "next/image";
 import {
-  KoboyoClapperboard,
-  KoboyoFilm,
-  KoboyoBarChart,
-  KoboyoCalendar,
-  KoboyoArchive,
-  KoboyoSettings,
-  KoboyoUser,
-} from "./KoboyoIcons";
-import { ChevronLeft, ChevronRight, LogOut, Zap } from "lucide-react";
+  Scissors,
+  MonitorPlay,
+  Film,
+  Share2,
+  BarChart3,
+  Calendar,
+  Archive,
+  Settings,
+  ChevronLeft,
+  ChevronRight,
+  LogOut,
+  Zap,
+} from "lucide-react";
 
 interface SidebarNavProps {
   activeView: string;
@@ -55,37 +59,51 @@ export default function SidebarNav({
     {
       id: "studio",
       label: "Shorts Studio",
-      icon: KoboyoClapperboard,
+      icon: Scissors,
       badge: undefined,
       onClick: () => onSelectView("studio"),
+    },
+    {
+      id: "long_studio",
+      label: "Long Studio",
+      icon: MonitorPlay,
+      badge: undefined,
+      onClick: () => onSelectView("long_studio"),
     },
     {
       id: "projects",
       label: "Clips Library",
-      icon: KoboyoFilm,
+      icon: Film,
       badge: historyCount > 0 ? historyCount : undefined,
       onClick: () => onSelectView("history"),
     },
     {
+      id: "connected_accounts",
+      label: "Connected Accounts",
+      icon: Share2,
+      badge: "Soon",
+      onClick: () => {},
+    },
+    {
       id: "analytics",
       label: "Analytics",
-      icon: KoboyoBarChart,
+      icon: BarChart3,
       badge: "Soon",
-      onClick: () => onSelectView("studio"),
+      onClick: () => {},
     },
     {
       id: "calendar",
       label: "Schedule",
-      icon: KoboyoCalendar,
+      icon: Calendar,
       badge: "Soon",
-      onClick: () => onSelectView("studio"),
+      onClick: () => {},
     },
     {
       id: "archive",
       label: "Archive",
-      icon: KoboyoArchive,
+      icon: Archive,
       badge: undefined,
-      onClick: () => onSelectView("studio"),
+      onClick: () => {},
     },
   ];
 
@@ -93,7 +111,7 @@ export default function SidebarNav({
     {
       id: "settings",
       label: "Settings",
-      icon: KoboyoSettings,
+      icon: Settings,
       onClick: () => onSelectView("studio"),
     },
   ];
@@ -128,13 +146,9 @@ export default function SidebarNav({
                 />
               </div>
               <div className="flex flex-col text-left">
-                <span className="text-sm font-bold text-white tracking-tight flex items-center gap-1.5">
+                <span className="text-base font-bold text-white tracking-tight">
                   Vakiogiri
-                  <span className="text-[9px] font-mono px-1.5 py-0.2 rounded-full bg-[#ff7427]/20 text-[#ff7427] font-semibold border border-[#ff7427]/30">
-                    AI
-                  </span>
                 </span>
-                <span className="text-[10px] text-slate-400 font-medium">Shorts Studio</span>
               </div>
             </button>
 
@@ -170,7 +184,7 @@ export default function SidebarNav({
       </div>
 
       {/* 2. CENTER NAVIGATION ITEMS - Clean, Boxless, Subtle Glow, No Zoom */}
-      <nav className="flex-1 flex flex-col gap-1 py-4 px-2 overflow-y-auto overflow-x-hidden scrollbar-none">
+      <nav className="flex-1 flex flex-col gap-1 py-3 px-2 overflow-y-auto overflow-x-hidden scrollbar-none">
         {topItems.map((item) => {
           const isActive =
             activeView === item.id ||
@@ -188,7 +202,7 @@ export default function SidebarNav({
                 isExpanded ? "px-2 py-1" : "justify-center py-1.5"
               }`}
             >
-              {/* Refined Minimal Left Rim Notch Indicator (Toned down, no blinding glow) */}
+              {/* Refined Minimal Left Rim Notch Indicator */}
               <span
                 className={`absolute left-0 top-1/2 -translate-y-1/2 w-[2.5px] rounded-r-full transition-all duration-200 ease-out pointer-events-none ${
                   isActive
@@ -217,7 +231,7 @@ export default function SidebarNav({
                         : "text-slate-400 group-hover:text-white"
                     }`}
                   >
-                    <IconComponent size={20} />
+                    <IconComponent className="w-4.5 h-4.5" />
                   </div>
 
                   {isExpanded && (
@@ -302,7 +316,7 @@ export default function SidebarNav({
                 } text-slate-400 hover:text-white hover:bg-white/[0.04]`}
               >
                 <div className="transition-colors duration-200 group-hover:text-white">
-                  <IconComponent size={19} />
+                  <IconComponent className="w-4.5 h-4.5" />
                 </div>
                 {isExpanded && (
                   <span className="text-xs font-medium tracking-tight text-slate-400 group-hover:text-white transition-colors duration-200">

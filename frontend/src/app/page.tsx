@@ -10,6 +10,7 @@ import QuickPresetBar from "@/components/studio/QuickPresetBar";
 import AdvancedDrawer from "@/components/studio/AdvancedDrawer";
 import LivePipelineTracker from "@/components/studio/LivePipelineTracker";
 import ClipShowcaseGrid from "@/components/studio/ClipShowcaseGrid";
+import LongStudioView from "@/components/studio/LongStudioView";
 import HistoryView, { HistoryProject } from "@/components/studio/HistoryView";
 import AuthModal from "@/components/AuthModal";
 import { useUIFeedback } from "@/components/UIFeedback";
@@ -33,7 +34,7 @@ export default function Home() {
   const [theme, setTheme] = useState<"light" | "dark">("dark");
   
   // Navigation view
-  const [activeView, setActiveView] = useState<"studio" | "history">("studio");
+  const [activeView, setActiveView] = useState<"studio" | "long_studio" | "history">("studio");
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
   const [history, setHistory] = useState<HistoryProject[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -461,8 +462,20 @@ export default function Home() {
             isSidebarExpanded ? "pl-0 md:pl-[240px]" : "pl-0 md:pl-[72px]"
           }`}>
             <TopUtilityHeader
-              title={activeView === "history" ? "My Clips Library" : "Shorts Studio"}
-              badge="AI Best Moments"
+              title={
+                activeView === "history"
+                  ? "My Clips Library"
+                  : activeView === "long_studio"
+                  ? "Long Studio"
+                  : "Shorts Studio"
+              }
+              badge={
+                activeView === "history"
+                  ? undefined
+                  : activeView === "long_studio"
+                  ? "Stream & VOD Highlights"
+                  : "AI Best Moments"
+              }
               userProfile={userProfile}
               session={session}
               onOpenAuth={() => {
@@ -491,7 +504,20 @@ export default function Home() {
           />
         )}
 
-        {/* VIEW 2: SHORTS STUDIO */}
+        {/* VIEW 2: LONG STUDIO (STREAM HIGHLIGHTS & SUPERCUTS) */}
+        {activeView === "long_studio" && (
+          <LongStudioView
+            session={session}
+            userProfile={userProfile}
+            onRefreshProfile={() => {
+              if (session?.access_token) {
+                fetchUserProfile(session.access_token);
+              }
+            }}
+          />
+        )}
+
+        {/* VIEW 3: SHORTS STUDIO */}
         {activeView === "studio" && (
           <div className="w-full flex flex-col items-center gap-8 text-center my-auto">
             
