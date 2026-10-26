@@ -13,15 +13,17 @@ if sys.platform == "win32":
         sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
         pass
-from fastapi import FastAPI, BackgroundTasks, HTTPException, Depends, Query
+from fastapi import FastAPI, BackgroundTasks, HTTPException, Depends, Query, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 load_dotenv()
 
+import yt_dlp
 from pipeline import (
     run_pipeline,
+    get_video_duration,
     DEFAULT_SEGMENT_DURATION,
     probe_stream_metadata,
     format_duration,
@@ -79,8 +81,15 @@ class ProbeRequest(BaseModel):
     youtube_url: str
 
 
+class ChannelVideosRequest(BaseModel):
+    channel_url: Optional[str] = None
+    channel_handle: Optional[str] = None
+
+
 class ProcessRequest(BaseModel):
-    youtube_url: str
+    youtube_url: Optional[str] = None
+    local_file_path: Optional[str] = None
+    title: Optional[str] = None
     segment_duration: Optional[int] = Field(default=None, ge=15, le=600)  # Up to 600s (10 min) for stream highlights
     max_clips: Optional[int] = Field(default=None, ge=1, le=10)
     synthesize_stories: Optional[bool] = Field(default=None)
@@ -251,24 +260,220 @@ def probe_stream_endpoint(request: ProbeRequest):
     return meta
 
 
+
+@app.post("/channel/videos")
+def get_channel_videos(
+    request: ChannelVideosRequest,
+    user: Dict[str, Any] = Depends(get_current_user_optional)
+):
+    """
+    Fetch the latest uploads for a given YouTube channel or handle using yt-dlp flat extraction.
+    Falls back gracefully to high-retention creator demo videos if offline, rate-limited, or handle is empty.
+    """
+    target = (request.channel_url or request.channel_handle or "").strip()
+    if not target:
+        target = "risewithius"
+    
+    # Normalize channel URL / handle
+    if not target.startswith("http://") and not target.startswith("https://"):
+        clean_handle = target if target.startswith("@") else f"@{target}"
+        channel_url = f"https://www.youtube.com/{clean_handle}/videos"
+    else:
+        channel_url = target
+        if not channel_url.endswith("/videos") and not channel_url.endswith("/featured"):
+            channel_url = channel_url.rstrip("/") + "/videos"
+
+    videos = []
+    try:
+        ydl_opts = {
+            'skip_download': True,
+            'quiet': True,
+            'no_warnings': True,
+            'extract_flat': True,
+            'playlist_items': '1-12',
+            'nocheckcertificate': True,
+            'no_color': True,
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(channel_url, download=False)
+            if info and "entries" in info:
+                for entry in info["entries"]:
+                    if not entry:
+                        continue
+                    v_id = entry.get("id") or ""
+                    v_url = entry.get("url") or (f"https://www.youtube.com/watch?v={v_id}" if v_id else "")
+                    if v_url and not v_url.startswith("http"):
+                        v_url = f"https://www.youtube.com/watch?v={v_id}"
+                    dur = float(entry.get("duration") or 0.0)
+                    thumb = entry.get("thumbnail") or (f"https://img.youtube.com/vi/{v_id}/hqdefault.jpg" if v_id else "")
+                    videos.append({
+                        "id": v_id,
+                        "title": entry.get("title") or "Untitled Video",
+                        "url": v_url,
+                        "duration": dur,
+                        "duration_formatted": format_duration(dur) if dur > 0 else "Video",
+                        "thumbnail": thumb,
+                        "view_count": entry.get("view_count") or 0,
+                        "uploader": entry.get("uploader") or info.get("channel") or target
+                    })
+    except Exception as e:
+        print(f"[Channel Fetch Notice] yt-dlp notice for {channel_url}: {e}")
+
+    # Fallback to high quality creator videos if channel is empty, private, or blocked
+    if not videos:
+        fallback_demos = [
+            {
+                "id": "aircAruvnKk",
+                "title": "3Blue1Brown - Neural Networks & Deep Learning Essentials",
+                "url": "https://www.youtube.com/watch?v=aircAruvnKk",
+                "duration": 1153.0,
+                "duration_formatted": "19m 13s",
+                "thumbnail": "https://img.youtube.com/vi/aircAruvnKk/hqdefault.jpg",
+                "view_count": 14200000,
+                "uploader": "3Blue1Brown"
+            },
+            {
+                "id": "b3Vy7hNDfBQ",
+                "title": "Veritasium - How One Hacker Almost Destroyed The Web",
+                "url": "https://www.youtube.com/watch?v=b3Vy7hNDfBQ",
+                "duration": 1040.0,
+                "duration_formatted": "17m 20s",
+                "thumbnail": "https://img.youtube.com/vi/b3Vy7hNDfBQ/hqdefault.jpg",
+                "view_count": 8900000,
+                "uploader": "Veritasium"
+            },
+            {
+                "id": "0e3GPea1Tyg",
+                "title": "MrBeast - I Survived 50 Hours In A Maximum Security Prison",
+                "url": "https://www.youtube.com/watch?v=0e3GPea1Tyg",
+                "duration": 724.0,
+                "duration_formatted": "12m 04s",
+                "thumbnail": "https://img.youtube.com/vi/0e3GPea1Tyg/hqdefault.jpg",
+                "view_count": 185000000,
+                "uploader": "MrBeast"
+            },
+            {
+                "id": "UF8uR6Z6KLc",
+                "title": "Steve Jobs - 2005 Stanford Commencement Address",
+                "url": "https://www.youtube.com/watch?v=UF8uR6Z6KLc",
+                "duration": 904.0,
+                "duration_formatted": "15m 04s",
+                "thumbnail": "https://img.youtube.com/vi/UF8uR6Z6KLc/hqdefault.jpg",
+                "view_count": 42000000,
+                "uploader": "Stanford"
+            },
+            {
+                "id": "r7zJ8srWWjk",
+                "title": "Lex Fridman & Sam Altman - OpenAI, GPT-5 & AGI Future",
+                "url": "https://www.youtube.com/watch?v=r7zJ8srWWjk",
+                "duration": 7200.0,
+                "duration_formatted": "2h 00m",
+                "thumbnail": "https://img.youtube.com/vi/r7zJ8srWWjk/hqdefault.jpg",
+                "view_count": 4100000,
+                "uploader": "Lex Fridman"
+            },
+            {
+                "id": "D-b_T_rT-Uo",
+                "title": "Andrew Huberman - Optimize Your Sleep & Energy Architecture",
+                "url": "https://www.youtube.com/watch?v=D-b_T_rT-Uo",
+                "duration": 5400.0,
+                "duration_formatted": "1h 30m",
+                "thumbnail": "https://img.youtube.com/vi/D-b_T_rT-Uo/hqdefault.jpg",
+                "view_count": 3200000,
+                "uploader": "Huberman Lab"
+            }
+        ]
+        return {
+            "channel": target,
+            "count": len(fallback_demos),
+            "videos": fallback_demos,
+            "is_fallback": True
+        }
+
+    return {
+        "channel": target,
+        "count": len(videos),
+        "videos": videos,
+        "is_fallback": False
+    }
+
+
+@app.post("/upload/file")
+async def upload_local_video(
+    file: UploadFile = File(...),
+    user: Dict[str, Any] = Depends(get_current_user_optional)
+):
+    """
+    Accepts video file uploads from user's laptop (MP4, MOV, MKV, WEBM).
+    Saves to downloads/uploads directory and inspects duration.
+    """
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No file provided")
+
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in [".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported format '{ext}'. Please upload an MP4, MOV, MKV, or WEBM video file."
+        )
+
+    upload_dir = os.path.join("downloads", "uploads")
+    os.makedirs(upload_dir, exist_ok=True)
+
+    unique_name = f"{uuid.uuid4().hex[:10]}_{file.filename}"
+    save_path = os.path.join(upload_dir, unique_name)
+
+    file_size = 0
+    with open(save_path, "wb") as buffer:
+        while chunk := await file.read(1024 * 1024):  # 1MB chunks
+            buffer.write(chunk)
+            file_size += len(chunk)
+
+    try:
+        dur = get_video_duration(save_path)
+    except Exception:
+        dur = 60.0
+
+    size_mb = round(file_size / (1024 * 1024), 2)
+    return {
+        "success": True,
+        "file_path": save_path,
+        "file_name": file.filename,
+        "duration": dur,
+        "duration_formatted": format_duration(dur),
+        "size_mb": size_mb,
+        "title": os.path.splitext(file.filename)[0]
+    }
+
+
 @app.post("/process")
 def process_video(
     request: ProcessRequest,
     background_tasks: BackgroundTasks,
     user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """Accept a YouTube URL, verify & deduct daily credit, and run clipping pipeline in background."""
-    raw_url = request.youtube_url.strip() if request.youtube_url else ""
-    if not raw_url:
-        raise HTTPException(status_code=400, detail="YouTube URL must be provided.")
-        
-    if not is_valid_youtube_url(raw_url):
-        raise HTTPException(
-            status_code=400,
-            detail=f"'{raw_url}' is not a valid YouTube video URL. Please paste a link like https://www.youtube.com/watch?v=... or https://youtu.be/..."
-        )
-        
+    """Accept a YouTube URL or local file path, verify & deduct daily credit, and run clipping pipeline in background."""
     user_id = user["id"]
+    target_source = ""
+    is_local = False
+    
+    if request.local_file_path and os.path.exists(request.local_file_path):
+        target_source = request.local_file_path
+        is_local = True
+    elif request.youtube_url and os.path.exists(request.youtube_url):
+        target_source = request.youtube_url
+        is_local = True
+    elif request.youtube_url:
+        raw_url = request.youtube_url.strip()
+        if not is_valid_youtube_url(raw_url):
+            raise HTTPException(
+                status_code=400,
+                detail=f"'{raw_url}' is not a valid YouTube video URL. Please paste a link like https://www.youtube.com/watch?v=... or https://youtu.be/..."
+            )
+        target_source = raw_url
+    else:
+        raise HTTPException(status_code=400, detail="Please provide a YouTube video URL or upload a video file.")
+
     mode = (request.mode or "heuristic").lower()
     if mode not in ["heuristic", "ai_enhanced"]:
         mode = "heuristic"
@@ -285,27 +490,39 @@ def process_video(
     if stream_output_mode not in ["single_reel", "both", "clips"]:
         stream_output_mode = "single_reel"
 
-    # Pre-Flight Fast Metadata Inspection & 5-Hour Duration Cap (Runs before any download)
-    meta = probe_stream_metadata(raw_url)
-    live_status = meta.get("live_status", "")
-    if live_status == "is_live" or meta.get("is_live"):
-        raise HTTPException(
-            status_code=400,
-            detail="Yeh live stream abhi chal rahi hai (Live). Stream khatam hone ke baad hi highlight clips banaye ja sakte hain!"
-        )
-    elif live_status == "is_upcoming":
-        raise HTTPException(
-            status_code=400,
-            detail="Yeh stream abhi shuru nahi hui hai (Upcoming). Stream broadcast complete hone ke baad try karein!"
-        )
+    video_title = request.title or ""
+    video_dur = 0.0
 
-    stream_dur = meta.get("duration", 0.0)
-    if stream_dur > MAX_STREAM_DURATION_SECONDS:
-        dur_str = format_duration(stream_dur)
-        raise HTTPException(
-            status_code=400,
-            detail=f"This stream is {dur_str}. During early beta, streams are capped at {int(MAX_STREAM_DURATION_HOURS)} hours to ensure ultra-fast processing and zero server queue."
-        )
+    if is_local:
+        try:
+            video_dur = get_video_duration(target_source)
+        except Exception:
+            video_dur = 60.0
+        if not video_title:
+            video_title = os.path.splitext(os.path.basename(target_source))[0]
+    else:
+        # Pre-Flight Fast Metadata Inspection & 5-Hour Duration Cap (Runs before any download)
+        meta = probe_stream_metadata(target_source)
+        live_status = meta.get("live_status", "")
+        if live_status == "is_live" or meta.get("is_live"):
+            raise HTTPException(
+                status_code=400,
+                detail="Yeh live stream abhi chal rahi hai (Live). Stream khatam hone ke baad hi highlight clips banaye ja sakte hain!"
+            )
+        elif live_status == "is_upcoming":
+            raise HTTPException(
+                status_code=400,
+                detail="Yeh stream abhi shuru nahi hui hai (Upcoming). Stream broadcast complete hone ke baad try karein!"
+            )
+
+        video_dur = meta.get("duration", 0.0)
+        video_title = meta.get("title", "")
+        if video_dur > MAX_STREAM_DURATION_SECONDS:
+            dur_str = format_duration(video_dur)
+            raise HTTPException(
+                status_code=400,
+                detail=f"This stream is {dur_str}. During early beta, streams are capped at {int(MAX_STREAM_DURATION_HOURS)} hours to ensure ultra-fast processing and zero server queue."
+            )
 
     credit_deducted = False
     # In 'ai_enhanced' mode, 1 daily credit is deducted
@@ -332,13 +549,14 @@ def process_video(
 
     mode_label = "AI Smart Moments" if mode == "ai_enhanced" else "Fast Highlights (Free)"
     type_label = "Stream Highlights" if content_type == "stream" else "Shorts"
+    source_label = "Local Video" if is_local else "YouTube"
     ratio_label = "16:9 Widescreen" if aspect_ratio == "16:9" else "9:16 Vertical"
     
     jobs[job_id] = {
         "status": "processing",
         "step": "initializing",
         "progress": 5,
-        "message": f"Initializing {mode_label} for {type_label} ({quality}, {ratio_label})...",
+        "message": f"Initializing {mode_label} for {source_label} ({quality}, {ratio_label})...",
         "segment_duration": segment_duration,
         "max_clips": max_clips,
         "mode": mode,
@@ -348,21 +566,21 @@ def process_video(
         "quality": quality,
         "stream_start_min": float(request.stream_start_min or 0.0),
         "stream_end_min": float(request.stream_end_min) if request.stream_end_min else None,
-        "stream_title": meta.get("title", ""),
-        "stream_duration": stream_dur,
+        "stream_title": video_title,
+        "stream_duration": video_dur,
         "clips": [],
         "error": None
     }
     
     # Record job in database
-    record_job(job_id, user_id, request.youtube_url.strip(), segment_duration)
+    record_job(job_id, user_id, target_source, segment_duration)
     
     synth = request.synthesize_stories if request.synthesize_stories is not None else (mode == "ai_enhanced")
     background_tasks.add_task(
         process_video_task,
         job_id,
         user_id,
-        request.youtube_url.strip(),
+        target_source,
         segment_duration,
         mode,
         synth,
@@ -384,11 +602,12 @@ def process_video(
         "mode": mode,
         "aspect_ratio": aspect_ratio,
         "content_type": content_type,
-        "stream_title": meta.get("title", ""),
-        "stream_duration": stream_dur,
-        "message": f"Initializing {mode_label} for {type_label} ({ratio_label})...",
+        "stream_title": video_title,
+        "stream_duration": video_dur,
+        "message": f"Initializing {mode_label} for {source_label} ({ratio_label})...",
         "credits_remaining": current_credits
     }
+
 
 
 @app.post("/stream/process")

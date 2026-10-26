@@ -11,6 +11,7 @@ import AdvancedDrawer from "@/components/studio/AdvancedDrawer";
 import LivePipelineTracker from "@/components/studio/LivePipelineTracker";
 import ClipShowcaseGrid from "@/components/studio/ClipShowcaseGrid";
 import LongStudioView from "@/components/studio/LongStudioView";
+import { ShortsStudioCommandCenter, SelectedVideoSource, GenerationConfig } from "@/components/studio/ShortsStudioCommandCenter";
 import HistoryView, { HistoryProject } from "@/components/studio/HistoryView";
 import AuthModal from "@/components/AuthModal";
 import { useUIFeedback } from "@/components/UIFeedback";
@@ -215,6 +216,83 @@ export default function Home() {
     setClips([]);
     setErrorMsg(null);
     setProgress(5);
+  };
+
+  const handleStartCommandCenterGeneration = async (
+    source: SelectedVideoSource,
+    config: GenerationConfig
+  ) => {
+    if (config.mode === "ai_enhanced" && userProfile.credits_remaining <= 0) {
+      showToast("You have reached your daily quota (0/3 remaining). Switch to Fast Free mode!", "error");
+      return;
+    }
+
+    setErrorMsg(null);
+    setClips([]);
+    setProgress(6);
+    setProgressMessage("Starting AI Virality pipeline for selected content...");
+    setStatus("processing");
+    stopPolling();
+
+    try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (session?.access_token) {
+        headers["Authorization"] = `Bearer ${session.access_token}`;
+      }
+
+      const payload: Record<string, any> = {
+        segment_duration: config.targetDuration,
+        mode: config.mode,
+        aspect_ratio: config.aspectRatio,
+        content_type: "shorts",
+        stream_output_mode: "clips",
+        quality: config.quality,
+        caption_style: config.captionPreset,
+        synthesize_stories: config.mode === "ai_enhanced",
+        max_clips: config.clipsCount,
+        title: source.title,
+      };
+
+      if (source.localFilePath) {
+        payload.local_file_path = source.localFilePath;
+      } else if (source.url) {
+        payload.youtube_url = source.url;
+      } else {
+        throw new Error("No video source provided.");
+      }
+
+      const res = await fetch(`${BACKEND_URL}/process`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.detail || `Server responded with ${res.status}`);
+      }
+
+      const data = await res.json();
+      const currentJobId = data.job_id;
+      setJobId(currentJobId);
+      setProgress(data.progress || 12);
+      setProgressMessage(data.message || "Initializing video pipeline...");
+
+      if (data.credits_remaining !== undefined) {
+        setUserProfile((prev) => ({ ...prev, credits_remaining: data.credits_remaining }));
+      }
+
+      pollIntervalRef.current = setInterval(() => {
+        checkStatus(currentJobId);
+      }, 1200);
+
+      checkStatus(currentJobId);
+    } catch (err: any) {
+      setStatus("failed");
+      const cleanErr = (err.message || "Could not process this video. Please verify and retry.")
+        .replace(/\x1b\[[0-9;]*[a-zA-Z]|\[[0-9;]+m/g, "");
+      setErrorMsg(cleanErr);
+    }
   };
 
   const handleGenerate = async (e?: React.FormEvent) => {
@@ -517,9 +595,9 @@ export default function Home() {
           />
         )}
 
-        {/* VIEW 3: SHORTS STUDIO */}
+        {/* VIEW 3: SHORTS STUDIO COMMAND CENTER */}
         {activeView === "studio" && (
-          <div className="w-full flex flex-col items-center gap-8 text-center my-auto">
+          <div className="w-full flex flex-col items-center gap-8">
             
             {/* Completed Results Showcase */}
             {status === "completed" && clips.length > 0 ? (
@@ -533,93 +611,49 @@ export default function Home() {
                 backendUrl={BACKEND_URL}
                 jobId={jobId}
               />
+            ) : status === "processing" ? (
+              /* Live Animated Pipeline Radar (Processing State) */
+              <div className="w-full max-w-4xl flex flex-col items-center gap-6 my-auto pt-10">
+                <LivePipelineTracker
+                  progress={progress}
+                  step={step}
+                  progressMessage={progressMessage}
+                />
+              </div>
             ) : (
-              /* Hero Ingestion & Active Processing State */
-              <>
-                {/* Hero Header */}
-                <div className="flex flex-col items-center gap-4 max-w-3xl">
-                  <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#ff7427]/10 text-[#ff7427] border border-[#ff7427]/20 text-xs font-semibold tracking-wide">
-                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                    <span>3-Stage AI Best Moment & Virality Engine</span>
+              /* Creator Ingestion Command Center */
+              <ShortsStudioCommandCenter
+                backendUrl={BACKEND_URL}
+                isProcessing={false}
+                creditsRemaining={userProfile.credits_remaining}
+                onStartGeneration={handleStartCommandCenterGeneration}
+                showToast={showToast}
+                sessionToken={session?.access_token}
+              />
+            )}
+
+            {/* Error State Banner */}
+            {status === "failed" && errorMsg && (
+              <div className="w-full max-w-3xl p-5 rounded-2xl bg-rose-500/10 border border-rose-500/25 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-left animate-in fade-in">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center shrink-0">
+                    <AlertTriangle className="w-5 h-5" />
                   </div>
-
-                  <h1 className="text-4xl sm:text-6xl md:text-7xl font-extrabold tracking-tight leading-[1.08] text-white">
-                    Turn any YouTube video into shorts,{" "}
-                    <span className="bg-gradient-to-r from-[#ff7427] via-amber-400 to-white bg-clip-text text-transparent italic font-serif">
-                      instantly.
-                    </span>
-                  </h1>
-
-                  <p className="text-base sm:text-lg text-slate-400 max-w-2xl font-normal leading-relaxed">
-                    AI analyzes vocal energy peaks, audience replay heatmaps, and hooks to extract viral-ready vertical clips with zero editing.
-                  </p>
+                  <div>
+                    <h4 className="text-sm font-bold text-white">Generation Failed</h4>
+                    <p className="text-xs text-rose-300 mt-0.5 leading-relaxed">{errorMsg}</p>
+                  </div>
                 </div>
 
-                {/* Primary Hero URL Input Bar */}
-                <HeroInputBar
-                  value={youtubeUrl}
-                  onChange={setYoutubeUrl}
-                  onSubmit={handleGenerate}
-                  isProcessing={status === "processing"}
-                  onPasteNotification={(msg) => showToast(msg, "info")}
-                />
-
-                {/* Quick Presets (Aspect ratio, Duration, Advanced Drawer) */}
-                <QuickPresetBar
-                  aspectRatio={aspectRatio}
-                  onAspectRatioChange={setAspectRatio}
-                  segmentDuration={segmentDuration}
-                  onSegmentDurationChange={setSegmentDuration}
-                  showAdvanced={showAdvanced}
-                  onToggleAdvanced={() => setShowAdvanced((prev) => !prev)}
-                  disabled={status === "processing"}
-                />
-
-                {/* Collapsible Advanced Settings Drawer */}
-                <AdvancedDrawer
-                  isOpen={showAdvanced}
-                  quality={quality}
-                  onQualityChange={setQuality}
-                  clippingMode={clippingMode}
-                  onClippingModeChange={setClippingMode}
-                  captionStyle={captionStyle}
-                  onCaptionStyleChange={setCaptionStyle}
-                  disabled={status === "processing"}
-                />
-
-                {/* Live Animated 4-Stage Pipeline Radar (Processing State) */}
-                {status === "processing" && (
-                  <LivePipelineTracker
-                    progress={progress}
-                    step={step}
-                    progressMessage={progressMessage}
-                  />
-                )}
-
-                {/* Error State Banner */}
-                {status === "failed" && errorMsg && (
-                  <div className="w-full max-w-3xl p-5 rounded-2xl bg-rose-500/10 border border-rose-500/25 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-left animate-in fade-in">
-                    <div className="flex items-start gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center shrink-0">
-                        <AlertTriangle className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h4 className="text-sm font-bold text-white">Generation Failed</h4>
-                        <p className="text-xs text-rose-300 mt-0.5 leading-relaxed">{errorMsg}</p>
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => handleGenerate()}
-                      className="shrink-0 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-md"
-                    >
-                      <RefreshCw className="w-3.5 h-3.5" />
-                      <span>Retry</span>
-                    </button>
-                  </div>
-                )}
-              </>
+                <button
+                  type="button"
+                  onClick={handleReset}
+                  className="shrink-0 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-md"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Try Again</span>
+                </button>
+              </div>
             )}
 
           </div>

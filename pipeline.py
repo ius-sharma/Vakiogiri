@@ -617,40 +617,53 @@ def run_pipeline(
             type_label = "Stream Highlights" if content_type == "stream" else "Highlights Supercut" if is_supercut else "Shorts"
             progress_callback("probing", 5, f"Verifying {type_label} duration & metadata ({quality}, {mode_label})...")
 
-        # 0. Pre-Flight Duration & Live Status Safety Guardrail (Cap at 5 hours)
-        meta = probe_stream_metadata(youtube_url)
-        live_status = meta.get("live_status", "")
-        if live_status == "is_live" or meta.get("is_live"):
-            raise ValueError("Yeh live stream abhi chal rahi hai (Live). Stream khatam hone ke baad hi highlight clips banaye ja sakte hain!")
-        elif live_status == "is_upcoming":
-            raise ValueError("Yeh stream abhi shuru nahi hui hai (Upcoming). Stream broadcast complete hone ke baad try karein!")
+        is_local_file = os.path.exists(youtube_url) and os.path.isfile(youtube_url)
+        if is_local_file:
+            video_path = youtube_url
+            duration = get_video_duration(video_path)
+            meta = {
+                "duration": duration,
+                "title": os.path.splitext(os.path.basename(youtube_url))[0],
+                "is_live": False,
+                "live_status": "not_live",
+                "uploader": "Local Video",
+                "thumbnail": "",
+            }
+        else:
+            # 0. Pre-Flight Duration & Live Status Safety Guardrail (Cap at 5 hours)
+            meta = probe_stream_metadata(youtube_url)
+            live_status = meta.get("live_status", "")
+            if live_status == "is_live" or meta.get("is_live"):
+                raise ValueError("Yeh live stream abhi chal rahi hai (Live). Stream khatam hone ke baad hi highlight clips banaye ja sakte hain!")
+            elif live_status == "is_upcoming":
+                raise ValueError("Yeh stream abhi shuru nahi hui hai (Upcoming). Stream broadcast complete hone ke baad try karein!")
 
-        stream_dur = meta.get("duration", 0.0)
-        if stream_dur > MAX_STREAM_DURATION_SECONDS:
-            dur_str = format_duration(stream_dur)
-            raise ValueError(
-                f"Stream duration ({dur_str}) exceeds the beta safety limit of {int(MAX_STREAM_DURATION_HOURS)} hours. "
-                f"Please choose a stream under {int(MAX_STREAM_DURATION_HOURS)} hours to avoid system overload."
+            stream_dur = meta.get("duration", 0.0)
+            if stream_dur > MAX_STREAM_DURATION_SECONDS:
+                dur_str = format_duration(stream_dur)
+                raise ValueError(
+                    f"Stream duration ({dur_str}) exceeds the beta safety limit of {int(MAX_STREAM_DURATION_HOURS)} hours. "
+                    f"Please choose a stream under {int(MAX_STREAM_DURATION_HOURS)} hours to avoid system overload."
+                )
+
+            # Determine slice bounds for stream mode if active
+            stream_slice_start = max(0.0, float(stream_start_min or 0.0) * 60.0) if content_type == "stream" else 0.0
+            stream_slice_end = (float(stream_end_min) * 60.0) if (content_type == "stream" and stream_end_min and float(stream_end_min) > 0) else None
+            # Only perform time-sliced download when an explicit, bounded end timestamp is provided
+            is_partial_stream = content_type == "stream" and (stream_slice_end is not None and stream_slice_end > stream_slice_start)
+
+            # 1. Download YouTube video in requested quality (partial range download if stream slice active)
+            video_path = download_video(
+                url=youtube_url,
+                output_dir=download_dir,
+                quality=quality,
+                start_sec=stream_slice_start if is_partial_stream else 0.0,
+                end_sec=stream_slice_end if is_partial_stream else None,
+                progress_callback=progress_callback
             )
-
-        # Determine slice bounds for stream mode if active
-        stream_slice_start = max(0.0, float(stream_start_min or 0.0) * 60.0) if content_type == "stream" else 0.0
-        stream_slice_end = (float(stream_end_min) * 60.0) if (content_type == "stream" and stream_end_min and float(stream_end_min) > 0) else None
-        # Only perform time-sliced download when an explicit, bounded end timestamp is provided
-        is_partial_stream = content_type == "stream" and (stream_slice_end is not None and stream_slice_end > stream_slice_start)
-
-        # 1. Download YouTube video in requested quality (partial range download if stream slice active)
-        video_path = download_video(
-            url=youtube_url,
-            output_dir=download_dir,
-            quality=quality,
-            start_sec=stream_slice_start if is_partial_stream else 0.0,
-            end_sec=stream_slice_end if is_partial_stream else None,
-            progress_callback=progress_callback
-        )
-        
-        # 2. Extract Duration of downloaded media
-        duration = get_video_duration(video_path)
+            
+            # 2. Extract Duration of downloaded media
+            duration = get_video_duration(video_path)
         
         # 3. Detect Best Moments
         if is_supercut:
