@@ -40,6 +40,23 @@ def init_db():
                 FOREIGN KEY (user_id) REFERENCES users(id)
             )
         """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user_youtube_channels (
+                user_id TEXT PRIMARY KEY,
+                channel_id TEXT,
+                channel_title TEXT,
+                channel_handle TEXT,
+                channel_thumbnail TEXT,
+                subscriber_count TEXT,
+                video_count TEXT,
+                uploads_playlist_id TEXT,
+                access_token TEXT,
+                refresh_token TEXT,
+                token_expiry REAL,
+                connected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+        """)
         # Migration: Ensure clips_json column exists if DB was already created
         try:
             cursor.execute("ALTER TABLE jobs ADD COLUMN clips_json TEXT DEFAULT '[]'")
@@ -179,3 +196,79 @@ def get_user_history(user_id: str) -> List[Dict[str, Any]]:
             history.append(job_dict)
             
         return history
+
+
+def save_user_youtube_channel(user_id: str, data: Dict[str, Any]) -> None:
+    """Save or update user's authenticated YouTube channel details."""
+    init_db()
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO user_youtube_channels (
+                user_id, channel_id, channel_title, channel_handle,
+                channel_thumbnail, subscriber_count, video_count,
+                uploads_playlist_id, access_token, refresh_token, token_expiry
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET
+                channel_id = excluded.channel_id,
+                channel_title = excluded.channel_title,
+                channel_handle = excluded.channel_handle,
+                channel_thumbnail = excluded.channel_thumbnail,
+                subscriber_count = excluded.subscriber_count,
+                video_count = excluded.video_count,
+                uploads_playlist_id = excluded.uploads_playlist_id,
+                access_token = excluded.access_token,
+                refresh_token = COALESCE(excluded.refresh_token, user_youtube_channels.refresh_token),
+                token_expiry = excluded.token_expiry,
+                connected_at = CURRENT_TIMESTAMP
+        """, (
+            user_id,
+            data.get("channel_id"),
+            data.get("channel_title"),
+            data.get("channel_handle"),
+            data.get("channel_thumbnail"),
+            str(data.get("subscriber_count") or ""),
+            str(data.get("video_count") or ""),
+            data.get("uploads_playlist_id"),
+            data.get("access_token"),
+            data.get("refresh_token"),
+            data.get("token_expiry", 0)
+        ))
+        conn.commit()
+
+
+def get_user_youtube_channel(user_id: str) -> Optional[Dict[str, Any]]:
+    """Retrieve user's authenticated YouTube channel details."""
+    init_db()
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM user_youtube_channels WHERE user_id = ?", (user_id,))
+        row = cursor.fetchone()
+        if row is None and user_id in ("guest", "undefined", "", None):
+            cursor.execute("SELECT * FROM user_youtube_channels ORDER BY connected_at DESC LIMIT 1")
+            row = cursor.fetchone()
+        if row is None:
+            return None
+        return dict(row)
+
+
+def update_user_youtube_tokens(user_id: str, access_token: str, token_expiry: float) -> None:
+    """Update refreshed access token and expiry timestamp."""
+    init_db()
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE user_youtube_channels SET access_token = ?, token_expiry = ? WHERE user_id = ?",
+            (access_token, token_expiry, user_id)
+        )
+        conn.commit()
+
+
+def delete_user_youtube_channel(user_id: str) -> bool:
+    """Disconnect and remove user's YouTube channel record."""
+    init_db()
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM user_youtube_channels WHERE user_id = ?", (user_id,))
+        conn.commit()
+        return cursor.rowcount > 0
