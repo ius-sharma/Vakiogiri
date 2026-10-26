@@ -156,13 +156,24 @@ export default function Home() {
       document.documentElement.classList.toggle("light", nextTheme === "light");
     };
 
-    // Circular Iris Ripple Transition via View Transitions API
-    if (typeof doc.startViewTransition === "function") {
-      const x = e ? e.clientX : window.innerWidth - 60;
-      const y = e ? e.clientY : 32;
+    // Ultra-Smooth Circular Iris Ripple Transition via View Transitions API
+    if (typeof doc.startViewTransition === "function" && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      const target = (e?.currentTarget || e?.target) as HTMLElement | null;
+      let finalX = e?.clientX;
+      let finalY = e?.clientY;
+
+      if (target && typeof target.getBoundingClientRect === "function") {
+        const rect = target.getBoundingClientRect();
+        finalX = rect.left + rect.width / 2;
+        finalY = rect.top + rect.height / 2;
+      }
+
+      finalX = finalX ?? window.innerWidth - 60;
+      finalY = finalY ?? 32;
+
       const endRadius = Math.hypot(
-        Math.max(x, window.innerWidth - x),
-        Math.max(y, window.innerHeight - y)
+        Math.max(finalX, window.innerWidth - finalX),
+        Math.max(finalY, window.innerHeight - finalY)
       );
 
       const transition = doc.startViewTransition(() => {
@@ -173,14 +184,15 @@ export default function Home() {
         document.documentElement.animate(
           {
             clipPath: [
-              `circle(0px at ${x}px ${y}px)`,
-              `circle(${endRadius}px at ${x}px ${y}px)`,
+              `circle(0px at ${finalX}px ${finalY}px)`,
+              `circle(${endRadius}px at ${finalX}px ${finalY}px)`,
             ],
           },
           {
-            duration: 550,
-            easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+            duration: 650,
+            easing: "cubic-bezier(0.16, 1, 0.3, 1)",
             pseudoElement: "::view-transition-new(root)",
+            fill: "forwards",
           }
         );
       });
