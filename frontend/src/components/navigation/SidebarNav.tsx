@@ -3,14 +3,14 @@
 import React, { useState } from "react";
 import Image from "next/image";
 import {
-  IconsaxHome,
-  IconsaxProjects,
-  IconsaxAnalytics,
-  IconsaxCalendar,
-  IconsaxArchive,
-  IconsaxAccount,
-  IconsaxSettings,
-} from "./IconsaxIcons";
+  KoboyoClapperboard,
+  KoboyoFilm,
+  KoboyoBarChart,
+  KoboyoCalendar,
+  KoboyoArchive,
+  KoboyoSettings,
+  KoboyoUser,
+} from "./KoboyoIcons";
 import { ChevronLeft, ChevronRight, LogOut, Zap } from "lucide-react";
 
 interface SidebarNavProps {
@@ -55,35 +55,35 @@ export default function SidebarNav({
     {
       id: "studio",
       label: "Shorts Studio",
-      icon: IconsaxHome,
+      icon: KoboyoClapperboard,
       badge: undefined,
       onClick: () => onSelectView("studio"),
     },
     {
       id: "projects",
       label: "Clips Library",
-      icon: IconsaxProjects,
+      icon: KoboyoFilm,
       badge: historyCount > 0 ? historyCount : undefined,
       onClick: () => onSelectView("history"),
     },
     {
       id: "analytics",
       label: "Analytics",
-      icon: IconsaxAnalytics,
+      icon: KoboyoBarChart,
       badge: "Soon",
       onClick: () => onSelectView("studio"),
     },
     {
       id: "calendar",
       label: "Schedule",
-      icon: IconsaxCalendar,
+      icon: KoboyoCalendar,
       badge: "Soon",
       onClick: () => onSelectView("studio"),
     },
     {
       id: "archive",
       label: "Archive",
-      icon: IconsaxArchive,
+      icon: KoboyoArchive,
       badge: undefined,
       onClick: () => onSelectView("studio"),
     },
@@ -93,7 +93,7 @@ export default function SidebarNav({
     {
       id: "settings",
       label: "Settings",
-      icon: IconsaxSettings,
+      icon: KoboyoSettings,
       onClick: () => onSelectView("studio"),
     },
   ];
