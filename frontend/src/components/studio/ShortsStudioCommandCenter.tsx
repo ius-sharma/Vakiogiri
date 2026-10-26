@@ -84,13 +84,108 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
   // Navigation tabs
   const [activeTab, setActiveTab] = useState<"channel" | "upload" | "url">("channel");
 
-  // YouTube Channel Feed state
-  const [channelHandle, setChannelHandle] = useState<string>("risewithius");
-  const [inputHandle, setInputHandle] = useState<string>("risewithius");
+  // Authenticated YouTube Channel state
+  const [channelConnected, setChannelConnected] = useState<boolean>(false);
+  const [connectedChannelData, setConnectedChannelData] = useState<{
+    channel_id?: string;
+    channel_title?: string;
+    channel_handle?: string;
+    channel_thumbnail?: string;
+    subscriber_count?: string;
+    video_count?: string;
+  } | null>(null);
+  const [isConnectingOAuth, setIsConnectingOAuth] = useState<boolean>(false);
   const [channelVideos, setChannelVideos] = useState<ChannelVideoItem[]>([]);
   const [isLoadingChannel, setIsLoadingChannel] = useState<boolean>(false);
   const [searchFilter, setSearchFilter] = useState<string>("");
-  const [isEditingHandle, setIsEditingHandle] = useState<boolean>(false);
+
+  // Check user's verified YouTube channel status
+  const checkChannelStatus = async () => {
+    setIsLoadingChannel(true);
+    try {
+      const headers: Record<string, string> = {};
+      if (sessionToken) {
+        headers["Authorization"] = `Bearer ${sessionToken}`;
+      }
+
+      const res = await fetch(`${backendUrl}/auth/youtube/my-videos`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.connected && data.channel) {
+          setChannelConnected(true);
+          setConnectedChannelData(data.channel);
+          setChannelVideos(data.videos || []);
+          return;
+        }
+      }
+      setChannelConnected(false);
+      setConnectedChannelData(null);
+    } catch (err) {
+      console.warn("YouTube channel status check error:", err);
+      setChannelConnected(false);
+    } finally {
+      setIsLoadingChannel(false);
+    }
+  };
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("youtube_connected") === "true") {
+        showToast("Your YouTube channel has been connected successfully!", "success");
+        window.history.replaceState({}, document.title, window.location.pathname);
+      } else if (params.get("youtube_error")) {
+        showToast(`YouTube connection failed: ${params.get("youtube_error")}`, "error");
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    }
+    checkChannelStatus();
+  }, [sessionToken]);
+
+  // Initiate Google OAuth 2.0 flow
+  const handleInitiateOAuth = async () => {
+    setIsConnectingOAuth(true);
+    try {
+      const headers: Record<string, string> = {};
+      if (sessionToken) {
+        headers["Authorization"] = `Bearer ${sessionToken}`;
+      }
+
+      const res = await fetch(`${backendUrl}/auth/youtube/url`, { headers });
+      if (!res.ok) throw new Error("Could not start Google authorization");
+      const data = await res.json();
+      if (data.auth_url) {
+        window.location.href = data.auth_url;
+      }
+    } catch (err: any) {
+      showToast(err.message || "Failed to start YouTube authentication.", "error");
+      setIsConnectingOAuth(false);
+    }
+  };
+
+  // Disconnect user's YouTube channel
+  const handleDisconnectChannel = async () => {
+    try {
+      const headers: Record<string, string> = {};
+      if (sessionToken) {
+        headers["Authorization"] = `Bearer ${sessionToken}`;
+      }
+
+      const res = await fetch(`${backendUrl}/auth/youtube/disconnect`, {
+        method: "POST",
+        headers,
+      });
+      if (res.ok) {
+        setChannelConnected(false);
+        setConnectedChannelData(null);
+        setChannelVideos([]);
+        setSelectedSource(null);
+        showToast("YouTube channel disconnected.", "info");
+      }
+    } catch (err: any) {
+      showToast("Failed to disconnect YouTube channel.", "error");
+    }
+  };
 
   // Local File Upload state
   const [isDragging, setIsDragging] = useState<boolean>(false);
@@ -119,70 +214,13 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
   // Selected Video Source for Pre-Flight Dock
   const [selectedSource, setSelectedSource] = useState<SelectedVideoSource | null>(null);
 
-  // Pre-flight settings
+  // Pre-flight generation settings
   const [targetDuration, setTargetDuration] = useState<number>(45);
   const [aspectRatio, setAspectRatio] = useState<"9:16" | "16:9">("9:16");
   const [captionPreset, setCaptionPreset] = useState<string>("hormozi");
   const [clipsCount, setClipsCount] = useState<number>(3);
   const [clippingMode, setClippingMode] = useState<"heuristic" | "ai_enhanced">("ai_enhanced");
   const [quality, setQuality] = useState<string>("1080p");
-
-  // Fetch Channel Videos on mount or channel change
-  const fetchChannelVideos = async (target: string) => {
-    setIsLoadingChannel(true);
-    try {
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (sessionToken) {
-        headers["Authorization"] = `Bearer ${sessionToken}`;
-      }
-
-      const res = await fetch(`${backendUrl}/channel/videos`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ channel_handle: target }),
-      });
-
-      if (!res.ok) throw new Error("Could not retrieve channel videos");
-
-      const data = await res.json();
-      const list = data.videos || [];
-      setChannelVideos(list);
-
-      // Auto-select first video if nothing selected yet
-      if (list.length > 0 && !selectedSource) {
-        const first = list[0];
-        setSelectedSource({
-          sourceType: "channel",
-          title: first.title,
-          url: first.url,
-          duration: first.duration,
-          durationFormatted: first.duration_formatted,
-          thumbnail: first.thumbnail,
-          uploader: first.uploader,
-        });
-      }
-    } catch (err: any) {
-      console.warn("Channel fetch error:", err);
-      showToast("Unable to fetch live YouTube channel feed. Showing curated creator catalog.", "info");
-    } finally {
-      setIsLoadingChannel(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchChannelVideos(channelHandle);
-  }, [channelHandle]);
-
-  // Handle Channel Handle Change
-  const handleApplyHandle = (e: React.FormEvent) => {
-    e.preventDefault();
-    const clean = inputHandle.trim().replace(/^@/, "");
-    if (clean) {
-      setChannelHandle(clean);
-      setIsEditingHandle(false);
-      showToast(`Loading YouTube videos for @${clean}...`, "info");
-    }
-  };
 
   // Handle Local File Upload
   const handleFileUpload = async (file: File) => {
@@ -348,7 +386,7 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
   );
 
   return (
-    <div className="w-full max-w-6xl mx-auto flex flex-col gap-8 pb-32">
+    <div className="w-full flex flex-col gap-8 pb-32 transition-all duration-300">
       
       {/* 1. STUDIO HERO HEADER */}
       <div
@@ -357,23 +395,19 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
         }`}
       >
         <div>
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#ff7427]/10 text-[#ff7427] text-xs font-semibold tracking-wide mb-3">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Shorts Studio 2.0 • AI Virality Ingestion</span>
-          </div>
           <h1
             className={`text-3xl sm:text-4xl font-extrabold tracking-tight transition-colors ${
               isLight ? "text-slate-900" : "text-white"
             }`}
           >
-            Creator Ingestion Command Center
+            Import Your Video
           </h1>
           <p
             className={`text-sm mt-1 max-w-2xl leading-relaxed transition-colors ${
               isLight ? "text-slate-600" : "text-slate-400"
             }`}
           >
-            Choose a video from your channel uploads, drag and drop files from your laptop, or paste any video link to extract high-retention 9:16 viral shorts.
+            Select a video to generate viral shorts.
           </p>
         </div>
 
@@ -408,53 +442,39 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
 
       {/* 2. INGESTION SOURCE TABS */}
       <div className="flex flex-col gap-6">
-        <div
-          className={`flex items-center gap-8 border-b px-2 transition-colors ${
-            isLight ? "border-slate-200" : "border-white/[0.08]"
-          }`}
-        >
+        <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
           {/* Tab 1: Channel Feed */}
           <button
             type="button"
             onClick={() => setActiveTab("channel")}
-            className={`pb-3 text-sm font-semibold flex items-center gap-2.5 transition-colors relative cursor-pointer ${
+            className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-2 transition-all duration-200 cursor-pointer ${
               activeTab === "channel"
-                ? isLight
-                  ? "text-slate-950 font-bold"
-                  : "text-white font-bold"
+                ? "border border-[#ff7427]/50 bg-[#ff7427]/10 text-[#ff7427] font-bold shadow-sm"
                 : isLight
-                ? "text-slate-500 hover:text-slate-900"
-                : "text-slate-400 hover:text-slate-200"
+                ? "border border-slate-200 bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-50 hover:border-slate-300 shadow-xs"
+                : "border border-white/[0.08] bg-white/[0.03] text-slate-400 hover:text-white hover:bg-white/[0.06] hover:border-white/15"
             }`}
           >
-            <Youtube className={`w-4 h-4 ${activeTab === "channel" ? "text-[#ff7427]" : "text-slate-400"}`} />
+            <Youtube className="w-4 h-4 shrink-0" />
             <span>My YouTube Channel</span>
-            {activeTab === "channel" && (
-              <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#ff7427] shadow-[0_0_8px_#ff7427]" />
-            )}
           </button>
 
           {/* Tab 2: Laptop File Upload */}
           <button
             type="button"
             onClick={() => setActiveTab("upload")}
-            className={`pb-3 text-sm font-semibold flex items-center gap-2.5 transition-colors relative cursor-pointer ${
+            className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-2 transition-all duration-200 cursor-pointer ${
               activeTab === "upload"
-                ? isLight
-                  ? "text-slate-950 font-bold"
-                  : "text-white font-bold"
+                ? "border border-[#ff7427]/50 bg-[#ff7427]/10 text-[#ff7427] font-bold shadow-sm"
                 : isLight
-                ? "text-slate-500 hover:text-slate-900"
-                : "text-slate-400 hover:text-slate-200"
+                ? "border border-slate-200 bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-50 hover:border-slate-300 shadow-xs"
+                : "border border-white/[0.08] bg-white/[0.03] text-slate-400 hover:text-white hover:bg-white/[0.06] hover:border-white/15"
             }`}
           >
-            <Laptop className={`w-4 h-4 ${activeTab === "upload" ? "text-[#ff7427]" : "text-slate-400"}`} />
+            <Laptop className="w-4 h-4 shrink-0" />
             <span>Upload from Laptop</span>
             {uploadedFile && (
-              <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
-            )}
-            {activeTab === "upload" && (
-              <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#ff7427] shadow-[0_0_8px_#ff7427]" />
+              <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block ml-0.5 shrink-0" />
             )}
           </button>
 
@@ -462,81 +482,105 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
           <button
             type="button"
             onClick={() => setActiveTab("url")}
-            className={`pb-3 text-sm font-semibold flex items-center gap-2.5 transition-colors relative cursor-pointer ${
+            className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-2 transition-all duration-200 cursor-pointer ${
               activeTab === "url"
-                ? isLight
-                  ? "text-slate-950 font-bold"
-                  : "text-white font-bold"
+                ? "border border-[#ff7427]/50 bg-[#ff7427]/10 text-[#ff7427] font-bold shadow-sm"
                 : isLight
-                ? "text-slate-500 hover:text-slate-900"
-                : "text-slate-400 hover:text-slate-200"
+                ? "border border-slate-200 bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-50 hover:border-slate-300 shadow-xs"
+                : "border border-white/[0.08] bg-white/[0.03] text-slate-400 hover:text-white hover:bg-white/[0.06] hover:border-white/15"
             }`}
           >
-            <Link2 className={`w-4 h-4 ${activeTab === "url" ? "text-[#ff7427]" : "text-slate-400"}`} />
+            <Link2 className="w-4 h-4 shrink-0" />
             <span>Paste Video Link</span>
-            {activeTab === "url" && (
-              <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#ff7427] shadow-[0_0_8px_#ff7427]" />
-            )}
           </button>
         </div>
 
         {/* TAB 1 CONTENT: YOUTUBE CHANNEL UPLOADS GRID */}
         {activeTab === "channel" && (
           <div className="flex flex-col gap-6">
-            
-            {/* Channel Handle Bar & Search */}
-            <div
-              className={`flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 p-4 rounded-2xl transition-colors ${
-                isLight
-                  ? "bg-white border border-slate-200/90 shadow-xs"
-                  : "bg-white/[0.02] border border-white/[0.06]"
-              }`}
-            >
-              {/* Channel Selector */}
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-red-600/10 text-red-500 flex items-center justify-center shrink-0">
-                  <Youtube className="w-5 h-5" />
+            {!channelConnected ? (
+              /* Connect Your YouTube Channel Card */
+              <div
+                className={`p-10 sm:p-14 rounded-3xl border text-center flex flex-col items-center justify-center gap-5 transition-all ${
+                  isLight ? "bg-white border-slate-200 shadow-sm" : "bg-white/[0.02] border-white/[0.08]"
+                }`}
+              >
+                <div className="text-red-500 flex items-center justify-center">
+                  <Youtube className="w-10 h-10" />
                 </div>
-                
-                {isEditingHandle ? (
-                  <form onSubmit={handleApplyHandle} className="flex items-center gap-2">
-                    <span className="text-slate-500 text-sm">@</span>
-                    <input
-                      type="text"
-                      value={inputHandle}
-                      onChange={(e) => setInputHandle(e.target.value)}
-                      placeholder="channel handle"
-                      className={`px-2.5 py-1 text-sm rounded-lg focus:outline-none focus:border-[#ff7427] w-40 ${
-                        isLight
-                          ? "bg-slate-50 border border-slate-300 text-slate-900"
-                          : "bg-black/60 border border-white/20 text-white"
-                      }`}
-                      autoFocus
-                    />
-                    <button
-                      type="submit"
-                      className="px-3 py-1 text-xs font-semibold bg-[#ff7427] text-white rounded-lg hover:bg-[#ff7427]/90 cursor-pointer"
-                    >
-                      Save
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setInputHandle(channelHandle);
-                        setIsEditingHandle(false);
-                      }}
-                      className="text-xs text-slate-500 hover:text-slate-700 px-2 py-1 cursor-pointer"
-                    >
-                      Cancel
-                    </button>
-                  </form>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className={`text-sm font-bold ${isLight ? "text-slate-900" : "text-white"}`}>
-                          @{channelHandle}
+
+                <div className="max-w-md">
+                  <h3 className={`text-xl font-extrabold tracking-tight ${isLight ? "text-slate-900" : "text-white"}`}>
+                    Connect Your YouTube Channel
+                  </h3>
+                  <p className={`text-xs mt-1.5 leading-relaxed ${isLight ? "text-slate-500" : "text-slate-400"}`}>
+                    Authenticate with Google to securely view and import your uploaded videos. We only request read-only permissions and will never post or modify anything.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleInitiateOAuth}
+                  disabled={isConnectingOAuth}
+                  className={`px-5 py-2.5 rounded-xl font-bold text-xs sm:text-sm flex items-center gap-2.5 transition-all cursor-pointer active:scale-[0.98] disabled:opacity-50 border shadow-xs ${
+                    isLight
+                      ? "bg-slate-900 hover:bg-slate-800 text-white border-transparent"
+                      : "bg-white hover:bg-zinc-200 text-zinc-950 border-white/20"
+                  }`}
+                >
+                  <Youtube className="w-4 h-4 text-red-600 shrink-0" />
+                  <span>{isConnectingOAuth ? "Connecting with Google..." : "Connect with YouTube"}</span>
+                </button>
+
+                <div className="flex flex-wrap items-center justify-center gap-6 text-xs text-slate-500 pt-3 border-t border-white/[0.06] w-full max-w-lg">
+                  <span className="flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                    100% Read-Only Access
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                    Instant 1-Click Import
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                    1080p / 4K Ready
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <>
+                {/* Connected Channel Header Bar & Search */}
+                <div
+                  className={`flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 p-4 rounded-2xl transition-colors ${
+                    isLight
+                      ? "bg-white border border-slate-200/90 shadow-xs"
+                      : "bg-white/[0.02] border border-white/[0.06]"
+                  }`}
+                >
+                  {/* Channel Info */}
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    {connectedChannelData?.channel_thumbnail ? (
+                      <img
+                        src={connectedChannelData.channel_thumbnail}
+                        alt={connectedChannelData.channel_title || "Channel"}
+                        className="w-10 h-10 rounded-full object-cover border border-white/20 shrink-0"
+                      />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-red-600/10 text-red-500 flex items-center justify-center shrink-0">
+                        <Youtube className="w-5 h-5" />
+                      </div>
+                    )}
+                    
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`text-sm font-bold truncate ${isLight ? "text-slate-900" : "text-white"}`}>
+                          {connectedChannelData?.channel_title || "My Channel"}
                         </span>
+                        {connectedChannelData?.channel_handle && (
+                          <span className="text-xs text-slate-500 font-mono">
+                            {connectedChannelData.channel_handle.startsWith("@") ? connectedChannelData.channel_handle : `@${connectedChannelData.channel_handle}`}
+                          </span>
+                        )}
                         <span
                           className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${
                             isLight
@@ -544,70 +588,74 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
                               : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
                           }`}
                         >
-                          Connected
+                          Verified Owner
                         </span>
                       </div>
-                      <p className={`text-xs ${isLight ? "text-slate-500" : "text-slate-400"}`}>
-                        Showing recent uploads for clipping
+                      <p className={`text-xs mt-0.5 ${isLight ? "text-slate-500" : "text-slate-400"}`}>
+                        {connectedChannelData?.subscriber_count ? `${connectedChannelData.subscriber_count} subscribers • ` : ""}Showing your long-form videos
                       </p>
                     </div>
+                  </div>
+
+                  {/* Search, Refresh, and Disconnect */}
+                  <div className="flex items-center gap-2.5">
+                    <div className="relative flex-1 sm:w-64">
+                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        value={searchFilter}
+                        onChange={(e) => setSearchFilter(e.target.value)}
+                        placeholder="Search your long videos..."
+                        className={`w-full pl-9 pr-3 py-1.5 text-xs rounded-xl focus:outline-none transition-colors ${
+                          isLight
+                            ? "bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400 focus:border-slate-300"
+                            : "bg-black/40 border border-white/[0.08] text-white placeholder-slate-500 focus:border-white/20"
+                        }`}
+                      />
+                      {searchFilter && (
+                        <button
+                          type="button"
+                          onClick={() => setSearchFilter("")}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+
                     <button
                       type="button"
-                      onClick={() => setIsEditingHandle(true)}
-                      className="ml-2 text-xs font-medium text-[#ff7427] hover:underline cursor-pointer"
+                      onClick={checkChannelStatus}
+                      disabled={isLoadingChannel}
+                      className={`p-2 rounded-xl border transition-colors cursor-pointer ${
+                        isLight
+                          ? "bg-slate-100 hover:bg-slate-200 text-slate-600 border-slate-200"
+                          : "bg-white/[0.04] hover:bg-white/[0.08] text-slate-300 hover:text-white border-white/[0.06]"
+                      }`}
+                      title="Refresh videos"
                     >
-                      Change
+                      <RefreshCw className={`w-3.5 h-3.5 ${isLoadingChannel ? "animate-spin text-[#ff7427]" : ""}`} />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleDisconnectChannel}
+                      className={`text-xs px-3 py-1.5 rounded-xl border transition-colors cursor-pointer font-medium ${
+                        isLight
+                          ? "text-slate-500 hover:text-rose-600 border-slate-200 hover:border-rose-200 hover:bg-rose-50"
+                          : "text-slate-400 hover:text-rose-400 border-white/10 hover:border-rose-500/30 hover:bg-rose-500/10"
+                      }`}
+                      title="Disconnect Channel"
+                    >
+                      Disconnect
                     </button>
                   </div>
-                )}
-              </div>
-
-              {/* Search & Refresh */}
-              <div className="flex items-center gap-3">
-                <div className="relative flex-1 sm:w-64">
-                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    value={searchFilter}
-                    onChange={(e) => setSearchFilter(e.target.value)}
-                    placeholder="Search recent videos..."
-                    className={`w-full pl-9 pr-3 py-1.5 text-xs rounded-xl focus:outline-none transition-colors ${
-                      isLight
-                        ? "bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400 focus:border-slate-300"
-                        : "bg-black/40 border border-white/[0.08] text-white placeholder-slate-500 focus:border-white/20"
-                    }`}
-                  />
-                  {searchFilter && (
-                    <button
-                      type="button"
-                      onClick={() => setSearchFilter("")}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  )}
                 </div>
-
-                <button
-                  type="button"
-                  onClick={() => fetchChannelVideos(channelHandle)}
-                  disabled={isLoadingChannel}
-                  className={`p-2 rounded-xl border transition-colors cursor-pointer ${
-                    isLight
-                      ? "bg-slate-100 hover:bg-slate-200 text-slate-600 border-slate-200"
-                      : "bg-white/[0.04] hover:bg-white/[0.08] text-slate-300 hover:text-white border-white/[0.06]"
-                  }`}
-                  title="Refresh video list"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isLoadingChannel ? "animate-spin text-[#ff7427]" : ""}`} />
-                </button>
-              </div>
-            </div>
 
             {/* Video Cards Grid */}
             {isLoadingChannel ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                {[1, 2, 3, 4, 5, 6].map((idx) => (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5">
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((idx) => (
                   <div
                     key={idx}
                     className={`aspect-video rounded-2xl animate-pulse border ${
@@ -637,23 +685,27 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5">
                 {filteredVideos.map((video) => {
                   const isSelected = selectedSource?.url === video.url;
                   return (
                     <div
                       key={video.id}
-                      onClick={() =>
-                        setSelectedSource({
-                          sourceType: "channel",
-                          title: video.title,
-                          url: video.url,
-                          duration: video.duration,
-                          durationFormatted: video.duration_formatted,
-                          thumbnail: video.thumbnail,
-                          uploader: video.uploader,
-                        })
-                      }
+                      onClick={() => {
+                        if (isSelected) {
+                          setSelectedSource(null);
+                        } else {
+                          setSelectedSource({
+                            sourceType: "channel",
+                            title: video.title,
+                            url: video.url,
+                            duration: video.duration,
+                            durationFormatted: video.duration_formatted,
+                            thumbnail: video.thumbnail,
+                            uploader: video.uploader,
+                          });
+                        }
+                      }}
                       className={`group relative rounded-2xl overflow-hidden cursor-pointer transition-all border ${
                         isSelected
                           ? "border-[#ff7427] ring-1 ring-[#ff7427]/50 " +
@@ -722,7 +774,7 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
                             isLight ? "text-slate-500" : "text-slate-400"
                           }`}
                         >
-                          <span>{video.uploader || channelHandle}</span>
+                          <span>{video.uploader || connectedChannelData?.channel_title || "My Channel"}</span>
                           {video.view_count ? (
                             <span className="flex items-center gap-1">
                               <Eye className="w-3 h-3 text-slate-400" />
@@ -735,6 +787,8 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
                   );
                 })}
               </div>
+            )}
+              </>
             )}
           </div>
         )}
@@ -952,7 +1006,7 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
       {/* 3. PRE-FLIGHT GENERATION DOCK */}
       {selectedSource && (
         <div
-          className={`sticky bottom-6 z-30 w-full p-4 sm:p-5 rounded-3xl backdrop-blur-2xl transition-all shadow-2xl flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-5 border ${
+          className={`sticky bottom-6 z-30 w-full p-4 sm:p-5 rounded-3xl backdrop-blur-2xl transition-all shadow-2xl flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-5 border animate-in fade-in slide-in-from-bottom-5 duration-300 ${
             isLight
               ? "bg-white/95 border-slate-200 text-slate-800"
               : "bg-[#0d0d12]/95 border-white/[0.12] text-white"
@@ -1086,6 +1140,20 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
               <Sparkles className="w-4 h-4 text-white" />
               <span>{isProcessing ? "Processing..." : "Generate 10 Viral Shorts"}</span>
               <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+
+            {/* Deselect / Close Dock Button */}
+            <button
+              type="button"
+              onClick={() => setSelectedSource(null)}
+              className={`p-2 rounded-xl border transition-colors cursor-pointer shrink-0 ${
+                isLight
+                  ? "bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-900 border-slate-200"
+                  : "bg-white/[0.04] hover:bg-white/[0.08] text-slate-400 hover:text-white border-white/[0.08]"
+              }`}
+              title="Close dock (Deselect video)"
+            >
+              <X className="w-4 h-4" />
             </button>
           </div>
         </div>
