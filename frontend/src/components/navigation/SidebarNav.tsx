@@ -116,7 +116,7 @@ export default function SidebarNav({
               onClick={() => onSelectView("studio")}
               className="flex items-center gap-3 cursor-pointer group focus:outline-none"
             >
-              <div className="w-9 h-9 rounded-full bg-black border-[1.5px] border-[#ff7427] flex items-center justify-center shrink-0 shadow-[0_0_12px_rgba(255,116,39,0.25)] group-hover:scale-105 transition-transform duration-300">
+              <div className="w-9 h-9 rounded-full bg-black border-[1.5px] border-[#ff7427] flex items-center justify-center shrink-0">
                 <Image
                   src="/brand_logo.png?v=3"
                   alt="Vakiogiri Logo"
@@ -141,7 +141,7 @@ export default function SidebarNav({
             <button
               type="button"
               onClick={toggleExpand}
-              className="w-7 h-7 rounded-lg text-slate-400 hover:text-white hover:bg-white/[0.06] flex items-center justify-center transition-all duration-200 cursor-pointer focus:outline-none"
+              className="w-7 h-7 rounded-lg text-slate-400 hover:text-white hover:bg-white/[0.06] flex items-center justify-center transition-colors duration-200 cursor-pointer focus:outline-none"
               title="Collapse sidebar"
             >
               <ChevronLeft className="w-4 h-4" />
@@ -152,16 +152,16 @@ export default function SidebarNav({
             <button
               type="button"
               onClick={toggleExpand}
-              className="w-10 h-10 rounded-full bg-black border-[1.5px] border-[#ff7427] hover:border-[#ff9254] flex items-center justify-center shrink-0 cursor-pointer transition-all duration-300 ease-out hover:scale-105 shadow-[0_0_14px_rgba(255,116,39,0.2)] group focus:outline-none"
+              className="w-9 h-9 rounded-full bg-black border-[1.5px] border-[#ff7427] hover:border-[#ff9254] flex items-center justify-center shrink-0 cursor-pointer transition-colors duration-200 group focus:outline-none"
               title="Click to expand sidebar"
             >
               <Image
                 src="/brand_logo.png?v=3"
                 alt="Vakiogiri Logo"
-                width={22}
-                height={22}
+                width={20}
+                height={20}
                 unoptimized
-                className="w-5 h-5 object-contain group-hover:rotate-6 transition-transform duration-300"
+                className="w-4.5 h-4.5 object-contain"
                 priority
               />
             </button>
@@ -169,8 +169,8 @@ export default function SidebarNav({
         )}
       </div>
 
-      {/* 2. CENTER NAVIGATION ITEMS */}
-      <nav className="flex-1 flex flex-col gap-1.5 py-4 px-2 overflow-y-auto overflow-x-hidden scrollbar-none">
+      {/* 2. CENTER NAVIGATION ITEMS - Clean, Boxless, Subtle Glow, No Zoom */}
+      <nav className="flex-1 flex flex-col gap-1 py-4 px-2 overflow-y-auto overflow-x-hidden scrollbar-none">
         {topItems.map((item) => {
           const isActive =
             activeView === item.id ||
@@ -184,44 +184,48 @@ export default function SidebarNav({
               key={item.id}
               type="button"
               onClick={item.onClick}
-              className={`group relative w-full flex items-center transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer select-none focus:outline-none ${
-                isExpanded ? "px-2 py-1" : "justify-center py-1"
+              className={`group relative w-full flex items-center cursor-pointer select-none focus:outline-none ${
+                isExpanded ? "px-2 py-1" : "justify-center py-1.5"
               }`}
             >
-              {/* Sleek Neon Left Notch Indicator */}
+              {/* Refined Minimal Left Rim Notch Indicator (Toned down, no blinding glow) */}
               <span
-                className={`absolute left-0 top-1/2 -translate-y-1/2 w-[3px] rounded-r-full bg-[#ff7427] transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] pointer-events-none ${
+                className={`absolute left-0 top-1/2 -translate-y-1/2 w-[2.5px] rounded-r-full transition-all duration-200 ease-out pointer-events-none ${
                   isActive
-                    ? "h-6 opacity-100 shadow-[0_0_12px_#ff7427]"
-                    : "h-0 opacity-0 group-hover:h-3 group-hover:opacity-40"
+                    ? "h-5 bg-[#ff7427] opacity-100 shadow-[0_0_6px_rgba(255,116,39,0.45)]"
+                    : "h-0 bg-white/40 opacity-0 group-hover:h-2 group-hover:opacity-40"
                 }`}
               />
 
-              {/* Button Pill Container */}
+              {/* Boxless Item Container: No clunky border, soft luminance hover */}
               <div
-                className={`flex items-center transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+                className={`flex items-center transition-all duration-200 ease-out ${
                   isExpanded
-                    ? "w-full h-11 px-3.5 rounded-xl justify-between"
-                    : "w-11 h-11 rounded-xl justify-center"
+                    ? "w-full h-10 px-3 rounded-lg justify-between group-hover:translate-x-1"
+                    : "w-10 h-10 rounded-lg justify-center"
                 } ${
                   isActive
-                    ? "text-white bg-gradient-to-r from-[#ff7427]/20 via-[#ff7427]/10 to-transparent border border-[#ff7427]/30 shadow-[0_0_20px_rgba(255,116,39,0.18)]"
-                    : "text-slate-400 hover:text-white hover:bg-white/[0.06] hover:shadow-[0_0_16px_rgba(255,255,255,0.03)] border border-transparent"
+                    ? "text-[#ff7427] bg-[#ff7427]/[0.08]"
+                    : "text-slate-400 hover:text-white hover:bg-white/[0.04]"
                 }`}
               >
                 <div className="flex items-center gap-3">
                   <div
-                    className={`flex items-center justify-center transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] group-hover:scale-110 group-active:scale-95 ${
-                      isActive ? "text-[#ff7427]" : "text-slate-400 group-hover:text-white"
+                    className={`flex items-center justify-center transition-colors duration-200 ${
+                      isActive
+                        ? "text-[#ff7427] drop-shadow-[0_0_4px_rgba(255,116,39,0.35)]"
+                        : "text-slate-400 group-hover:text-white"
                     }`}
                   >
-                    <IconComponent size={21} />
+                    <IconComponent size={20} />
                   </div>
 
                   {isExpanded && (
                     <span
-                      className={`text-xs font-semibold tracking-tight truncate transition-colors duration-200 ${
-                        isActive ? "text-white" : "text-slate-300 group-hover:text-white"
+                      className={`text-xs tracking-tight truncate transition-colors duration-200 ${
+                        isActive
+                          ? "text-white font-bold"
+                          : "text-slate-400 group-hover:text-white font-medium"
                       }`}
                     >
                       {item.label}
@@ -233,8 +237,8 @@ export default function SidebarNav({
                   <span
                     className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold transition-all ${
                       typeof item.badge === "number"
-                        ? "bg-[#ff7427]/20 text-[#ff7427] border border-[#ff7427]/30"
-                        : "bg-white/[0.06] text-slate-400 border border-white/[0.08]"
+                        ? "bg-[#ff7427]/15 text-[#ff7427]"
+                        : "bg-white/[0.05] text-slate-400"
                     }`}
                   >
                     {item.badge}
@@ -244,11 +248,11 @@ export default function SidebarNav({
 
               {/* Floating Tooltip in Collapsed Mode */}
               {!isExpanded && (
-                <div className="absolute left-[calc(100%+12px)] top-1/2 -translate-y-1/2 flex items-center opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-200 ease-out pointer-events-none z-50">
-                  <div className="relative px-3 py-1.5 rounded-xl bg-[#121216]/95 backdrop-blur-xl border border-white/[0.12] text-xs font-semibold text-white tracking-wide shadow-[0_10px_30px_rgba(0,0,0,0.8)] whitespace-nowrap flex items-center gap-2">
+                <div className="absolute left-[calc(100%+10px)] top-1/2 -translate-y-1/2 flex items-center opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-150 ease-out pointer-events-none z-50">
+                  <div className="relative px-2.5 py-1.5 rounded-lg bg-[#141418] border border-white/[0.1] text-xs font-medium text-white tracking-wide shadow-lg whitespace-nowrap flex items-center gap-2">
                     <span>{item.label}</span>
                     {item.badge !== undefined && (
-                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-[#ff7427]/20 text-[#ff7427] font-bold border border-[#ff7427]/30">
+                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-[#ff7427]/20 text-[#ff7427] font-bold">
                         {item.badge}
                       </span>
                     )}
@@ -261,10 +265,10 @@ export default function SidebarNav({
       </nav>
 
       {/* 3. BOTTOM UTILITY & PROFILE SECTION */}
-      <div className="flex flex-col gap-2 p-2 border-t border-white/[0.08] shrink-0">
+      <div className="flex flex-col gap-1 p-2 border-t border-white/[0.08] shrink-0">
         {/* Credits Pill (Expanded View) */}
         {isExpanded && (
-          <div className="mx-1 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-between text-xs font-mono">
+          <div className="mx-1 mb-1 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-between text-xs font-mono">
             <div className="flex items-center gap-2">
               <Zap className="w-3.5 h-3.5 text-[#ff7427] fill-[#ff7427]/20" />
               <span className="text-slate-300 font-bold">
@@ -286,30 +290,30 @@ export default function SidebarNav({
               key={item.id}
               type="button"
               onClick={item.onClick}
-              className={`group relative w-full flex items-center transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer select-none focus:outline-none ${
+              className={`group relative w-full flex items-center cursor-pointer select-none focus:outline-none ${
                 isExpanded ? "px-2 py-1" : "justify-center py-1"
               }`}
             >
               <div
-                className={`flex items-center transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+                className={`flex items-center transition-all duration-200 ease-out ${
                   isExpanded
-                    ? "w-full h-10 px-3.5 rounded-xl gap-3"
-                    : "w-11 h-10 rounded-xl justify-center"
-                } text-slate-400 hover:text-white hover:bg-white/[0.06] border border-transparent`}
+                    ? "w-full h-10 px-3 rounded-lg gap-3 group-hover:translate-x-1"
+                    : "w-10 h-10 rounded-lg justify-center"
+                } text-slate-400 hover:text-white hover:bg-white/[0.04]`}
               >
-                <div className="transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] group-hover:scale-110 group-active:scale-95 group-hover:text-white">
-                  <IconComponent size={20} />
+                <div className="transition-colors duration-200 group-hover:text-white">
+                  <IconComponent size={19} />
                 </div>
                 {isExpanded && (
-                  <span className="text-xs font-semibold tracking-tight text-slate-300 group-hover:text-white">
+                  <span className="text-xs font-medium tracking-tight text-slate-400 group-hover:text-white transition-colors duration-200">
                     {item.label}
                   </span>
                 )}
               </div>
 
               {!isExpanded && (
-                <div className="absolute left-[calc(100%+12px)] top-1/2 -translate-y-1/2 flex items-center opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-200 ease-out pointer-events-none z-50">
-                  <div className="px-3 py-1.5 rounded-xl bg-[#121216]/95 backdrop-blur-xl border border-white/[0.12] text-xs font-semibold text-white whitespace-nowrap shadow-[0_10px_30px_rgba(0,0,0,0.8)]">
+                <div className="absolute left-[calc(100%+10px)] top-1/2 -translate-y-1/2 flex items-center opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-150 ease-out pointer-events-none z-50">
+                  <div className="px-2.5 py-1.5 rounded-lg bg-[#141418] border border-white/[0.1] text-xs font-medium text-white whitespace-nowrap shadow-lg">
                     {item.label}
                   </div>
                 </div>
@@ -354,11 +358,11 @@ export default function SidebarNav({
                   <button
                     type="button"
                     onClick={onSignOut}
-                    className="group relative w-11 h-10 rounded-xl flex items-center justify-center text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer focus:outline-none"
+                    className="group relative w-10 h-10 rounded-lg flex items-center justify-center text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors duration-200 cursor-pointer focus:outline-none"
                   >
-                    <LogOut className="w-4 h-4 transition-transform duration-300 group-hover:scale-110" />
-                    <div className="absolute left-[calc(100%+12px)] top-1/2 -translate-y-1/2 flex items-center opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-200 ease-out pointer-events-none z-50">
-                      <div className="px-3 py-1.5 rounded-xl bg-[#121216]/95 backdrop-blur-xl border border-white/[0.12] text-xs font-semibold text-rose-300 whitespace-nowrap shadow-[0_10px_30px_rgba(0,0,0,0.8)]">
+                    <LogOut className="w-4 h-4 transition-colors duration-200" />
+                    <div className="absolute left-[calc(100%+10px)] top-1/2 -translate-y-1/2 flex items-center opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-150 ease-out pointer-events-none z-50">
+                      <div className="px-2.5 py-1.5 rounded-lg bg-[#141418] border border-white/[0.1] text-xs font-medium text-rose-300 whitespace-nowrap shadow-lg">
                         Sign out
                       </div>
                     </div>
