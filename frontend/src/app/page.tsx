@@ -34,6 +34,7 @@ export default function Home() {
   
   // Navigation view
   const [activeView, setActiveView] = useState<"studio" | "history">("studio");
+  const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
   const [history, setHistory] = useState<HistoryProject[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
@@ -431,7 +432,7 @@ export default function Home() {
       {/* Conditional Navigation: Authenticated vs Guest */}
       {session ? (
         <>
-          {/* Floating Iconsax-style Sidebar Rail (Only visible after login) */}
+          {/* Integrated Modern Sidebar Rail / Panel (Only visible after login) */}
           <SidebarNav
             activeView={activeView}
             onSelectView={(view) => {
@@ -451,10 +452,14 @@ export default function Home() {
               setIsAuthModalOpen(true);
             }}
             onSignOut={handleSignOut}
+            isExpanded={isSidebarExpanded}
+            onToggleExpand={() => setIsSidebarExpanded((prev) => !prev)}
           />
 
-          {/* Main Studio Canvas Area (beside Sidebar Rail) */}
-          <div className="flex-1 flex flex-col min-w-0 pl-0 md:pl-24 transition-all duration-300">
+          {/* Main Studio Canvas Area (seamlessly unified with Sidebar and TopUtilityHeader) */}
+          <div className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+            isSidebarExpanded ? "pl-0 md:pl-[240px]" : "pl-0 md:pl-[72px]"
+          }`}>
             <TopUtilityHeader
               title={activeView === "history" ? "My Clips Library" : "Shorts Studio"}
               badge="AI Best Moments"
@@ -467,6 +472,8 @@ export default function Home() {
               onSignOut={handleSignOut}
               theme={theme}
               onToggleTheme={toggleTheme}
+              isSidebarExpanded={isSidebarExpanded}
+              onToggleSidebar={() => setIsSidebarExpanded((prev) => !prev)}
             />
 
             {/* Main Canvas */}

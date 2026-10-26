@@ -2,17 +2,16 @@
 
 import React, { useState } from "react";
 import Image from "next/image";
-import Link from "next/link";
 import {
   IconsaxHome,
   IconsaxProjects,
-  IconsaxMessages,
+  IconsaxAnalytics,
   IconsaxCalendar,
   IconsaxArchive,
-  IconsaxAnalytics,
   IconsaxAccount,
   IconsaxSettings,
 } from "./IconsaxIcons";
+import { ChevronLeft, ChevronRight, LogOut, Zap } from "lucide-react";
 
 interface SidebarNavProps {
   activeView: string;
@@ -23,390 +22,357 @@ interface SidebarNavProps {
   userProfile?: {
     email?: string;
     credits_remaining?: number;
+    max_daily_credits?: number;
   };
   onSignOut?: () => void;
+  isExpanded?: boolean;
+  onToggleExpand?: () => void;
 }
 
 export default function SidebarNav({
   activeView,
   onSelectView,
-  historyCount = 3,
+  historyCount = 0,
   onOpenAuth,
   session,
   userProfile,
   onSignOut,
+  isExpanded: controlledExpanded,
+  onToggleExpand: controlledToggle,
 }: SidebarNavProps) {
-  // Mode: compact rail (as shown on left of reference) vs expanded panel (as shown on right)
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [internalExpanded, setInternalExpanded] = useState(false);
+  const isExpanded = controlledExpanded !== undefined ? controlledExpanded : internalExpanded;
 
-  // Top navigation items matching the Iconsax reference design
+  const toggleExpand = () => {
+    if (controlledToggle) {
+      controlledToggle();
+    } else {
+      setInternalExpanded((prev) => !prev);
+    }
+  };
+
   const topItems = [
     {
       id: "studio",
-      label: "Home",
-      icon: <IconsaxHome size={22} />,
+      label: "Shorts Studio",
+      icon: IconsaxHome,
+      badge: undefined,
       onClick: () => onSelectView("studio"),
     },
     {
       id: "projects",
-      label: "Projects",
-      icon: <IconsaxProjects size={22} />,
+      label: "Clips Library",
+      icon: IconsaxProjects,
+      badge: historyCount > 0 ? historyCount : undefined,
       onClick: () => onSelectView("history"),
     },
     {
-      id: "history",
-      label: "Messages",
-      icon: <IconsaxMessages size={22} />,
-      badge: historyCount > 0 ? historyCount : 3,
-      onClick: () => onSelectView("history"),
+      id: "analytics",
+      label: "Analytics",
+      icon: IconsaxAnalytics,
+      badge: "Soon",
+      onClick: () => onSelectView("studio"),
     },
     {
       id: "calendar",
-      label: "Calendar",
-      icon: <IconsaxCalendar size={22} />,
+      label: "Schedule",
+      icon: IconsaxCalendar,
+      badge: "Soon",
       onClick: () => onSelectView("studio"),
     },
     {
       id: "archive",
       label: "Archive",
-      icon: <IconsaxArchive size={22} />,
-      onClick: () => onSelectView("studio"),
-    },
-    {
-      id: "analytics",
-      label: "Analytics",
-      icon: <IconsaxAnalytics size={22} />,
+      icon: IconsaxArchive,
+      badge: undefined,
       onClick: () => onSelectView("studio"),
     },
   ];
 
-  // Bottom navigation items matching the Iconsax reference design
   const bottomItems = [
-    {
-      id: "account",
-      label: "Account",
-      icon: <IconsaxAccount size={22} />,
-      onClick: () => {
-        if (!session && onOpenAuth) {
-          onOpenAuth();
-        }
-      },
-    },
     {
       id: "settings",
       label: "Settings",
-      icon: <IconsaxSettings size={22} />,
+      icon: IconsaxSettings,
       onClick: () => onSelectView("studio"),
     },
   ];
 
+  const creditsRemaining = userProfile?.credits_remaining ?? 3;
+  const maxCredits = userProfile?.max_daily_credits ?? 3;
+
   return (
-    <>
-      {/* ============================================================ */}
-      {/* 1. COLLAPSED FLOATING RAIL (Exact Left Component in Image 1) */}
-      {/* ============================================================ */}
-      {!isExpanded && (
-        <aside
-          className="fixed left-5 top-8 bottom-8 z-50 w-[70px] flex flex-col items-center justify-between py-6 rounded-[38px] transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] select-none shadow-[0_30px_70px_rgba(0,0,0,0.95),inset_0_1px_1px_rgba(255,255,255,0.18)] border border-white/[0.12]"
-          style={{
-            background: "linear-gradient(180deg, rgba(28, 28, 34, 0.82) 0%, rgba(16, 16, 20, 0.90) 50%, rgba(10, 10, 13, 0.95) 100%)",
-            backdropFilter: "blur(40px) saturate(180%)",
-            WebkitBackdropFilter: "blur(40px) saturate(180%)",
-          }}
-        >
-          {/* Top Logo in Golden Orange Circle with Pure Solid Black BG & Zero Glow */}
-          <div className="flex flex-col items-center">
+    <aside
+      className={`fixed top-0 bottom-0 left-0 z-40 flex flex-col justify-between border-r border-white/[0.08] bg-[#09090c]/90 backdrop-blur-2xl transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] select-none ${
+        isExpanded ? "w-[240px]" : "w-[72px]"
+      }`}
+    >
+      {/* 1. TOP HEADER - Exact h-16 height & border-b matching TopUtilityHeader */}
+      <div className="h-16 flex items-center border-b border-white/[0.08] px-3.5 shrink-0 transition-all duration-300">
+        {isExpanded ? (
+          <div className="w-full flex items-center justify-between">
             <button
               type="button"
-              onClick={() => setIsExpanded(true)}
-              className="cursor-pointer focus:outline-none"
-              title="Click to expand panel"
+              onClick={() => onSelectView("studio")}
+              className="flex items-center gap-3 cursor-pointer group focus:outline-none"
             >
-              <div className="w-9 h-9 rounded-full bg-black border-[1.5px] border-[#ff7427] flex items-center justify-center relative">
+              <div className="w-9 h-9 rounded-full bg-black border-[1.5px] border-[#ff7427] flex items-center justify-center shrink-0 shadow-[0_0_12px_rgba(255,116,39,0.25)] group-hover:scale-105 transition-transform duration-300">
                 <Image
                   src="/brand_logo.png?v=3"
-                  alt="Logo"
-                  width={22}
-                  height={22}
-                  priority
+                  alt="Vakiogiri Logo"
+                  width={20}
+                  height={20}
                   unoptimized
                   className="w-5 h-5 object-contain"
+                  priority
                 />
               </div>
+              <div className="flex flex-col text-left">
+                <span className="text-sm font-bold text-white tracking-tight flex items-center gap-1.5">
+                  Vakiogiri
+                  <span className="text-[9px] font-mono px-1.5 py-0.2 rounded-full bg-[#ff7427]/20 text-[#ff7427] font-semibold border border-[#ff7427]/30">
+                    AI
+                  </span>
+                </span>
+                <span className="text-[10px] text-slate-400 font-medium">Shorts Studio</span>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={toggleExpand}
+              className="w-7 h-7 rounded-lg text-slate-400 hover:text-white hover:bg-white/[0.06] flex items-center justify-center transition-all duration-200 cursor-pointer focus:outline-none"
+              title="Collapse sidebar"
+            >
+              <ChevronLeft className="w-4 h-4" />
             </button>
           </div>
-
-          {/* Center Navigation Icons Stack */}
-          <nav className="flex flex-col items-center gap-3 w-full px-2">
-            {topItems.map((item) => {
-              const isActive =
-                activeView === item.id ||
-                (item.id === "projects" && activeView === "history") ||
-                (item.id === "history" && activeView === "history");
-
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={item.onClick}
-                  className="relative group w-12 h-12 flex items-center justify-center cursor-pointer focus:outline-none"
-                >
-                  {/* Glowing Neon Notch on the Outer Left Rim */}
-                  {isActive && (
-                    <span
-                      className="absolute -left-[14px] top-1/2 -translate-y-1/2 w-[4px] h-[22px] rounded-r-full bg-[#ff7427] pointer-events-none"
-                      style={{
-                        boxShadow: "0 0 14px #ff7427, 0 0 28px rgba(255, 116, 39, 0.8)",
-                      }}
-                    />
-                  )}
-
-                  {/* Icon Container Pill */}
-                  <div
-                    className={`w-12 h-12 rounded-[20px] flex items-center justify-center transition-all duration-200 ${
-                      isActive
-                        ? "text-white"
-                        : "text-[#8e8e96] hover:text-white hover:bg-white/[0.05]"
-                    }`}
-                    style={
-                      isActive
-                        ? {
-                            background:
-                              "linear-gradient(135deg, rgba(255, 116, 39, 0.28) 0%, rgba(255, 116, 39, 0.08) 60%, rgba(255, 116, 39, 0.0) 100%)",
-                            border: "1px solid rgba(255, 116, 39, 0.45)",
-                            boxShadow:
-                              "0 0 22px rgba(255, 116, 39, 0.28), inset 0 0 12px rgba(255, 116, 39, 0.15)",
-                          }
-                        : undefined
-                    }
-                  >
-                    {item.icon}
-                  </div>
-
-                  {/* Tooltip on Hover */}
-                  <span className="absolute left-[62px] px-2.5 py-1 rounded-lg bg-[#141416]/95 text-white text-xs font-medium whitespace-nowrap border border-white/10 opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity shadow-2xl z-50">
-                    {item.label}
-                  </span>
-                </button>
-              );
-            })}
-          </nav>
-
-          {/* Bottom Utility Icons Stack */}
-          <div className="flex flex-col items-center gap-3 w-full px-2 pt-3 border-t border-white/[0.06]">
-            {bottomItems.map((item) => {
-              const isActive = activeView === item.id;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={item.onClick}
-                  className="relative group w-12 h-12 flex items-center justify-center cursor-pointer focus:outline-none"
-                >
-                  {isActive && (
-                    <span
-                      className="absolute -left-[14px] top-1/2 -translate-y-1/2 w-[4px] h-[22px] rounded-r-full bg-[#ff7427] pointer-events-none"
-                      style={{
-                        boxShadow: "0 0 14px #ff7427, 0 0 28px rgba(255, 116, 39, 0.8)",
-                      }}
-                    />
-                  )}
-
-                  <div
-                    className={`w-12 h-12 rounded-[20px] flex items-center justify-center transition-all duration-200 ${
-                      isActive
-                        ? "text-white"
-                        : "text-[#8e8e96] hover:text-white hover:bg-white/[0.05]"
-                    }`}
-                    style={
-                      isActive
-                        ? {
-                            background:
-                              "linear-gradient(135deg, rgba(255, 116, 39, 0.28) 0%, rgba(255, 116, 39, 0.08) 60%, rgba(255, 116, 39, 0.0) 100%)",
-                            border: "1px solid rgba(255, 116, 39, 0.45)",
-                            boxShadow:
-                              "0 0 22px rgba(255, 116, 39, 0.28), inset 0 0 12px rgba(255, 116, 39, 0.15)",
-                          }
-                        : undefined
-                    }
-                  >
-                    {item.icon}
-                  </div>
-
-                  <span className="absolute left-[62px] px-2.5 py-1 rounded-lg bg-[#141416]/95 text-white text-xs font-medium whitespace-nowrap border border-white/10 opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity shadow-2xl z-50">
-                    {item.label}
-                  </span>
-                </button>
-              );
-            })}
+        ) : (
+          <div className="w-full flex items-center justify-center">
+            <button
+              type="button"
+              onClick={toggleExpand}
+              className="w-10 h-10 rounded-full bg-black border-[1.5px] border-[#ff7427] hover:border-[#ff9254] flex items-center justify-center shrink-0 cursor-pointer transition-all duration-300 ease-out hover:scale-105 shadow-[0_0_14px_rgba(255,116,39,0.2)] group focus:outline-none"
+              title="Click to expand sidebar"
+            >
+              <Image
+                src="/brand_logo.png?v=3"
+                alt="Vakiogiri Logo"
+                width={22}
+                height={22}
+                unoptimized
+                className="w-5 h-5 object-contain group-hover:rotate-6 transition-transform duration-300"
+                priority
+              />
+            </button>
           </div>
-        </aside>
-      )}
+        )}
+      </div>
 
-      {/* ============================================================ */}
-      {/* 2. EXPANDED FLOATING PANEL (Exact Right Component in Image 1) */}
-      {/* ============================================================ */}
-      {isExpanded && (
-        <aside
-          className="fixed left-5 top-8 bottom-8 z-50 w-[270px] flex flex-col justify-between py-6 px-4 rounded-[38px] transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] select-none shadow-[0_30px_70px_rgba(0,0,0,0.95),inset_0_1px_1px_rgba(255,255,255,0.18)] border border-white/[0.12]"
-          style={{
-            background: "linear-gradient(180deg, rgba(28, 28, 34, 0.85) 0%, rgba(16, 16, 20, 0.92) 50%, rgba(10, 10, 13, 0.96) 100%)",
-            backdropFilter: "blur(40px) saturate(180%)",
-            WebkitBackdropFilter: "blur(40px) saturate(180%)",
-          }}
-        >
-          {/* Top Logo + Brand Header (Exact `Rabbits` header layout in Image 1) */}
-          <div className="flex flex-col gap-6">
-            <div className="flex items-center justify-between px-2 pt-1">
-              <button
-                type="button"
-                onClick={() => setIsExpanded(false)}
-                className="flex items-center gap-3 focus:outline-none cursor-pointer"
-                title="Click to collapse rail"
+      {/* 2. CENTER NAVIGATION ITEMS */}
+      <nav className="flex-1 flex flex-col gap-1.5 py-4 px-2 overflow-y-auto overflow-x-hidden scrollbar-none">
+        {topItems.map((item) => {
+          const isActive =
+            activeView === item.id ||
+            (item.id === "projects" && activeView === "history") ||
+            (item.id === "studio" && activeView === "studio");
+
+          const IconComponent = item.icon;
+
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={item.onClick}
+              className={`group relative w-full flex items-center transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer select-none focus:outline-none ${
+                isExpanded ? "px-2 py-1" : "justify-center py-1"
+              }`}
+            >
+              {/* Sleek Neon Left Notch Indicator */}
+              <span
+                className={`absolute left-0 top-1/2 -translate-y-1/2 w-[3px] rounded-r-full bg-[#ff7427] transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] pointer-events-none ${
+                  isActive
+                    ? "h-6 opacity-100 shadow-[0_0_12px_#ff7427]"
+                    : "h-0 opacity-0 group-hover:h-3 group-hover:opacity-40"
+                }`}
+              />
+
+              {/* Button Pill Container */}
+              <div
+                className={`flex items-center transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+                  isExpanded
+                    ? "w-full h-11 px-3.5 rounded-xl justify-between"
+                    : "w-11 h-11 rounded-xl justify-center"
+                } ${
+                  isActive
+                    ? "text-white bg-gradient-to-r from-[#ff7427]/20 via-[#ff7427]/10 to-transparent border border-[#ff7427]/30 shadow-[0_0_20px_rgba(255,116,39,0.18)]"
+                    : "text-slate-400 hover:text-white hover:bg-white/[0.06] hover:shadow-[0_0_16px_rgba(255,255,255,0.03)] border border-transparent"
+                }`}
               >
-                <div className="w-9 h-9 rounded-full bg-black border-[1.5px] border-[#ff7427] flex items-center justify-center relative">
-                  <Image
-                    src="/brand_logo.png?v=3"
-                    alt="Logo"
-                    width={22}
-                    height={22}
-                    priority
-                    unoptimized
-                    className="w-5 h-5 object-contain"
-                  />
-                </div>
-                <span className="font-bold text-lg tracking-tight text-white transition-colors">
-                  Vakiogiri
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setIsExpanded(false)}
-                className="w-7 h-7 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] text-slate-400 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
-                title="Collapse to rail"
-              >
-                <span className="text-xs font-mono">◀</span>
-              </button>
-            </div>
-
-            {/* Navigation List Stack */}
-            <nav className="flex flex-col gap-1.5 w-full">
-              {topItems.map((item) => {
-                const isActive =
-                  activeView === item.id ||
-                  (item.id === "projects" && activeView === "history") ||
-                  (item.id === "history" && activeView === "history");
-
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={item.onClick}
-                    className="relative w-full text-left group focus:outline-none cursor-pointer"
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`flex items-center justify-center transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] group-hover:scale-110 group-active:scale-95 ${
+                      isActive ? "text-[#ff7427]" : "text-slate-400 group-hover:text-white"
+                    }`}
                   >
-                    {/* Glowing Neon Notch on the Outer Left Rim */}
-                    {isActive && (
-                      <span
-                        className="absolute -left-[20px] top-1/2 -translate-y-1/2 w-[4.5px] h-[24px] rounded-r-full bg-[#ff7427] pointer-events-none"
-                        style={{
-                          boxShadow: "0 0 14px #ff7427, 0 0 30px rgba(255, 116, 39, 0.85)",
-                        }}
-                      />
-                    )}
+                    <IconComponent size={21} />
+                  </div>
 
-                    {/* Active Pill Container with Exact Gradient and Glow */}
-                    <div
-                      className={`h-12 w-full rounded-[22px] px-4 flex items-center justify-between transition-all duration-200 ${
-                        isActive
-                          ? "text-white font-medium"
-                          : "text-[#8e8e96] hover:text-white hover:bg-white/[0.04]"
+                  {isExpanded && (
+                    <span
+                      className={`text-xs font-semibold tracking-tight truncate transition-colors duration-200 ${
+                        isActive ? "text-white" : "text-slate-300 group-hover:text-white"
                       }`}
-                      style={
-                        isActive
-                          ? {
-                              background:
-                                "linear-gradient(90deg, rgba(255, 116, 39, 0.24) 0%, rgba(255, 116, 39, 0.07) 50%, rgba(255, 116, 39, 0.0) 100%)",
-                              border: "1px solid rgba(255, 116, 39, 0.42)",
-                              boxShadow:
-                                "0 0 24px rgba(255, 116, 39, 0.22), inset 0 1px 1px rgba(255, 255, 255, 0.12)",
-                            }
-                          : undefined
-                      }
                     >
-                      <div className="flex items-center gap-3.5">
-                        <div className={isActive ? "text-white" : "text-[#8e8e96] group-hover:text-white transition-colors"}>
-                          {item.icon}
-                        </div>
-                        <span className="text-sm tracking-normal">
-                          {item.label}
-                        </span>
-                      </div>
-
-                      {/* Badge (e.g., Messages 3) */}
-                      {item.badge !== undefined && (
-                        <span className="w-5 h-5 rounded-full bg-[#18181e] border border-white/[0.08] text-[11px] font-mono font-medium text-[#8e8e96] flex items-center justify-center">
-                          {item.badge}
-                        </span>
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
-            </nav>
-          </div>
-
-          {/* Bottom Utility Items Stack */}
-          <div className="flex flex-col gap-1.5 w-full pt-4 border-t border-white/[0.06]">
-            {bottomItems.map((item) => {
-              const isActive = activeView === item.id;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={item.onClick}
-                  className="relative w-full text-left group focus:outline-none cursor-pointer"
-                >
-                  {isActive && (
-                    <span
-                      className="absolute -left-[20px] top-1/2 -translate-y-1/2 w-[4.5px] h-[24px] rounded-r-full bg-[#ff7427] pointer-events-none"
-                      style={{
-                        boxShadow: "0 0 14px #ff7427, 0 0 30px rgba(255, 116, 39, 0.85)",
-                      }}
-                    />
-                  )}
-
-                  <div
-                    className={`h-12 w-full rounded-[22px] px-4 flex items-center gap-3.5 transition-all duration-200 ${
-                      isActive
-                        ? "text-white font-medium"
-                        : "text-[#8e8e96] hover:text-white hover:bg-white/[0.04]"
-                    }`}
-                    style={
-                      isActive
-                        ? {
-                            background:
-                              "linear-gradient(90deg, rgba(255, 116, 39, 0.24) 0%, rgba(255, 116, 39, 0.07) 50%, rgba(255, 116, 39, 0.0) 100%)",
-                            border: "1px solid rgba(255, 116, 39, 0.42)",
-                            boxShadow:
-                              "0 0 24px rgba(255, 116, 39, 0.22), inset 0 1px 1px rgba(255, 255, 255, 0.12)",
-                          }
-                        : undefined
-                    }
-                  >
-                    <div className={isActive ? "text-white" : "text-[#8e8e96] group-hover:text-white transition-colors"}>
-                      {item.icon}
-                    </div>
-                    <span className="text-sm tracking-normal">
                       {item.label}
                     </span>
+                  )}
+                </div>
+
+                {isExpanded && item.badge !== undefined && (
+                  <span
+                    className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold transition-all ${
+                      typeof item.badge === "number"
+                        ? "bg-[#ff7427]/20 text-[#ff7427] border border-[#ff7427]/30"
+                        : "bg-white/[0.06] text-slate-400 border border-white/[0.08]"
+                    }`}
+                  >
+                    {item.badge}
+                  </span>
+                )}
+              </div>
+
+              {/* Floating Tooltip in Collapsed Mode */}
+              {!isExpanded && (
+                <div className="absolute left-[calc(100%+12px)] top-1/2 -translate-y-1/2 flex items-center opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-200 ease-out pointer-events-none z-50">
+                  <div className="relative px-3 py-1.5 rounded-xl bg-[#121216]/95 backdrop-blur-xl border border-white/[0.12] text-xs font-semibold text-white tracking-wide shadow-[0_10px_30px_rgba(0,0,0,0.8)] whitespace-nowrap flex items-center gap-2">
+                    <span>{item.label}</span>
+                    {item.badge !== undefined && (
+                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-[#ff7427]/20 text-[#ff7427] font-bold border border-[#ff7427]/30">
+                        {item.badge}
+                      </span>
+                    )}
                   </div>
-                </button>
-              );
-            })}
+                </div>
+              )}
+            </button>
+          );
+        })}
+      </nav>
+
+      {/* 3. BOTTOM UTILITY & PROFILE SECTION */}
+      <div className="flex flex-col gap-2 p-2 border-t border-white/[0.08] shrink-0">
+        {/* Credits Pill (Expanded View) */}
+        {isExpanded && (
+          <div className="mx-1 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-between text-xs font-mono">
+            <div className="flex items-center gap-2">
+              <Zap className="w-3.5 h-3.5 text-[#ff7427] fill-[#ff7427]/20" />
+              <span className="text-slate-300 font-bold">
+                {creditsRemaining}/{maxCredits}
+              </span>
+              <span className="text-[10px] text-slate-500 font-sans">Clips</span>
+            </div>
+            <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#ff7427]/10 text-[#ff7427] font-bold">
+              Daily
+            </span>
           </div>
-        </aside>
-      )}
-    </>
+        )}
+
+        {/* Bottom items (Settings) */}
+        {bottomItems.map((item) => {
+          const IconComponent = item.icon;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={item.onClick}
+              className={`group relative w-full flex items-center transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] cursor-pointer select-none focus:outline-none ${
+                isExpanded ? "px-2 py-1" : "justify-center py-1"
+              }`}
+            >
+              <div
+                className={`flex items-center transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+                  isExpanded
+                    ? "w-full h-10 px-3.5 rounded-xl gap-3"
+                    : "w-11 h-10 rounded-xl justify-center"
+                } text-slate-400 hover:text-white hover:bg-white/[0.06] border border-transparent`}
+              >
+                <div className="transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] group-hover:scale-110 group-active:scale-95 group-hover:text-white">
+                  <IconComponent size={20} />
+                </div>
+                {isExpanded && (
+                  <span className="text-xs font-semibold tracking-tight text-slate-300 group-hover:text-white">
+                    {item.label}
+                  </span>
+                )}
+              </div>
+
+              {!isExpanded && (
+                <div className="absolute left-[calc(100%+12px)] top-1/2 -translate-y-1/2 flex items-center opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-200 ease-out pointer-events-none z-50">
+                  <div className="px-3 py-1.5 rounded-xl bg-[#121216]/95 backdrop-blur-xl border border-white/[0.12] text-xs font-semibold text-white whitespace-nowrap shadow-[0_10px_30px_rgba(0,0,0,0.8)]">
+                    {item.label}
+                  </div>
+                </div>
+              )}
+            </button>
+          );
+        })}
+
+        {/* User Account / Sign Out Section */}
+        {session && (
+          <div className="pt-1">
+            {isExpanded ? (
+              <div className="px-2 py-1.5 rounded-xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-between">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-7 h-7 rounded-full bg-[#ff7427]/20 border border-[#ff7427]/40 flex items-center justify-center text-[#ff7427] text-xs font-bold shrink-0">
+                    {session.user?.email?.[0]?.toUpperCase() || "U"}
+                  </div>
+                  <div className="flex flex-col min-w-0">
+                    <span className="text-[11px] font-semibold text-white truncate">
+                      {session.user?.email?.split("@")[0]}
+                    </span>
+                    <span className="text-[9px] text-slate-400 truncate">
+                      {session.user?.email}
+                    </span>
+                  </div>
+                </div>
+
+                {onSignOut && (
+                  <button
+                    type="button"
+                    onClick={onSignOut}
+                    className="w-7 h-7 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 flex items-center justify-center transition-colors cursor-pointer focus:outline-none"
+                    title="Sign out"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="flex justify-center">
+                {onSignOut ? (
+                  <button
+                    type="button"
+                    onClick={onSignOut}
+                    className="group relative w-11 h-10 rounded-xl flex items-center justify-center text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer focus:outline-none"
+                  >
+                    <LogOut className="w-4 h-4 transition-transform duration-300 group-hover:scale-110" />
+                    <div className="absolute left-[calc(100%+12px)] top-1/2 -translate-y-1/2 flex items-center opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-200 ease-out pointer-events-none z-50">
+                      <div className="px-3 py-1.5 rounded-xl bg-[#121216]/95 backdrop-blur-xl border border-white/[0.12] text-xs font-semibold text-rose-300 whitespace-nowrap shadow-[0_10px_30px_rgba(0,0,0,0.8)]">
+                        Sign out
+                      </div>
+                    </div>
+                  </button>
+                ) : (
+                  <div className="w-8 h-8 rounded-full bg-[#ff7427]/20 border border-[#ff7427]/40 flex items-center justify-center text-[#ff7427] text-xs font-bold">
+                    {session.user?.email?.[0]?.toUpperCase() || "U"}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </aside>
   );
 }
