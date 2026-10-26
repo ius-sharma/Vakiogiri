@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Mail, Lock, AlertCircle, CheckCircle2, Loader2, ArrowRight } from "lucide-react";
 import { signInWithGoogle, signInWithEmail, signUpWithEmail, isSupabaseConfigured } from "@/lib/supabase";
+import { isAuthorizedEmail, UNAUTHORIZED_ACCESS_MESSAGE } from "@/lib/authConfig";
 import ParticleOrbCanvas from "./ParticleOrbCanvas";
 
 interface AuthCardProps {
@@ -43,6 +44,11 @@ export default function AuthCard({ initialMode }: AuthCardProps) {
     e.preventDefault();
     if (!email.trim() || !password.trim()) {
       setErrorMsg("Please enter both email and password.");
+      return;
+    }
+
+    if (!isAuthorizedEmail(email)) {
+      setErrorMsg(UNAUTHORIZED_ACCESS_MESSAGE);
       return;
     }
 

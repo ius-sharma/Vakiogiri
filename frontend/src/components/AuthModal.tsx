@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import Image from "next/image";
 import { X, Mail, Lock, AlertCircle, CheckCircle2, Loader2, Sparkles, ArrowRight } from "lucide-react";
 import { signInWithGoogle, signInWithEmail, signUpWithEmail, isSupabaseConfigured } from "../lib/supabase";
+import { isAuthorizedEmail, UNAUTHORIZED_ACCESS_MESSAGE } from "../lib/authConfig";
 import SineWaveCanvas from "./auth/SineWaveCanvas";
 
 interface AuthModalProps {
@@ -65,6 +66,11 @@ export default function AuthModal({
     e.preventDefault();
     if (!email.trim() || !password.trim()) {
       setErrorMsg("Please enter both email and password.");
+      return;
+    }
+
+    if (!isAuthorizedEmail(email)) {
+      setErrorMsg(UNAUTHORIZED_ACCESS_MESSAGE);
       return;
     }
 

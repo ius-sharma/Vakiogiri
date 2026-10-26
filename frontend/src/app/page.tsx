@@ -14,6 +14,7 @@ import HistoryView, { HistoryProject } from "@/components/studio/HistoryView";
 import AuthModal from "@/components/AuthModal";
 import { useUIFeedback } from "@/components/UIFeedback";
 import { supabase, signOut } from "@/lib/supabase";
+import { isAuthorizedEmail } from "@/lib/authConfig";
 import { Sparkles, AlertTriangle, RefreshCw, Flame } from "lucide-react";
 import { ClipItemData } from "@/components/studio/ClipCard";
 
@@ -90,6 +91,15 @@ export default function Home() {
 
     supabase.auth.getSession().then((res: any) => {
       const activeSession = res?.data?.session;
+      if (activeSession) {
+        const userEmail = activeSession.user?.email;
+        if (!isAuthorizedEmail(userEmail)) {
+          signOut();
+          setSession(null);
+          showToast("Access restricted: Only authorized creator (risewithius@gmail.com) can log in.", "error");
+          return;
+        }
+      }
       setSession(activeSession);
       if (activeSession?.access_token) {
         fetchUserProfile(activeSession.access_token);
@@ -100,6 +110,15 @@ export default function Home() {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event: any, activeSession: any) => {
+      if (activeSession) {
+        const userEmail = activeSession.user?.email;
+        if (!isAuthorizedEmail(userEmail)) {
+          signOut();
+          setSession(null);
+          showToast("Access restricted: Only authorized creator (risewithius@gmail.com) can log in.", "error");
+          return;
+        }
+      }
       setSession(activeSession);
       if (activeSession?.access_token) {
         fetchUserProfile(activeSession.access_token);

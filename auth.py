@@ -10,6 +10,18 @@ from db import get_or_create_user
 load_dotenv()
 
 SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET", "")
+ALLOWED_ADMIN_EMAILS = [
+    email.strip().lower()
+    for email in os.getenv("ALLOWED_ADMIN_EMAILS", "risewithius@gmail.com").split(",")
+    if email.strip()
+]
+
+
+def is_authorized_creator_email(email: Optional[str]) -> bool:
+    """Check if the provided email matches the authorized creator whitelist."""
+    if not email:
+        return False
+    return email.strip().lower() in ALLOWED_ADMIN_EMAILS
 
 
 def decode_jwt_payload_safely(token: str) -> Optional[Dict[str, Any]]:
@@ -80,6 +92,13 @@ def get_current_user_optional(authorization: Optional[str] = Header(None)) -> Di
 
     if not user_id:
         return guest_state
+
+    # Whitelist check for authenticated requests: only authorized creator is allowed
+    if not is_authorized_creator_email(email):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access restricted: Only authorized creator (risewithius@gmail.com) is permitted."
+        )
 
     user_data = get_or_create_user(user_id, email)
     user_data["is_authenticated"] = True
