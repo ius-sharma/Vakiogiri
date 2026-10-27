@@ -244,9 +244,16 @@ def get_user_youtube_channel(user_id: str) -> Optional[Dict[str, Any]]:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM user_youtube_channels WHERE user_id = ?", (user_id,))
         row = cursor.fetchone()
-        if row is None and user_id in ("guest", "undefined", "", None):
+        if row is None:
+            # Fallback check across all accounts in local creator app
             cursor.execute("SELECT * FROM user_youtube_channels ORDER BY connected_at DESC LIMIT 1")
             row = cursor.fetchone()
+            if row is not None and user_id not in ("guest", "undefined", "", None):
+                try:
+                    cursor.execute("UPDATE user_youtube_channels SET user_id = ? WHERE channel_id = ?", (user_id, row["channel_id"]))
+                    conn.commit()
+                except Exception:
+                    pass
         if row is None:
             return None
         return dict(row)
