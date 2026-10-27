@@ -98,6 +98,15 @@ class ChannelVideosRequest(BaseModel):
     channel_handle: Optional[str] = None
 
 
+class DiscoverMomentsRequest(BaseModel):
+    video_url: Optional[str] = None
+    local_file_path: Optional[str] = None
+    video_title: Optional[str] = None
+    duration: Optional[float] = None
+    target_duration: Optional[int] = 45
+    max_moments: Optional[int] = 8
+
+
 class ProcessRequest(BaseModel):
     youtube_url: Optional[str] = None
     local_file_path: Optional[str] = None
@@ -112,6 +121,7 @@ class ProcessRequest(BaseModel):
     quality: Optional[str] = Field(default="1080p")  # "1080p" | "720p" | "480p" | "best"
     stream_start_min: Optional[float] = Field(default=0.0)  # Skip first N minutes (e.g. 15 min intro)
     stream_end_min: Optional[float] = Field(default=None)  # Optional end boundary in minutes
+    selected_moments: Optional[List[Dict[str, Any]]] = None
 
 
 class StreamProcessRequest(BaseModel):
@@ -140,7 +150,8 @@ def process_video_task(
     stream_output_mode: str = "single_reel",
     quality: str = "1080p",
     stream_start_min: float = 0.0,
-    stream_end_min: Optional[float] = None
+    stream_end_min: Optional[float] = None,
+    selected_moments: Optional[List[Dict[str, Any]]] = None
 ):
     """Background task to run video processing pipeline with progress callback and job recording."""
     clips_output_dir = os.path.join("clips", job_id)
@@ -167,7 +178,8 @@ def process_video_task(
             quality=quality,
             stream_start_min=stream_start_min,
             stream_end_min=stream_end_min,
-            progress_callback=progress_callback
+            progress_callback=progress_callback,
+            selected_moments=selected_moments
         )
 
         # Upload generated clips to Supabase Cloud Storage & purge local disk
@@ -347,7 +359,17 @@ def get_user_authenticated_videos(user: Dict[str, Any] = Depends(get_current_use
         }
     except Exception as e:
         print(f"[YouTube Videos] Error fetching channel videos: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to fetch videos from your channel: {str(e)}")
+        return {
+            "connected": True,
+            "channel": {
+                "channel_id": channel.get("channel_id"),
+                "channel_title": channel.get("channel_title"),
+                "channel_handle": channel.get("channel_handle"),
+                "channel_thumbnail": channel.get("channel_thumbnail"),
+            },
+            "videos": [],
+            "error": str(e)
+        }
 
 
 @app.post("/auth/youtube/disconnect")
@@ -702,7 +724,11 @@ def process_video(
     # Record job in database
     record_job(job_id, user_id, target_source, segment_duration)
     
-    synth = request.synthesize_stories if request.synthesize_stories is not None else (mode == "ai_enhanced")
+    if request.selected_moments and len(request.selected_moments) > 0:
+        max_clips = len(request.selected_moments)
+        synth = False
+    else:
+        synth = request.synthesize_stories if request.synthesize_stories is not None else (mode == "ai_enhanced")
     background_tasks.add_task(
         process_video_task,
         job_id,
@@ -718,7 +744,8 @@ def process_video(
         stream_output_mode,
         quality,
         float(request.stream_start_min or 0.0),
-        float(request.stream_end_min) if request.stream_end_min else None
+        float(request.stream_end_min) if request.stream_end_min else None,
+        request.selected_moments
     )
     
     current_credits = (user["credits_remaining"] - 1) if credit_deducted else user["credits_remaining"]
@@ -938,3 +965,35 @@ def download_proxy(url: str = Query(..., description="Target file URL"), filenam
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+
+
+@app.post("/moments/discover")
+def discover_moments_endpoint(
+    req: DiscoverMomentsRequest,
+    user: Dict[str, Any] = Depends(get_current_user_optional)
+):
+    """
+    Stage 1: Fast AI Viral Moments Discovery via Google Gemini 2.5 Flash.
+    Returns potential viral moments with titles, timestamps, and virality scores.
+    """
+    source = (req.video_url or req.local_file_path or "").strip()
+    if not source:
+        raise HTTPException(
+            status_code=400,
+            detail="Please provide video_url or local_file_path to discover viral moments."
+        )
+
+    target_dur = req.target_duration or 45
+    max_m = req.max_moments or 8
+    try:
+        from gemini_moments_discoverer import discover_viral_moments_gemini
+        result = discover_viral_moments_gemini(
+            video_source=source,
+            target_duration=target_dur,
+            max_moments=max_m,
+            known_title=req.video_title,
+            known_duration=req.duration
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Moment discovery failed: {str(e)}")

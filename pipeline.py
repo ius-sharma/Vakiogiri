@@ -588,7 +588,8 @@ def run_pipeline(
     quality: str = "1080p",
     stream_start_min: float = 0.0,
     stream_end_min: Optional[float] = None,
-    progress_callback: Optional[Callable[[str, int, str], None]] = None
+    progress_callback: Optional[Callable[[str, int, str], None]] = None,
+    selected_moments: Optional[List[Dict[str, Any]]] = None
 ) -> List[Dict[str, Any]]:
     """
     Run complete AI / Heuristic video clipping pipeline:
@@ -747,6 +748,26 @@ def run_pipeline(
                         "title": f"Highlight Segment {f_idx + 1}",
                         "score": 80.0
                     })
+        elif selected_moments and len(selected_moments) > 0:
+            print(f"[Pipeline] Using {len(selected_moments)} user-selected viral moments for rendering!")
+            if progress_callback:
+                progress_callback("curating_moments", 60, f"Processing {len(selected_moments)} curated viral moment(s)...")
+            moments = []
+            for idx, m in enumerate(selected_moments):
+                s = max(0.0, float(m.get("start", 0.0)))
+                e = min(duration, float(m.get("end", s + segment_duration)))
+                dur = max(1.0, e - s)
+                moments.append({
+                    "start": s,
+                    "end": e,
+                    "duration": dur,
+                    "title": m.get("title") or f"Short {idx + 1}",
+                    "score": int(m.get("virality_score", m.get("score", 95))),
+                    "heatmap_score": int(m.get("virality_score", m.get("score", 95))),
+                    "virality_reason": m.get("virality_reason", ""),
+                    "hook_quote": m.get("hook_quote", ""),
+                })
+            max_clips = len(moments)
         else:
             moments = detect_best_moments(
                 video_path=video_path,
@@ -778,7 +799,9 @@ def run_pipeline(
             c["quality"] = quality
 
         # 5. Optional Non-Linear Story Synthesis (Franken-Editing for AI mode)
-        if synthesize_stories and ai_enabled:
+        # Strictly disabled when user selected specific moments
+        has_curated_moments = bool(selected_moments and len(selected_moments) > 0)
+        if synthesize_stories and ai_enabled and not has_curated_moments:
             try:
                 if progress_callback:
                     progress_callback("synthesizing_stories", 88, "Synthesizing non-linear narrative micro-stories...")
