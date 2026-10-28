@@ -8,6 +8,7 @@ interface LivePipelineTrackerProps {
   progress: number;
   step: string;
   progressMessage: string;
+  title?: string;
 }
 
 const STAGES = [
@@ -45,6 +46,7 @@ export default function LivePipelineTracker({
   progress,
   step,
   progressMessage,
+  title,
 }: LivePipelineTrackerProps) {
   return (
     <motion.div
@@ -65,7 +67,7 @@ export default function LivePipelineTracker({
           </div>
           <div>
             <h3 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
-              <span>Rendering Curated Shorts</span>
+              <span>{title || "Rendering Curated Shorts"}</span>
               {/* Requested Brand Name: Live Vakiogiri Engine */}
               <span className="text-xs px-2.5 py-0.5 rounded-full bg-[#ff7427]/15 text-[#ff7427] font-semibold border border-[#ff7427]/30 flex items-center gap-1">
                 <Radio className="w-3 h-3 text-[#ff7427] animate-pulse" />

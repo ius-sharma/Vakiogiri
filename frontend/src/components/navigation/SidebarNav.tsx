@@ -72,8 +72,8 @@ export default function SidebarNav({
       id: "long_studio",
       label: "Long Studio",
       icon: MonitorPlay,
-      badge: "Soon",
-      onClick: () => showToast("Long Studio is coming soon!", "info"),
+      badge: undefined,
+      onClick: () => onSelectView("long_studio"),
     },
     {
       id: "projects",

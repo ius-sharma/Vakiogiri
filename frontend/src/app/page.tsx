@@ -309,6 +309,11 @@ export default function Home() {
         title: source.title,
       };
 
+      if (source.isStream && config.streamStartMin !== undefined) {
+        payload.stream_start_min = config.streamStartMin;
+        payload.stream_end_min = config.streamEndMin;
+      }
+
       if (source.localFilePath) {
         payload.local_file_path = source.localFilePath;
       } else if (source.url) {
