@@ -22,7 +22,9 @@ import {
   AlertCircle,
   ArrowLeft,
   CheckSquare,
-  Square
+  Square,
+  Radio,
+  Scissors
 } from "lucide-react";
 
 const Youtube = ({ className = "w-4 h-4" }: { className?: string }) => (
@@ -41,6 +43,7 @@ export interface SelectedVideoSource {
   thumbnail?: string;
   fileSizeMb?: number;
   uploader?: string;
+  isStream?: boolean;
 }
 
 export interface ViralMomentCandidate {
@@ -65,6 +68,8 @@ export interface GenerationConfig {
   mode: "heuristic" | "ai_enhanced";
   quality: string;
   selectedMoments?: ViralMomentCandidate[];
+  streamStartMin?: number;
+  streamEndMin?: number;
 }
 
 interface ChannelVideoItem {
@@ -242,6 +247,19 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
   // Selected Video Source for Pre-Flight Dock
   const [selectedSource, setSelectedSource] = useState<SelectedVideoSource | null>(null);
 
+  // Stream custom slice trimming state (Point A to Point B in minutes)
+  const [streamSliceStartMin, setStreamSliceStartMin] = useState<number>(0);
+  const [streamSliceEndMin, setStreamSliceEndMin] = useState<number>(60);
+
+  const formatMinutes = (totalMin: number): string => {
+    const h = Math.floor(totalMin / 60);
+    const m = Math.floor(totalMin % 60);
+    if (h > 0) {
+      return `${h}h ${m.toString().padStart(2, "0")}m`;
+    }
+    return `${m}m 00s`;
+  };
+
   // Discover & Curate Shorts Workflow States
   const [viewMode, setViewMode] = useState<"source_select" | "discovering" | "moments_review">("source_select");
   const [discoveredMoments, setDiscoveredMoments] = useState<ViralMomentCandidate[]>([]);
@@ -333,7 +351,7 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
     }
   };
 
-  // Probe Direct URL
+  // Probe Direct URL (Supports regular videos and livestreams up to 5 hours)
   const handleProbeUrl = async (urlToProbe: string) => {
     const trimmed = urlToProbe.trim();
     if (!trimmed) return;
@@ -347,11 +365,21 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
         body: JSON.stringify({ youtube_url: trimmed }),
       });
 
-      if (!res.ok) throw new Error("Could not inspect URL");
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.detail || "Could not inspect YouTube URL.");
+      }
 
       const data = await res.json();
+      const durSec = Number(data.duration || 0);
+      const isStream = Boolean(data.is_stream || durSec >= 900);
+      const totalMin = Math.max(1, Math.floor(durSec / 60));
+
+      setStreamSliceStartMin(0);
+      setStreamSliceEndMin(totalMin);
+
       setProbedVideo({
-        title: data.title || "YouTube Video",
+        title: data.title || (isStream ? "YouTube Stream" : "YouTube Video"),
         duration: data.duration || 0,
         durationFormatted: data.duration_formatted || "Video",
         thumbnail: data.thumbnail || "",
@@ -360,19 +388,18 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
 
       setSelectedSource({
         sourceType: "url",
-        title: data.title || "YouTube Video",
+        title: data.title || (isStream ? "YouTube Stream" : "YouTube Video"),
         url: trimmed,
         duration: data.duration,
         durationFormatted: data.duration_formatted,
         thumbnail: data.thumbnail,
         uploader: data.uploader,
+        isStream,
       });
-    } catch (err) {
-      setSelectedSource({
-        sourceType: "url",
-        title: "YouTube Video",
-        url: trimmed,
-      });
+    } catch (err: any) {
+      showToast(err.message || "Failed to inspect video link", "error");
+      setSelectedSource(null);
+      setProbedVideo(null);
     } finally {
       setIsProbingUrl(false);
     }
@@ -409,6 +436,11 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
         video_title: selectedSource.title,
         duration: selectedSource.duration,
       };
+
+      if (selectedSource.isStream) {
+        payload.start_sec = streamSliceStartMin * 60;
+        payload.end_sec = streamSliceEndMin * 60;
+      }
 
       if (selectedSource.localFilePath) {
         payload.local_file_path = selectedSource.localFilePath;
@@ -488,6 +520,8 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
       mode: clippingMode,
       quality,
       selectedMoments: chosen,
+      streamStartMin: selectedSource.isStream ? streamSliceStartMin : undefined,
+      streamEndMin: selectedSource.isStream ? streamSliceEndMin : undefined,
     });
   };
 
@@ -510,6 +544,8 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
       clipsCount,
       mode: clippingMode,
       quality,
+      streamStartMin: selectedSource.isStream ? streamSliceStartMin : undefined,
+      streamEndMin: selectedSource.isStream ? streamSliceEndMin : undefined,
     });
   };
 
@@ -1181,6 +1217,12 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
                         if (isSelected) {
                           setSelectedSource(null);
                         } else {
+                          const isStream = Boolean((video.duration && video.duration >= 900) || (video as any).is_stream);
+                          if (isStream) {
+                            const totalMin = Math.max(1, Math.floor((video.duration || 3600) / 60));
+                            setStreamSliceStartMin(0);
+                            setStreamSliceEndMin(totalMin);
+                          }
                           setSelectedSource({
                             sourceType: "channel",
                             title: video.title,
@@ -1189,6 +1231,7 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
                             durationFormatted: video.duration_formatted,
                             thumbnail: video.thumbnail,
                             uploader: video.uploader,
+                            isStream,
                           });
                         }
                       }}
@@ -1493,14 +1536,161 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
       {/* 3. PRE-FLIGHT GENERATION DOCK */}
       {viewMode === "source_select" && selectedSource && (
         <div
-          className={`sticky bottom-6 z-30 w-full p-4 sm:p-5 rounded-3xl backdrop-blur-2xl transition-all shadow-2xl flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-5 border animate-in fade-in slide-in-from-bottom-5 duration-300 ${
+          className={`sticky bottom-6 z-30 w-full p-4 sm:p-5 rounded-3xl backdrop-blur-2xl transition-all shadow-2xl flex flex-col gap-4 border animate-in fade-in slide-in-from-bottom-5 duration-300 ${
             isLight
               ? "bg-white/95 border-slate-200 text-slate-800"
               : "bg-[#0d0d12]/95 border-white/[0.12] text-white"
           }`}
         >
-          {/* Selected Video Summary */}
-          <div className="flex items-center gap-3.5 min-w-0">
+          {/* Stream Slicing Control Bar (Point A -> Point B Trimmer) */}
+          {selectedSource.isStream && (
+            <div className={`p-3.5 rounded-2xl border ${
+              isLight ? "bg-slate-50 border-slate-200" : "bg-white/[0.03] border-white/[0.08]"
+            }`}>
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-500/10 text-rose-500 border border-rose-500/20">
+                    <Radio className="w-3 h-3 animate-pulse" />
+                    Stream Detected (Max 5h)
+                  </span>
+                  <span className={`text-xs font-semibold ${isLight ? "text-slate-700" : "text-slate-300"}`}>
+                    Selected Window:
+                  </span>
+                  <span className="text-xs font-mono font-bold text-[#ff7427]">
+                    {formatMinutes(streamSliceStartMin)} ➔ {formatMinutes(streamSliceEndMin)}
+                  </span>
+                  <span className={`text-[11px] ${isLight ? "text-slate-400" : "text-slate-500"}`}>
+                    ({formatMinutes(Math.max(0, streamSliceEndMin - streamSliceStartMin))} slice)
+                  </span>
+                </div>
+
+                {/* Quick Presets */}
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const maxM = Math.max(1, Math.floor((selectedSource.duration || 3600) / 60));
+                      setStreamSliceStartMin(0);
+                      setStreamSliceEndMin(maxM);
+                    }}
+                    className={`px-2 py-1 rounded-lg text-[10px] font-bold border transition-colors cursor-pointer ${
+                      streamSliceStartMin === 0 && streamSliceEndMin === Math.max(1, Math.floor((selectedSource.duration || 3600) / 60))
+                        ? "bg-[#ff7427] text-white border-[#ff7427]"
+                        : isLight
+                        ? "bg-white hover:bg-slate-100 text-slate-700 border-slate-200"
+                        : "bg-white/[0.04] hover:bg-white/[0.08] text-slate-300 border-white/10"
+                    }`}
+                  >
+                    Full Stream
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const maxM = Math.max(1, Math.floor((selectedSource.duration || 3600) / 60));
+                      setStreamSliceStartMin(Math.min(15, maxM));
+                      setStreamSliceEndMin(maxM);
+                    }}
+                    className={`px-2 py-1 rounded-lg text-[10px] font-bold border transition-colors cursor-pointer ${
+                      streamSliceStartMin === 15
+                        ? "bg-[#ff7427] text-white border-[#ff7427]"
+                        : isLight
+                        ? "bg-white hover:bg-slate-100 text-slate-700 border-slate-200"
+                        : "bg-white/[0.04] hover:bg-white/[0.08] text-slate-300 border-white/10"
+                    }`}
+                  >
+                    Skip 15m Intro
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const maxM = Math.max(1, Math.floor((selectedSource.duration || 3600) / 60));
+                      setStreamSliceStartMin(0);
+                      setStreamSliceEndMin(Math.min(60, maxM));
+                    }}
+                    className={`px-2 py-1 rounded-lg text-[10px] font-bold border transition-colors cursor-pointer ${
+                      streamSliceStartMin === 0 && streamSliceEndMin === 60
+                        ? "bg-[#ff7427] text-white border-[#ff7427]"
+                        : isLight
+                        ? "bg-white hover:bg-slate-100 text-slate-700 border-slate-200"
+                        : "bg-white/[0.04] hover:bg-white/[0.08] text-slate-300 border-white/10"
+                    }`}
+                  >
+                    1st Hour
+                  </button>
+                  {selectedSource.duration && selectedSource.duration > 7200 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const maxM = Math.max(1, Math.floor((selectedSource.duration || 3600) / 60));
+                        setStreamSliceStartMin(0);
+                        setStreamSliceEndMin(Math.min(120, maxM));
+                      }}
+                      className={`px-2 py-1 rounded-lg text-[10px] font-bold border transition-colors cursor-pointer ${
+                        streamSliceStartMin === 0 && streamSliceEndMin === 120
+                          ? "bg-[#ff7427] text-white border-[#ff7427]"
+                          : isLight
+                          ? "bg-white hover:bg-slate-100 text-slate-700 border-slate-200"
+                          : "bg-white/[0.04] hover:bg-white/[0.08] text-slate-300 border-white/10"
+                      }`}
+                    >
+                      First 2 Hours
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Range Sliders for Point A to Point B */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+                <div className="flex items-center gap-2">
+                  <span className={`text-[11px] font-semibold uppercase tracking-wider shrink-0 ${isLight ? "text-slate-500" : "text-slate-400"}`}>
+                    Point A (Start):
+                  </span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={Math.max(1, Math.floor((selectedSource.duration || 3600) / 60))}
+                    value={streamSliceStartMin}
+                    onChange={(e) => {
+                      const val = Number(e.target.value);
+                      if (val < streamSliceEndMin) setStreamSliceStartMin(val);
+                    }}
+                    className="w-full accent-[#ff7427] cursor-pointer h-1.5 bg-slate-700 rounded-lg"
+                  />
+                  <div className={`px-2 py-1 rounded-md text-xs font-mono font-bold border shrink-0 ${
+                    isLight ? "bg-white border-slate-200 text-slate-800" : "bg-white/5 border-white/10 text-white"
+                  }`}>
+                    {formatMinutes(streamSliceStartMin)}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className={`text-[11px] font-semibold uppercase tracking-wider shrink-0 ${isLight ? "text-slate-500" : "text-slate-400"}`}>
+                    Point B (End):
+                  </span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={Math.max(1, Math.floor((selectedSource.duration || 3600) / 60))}
+                    value={streamSliceEndMin}
+                    onChange={(e) => {
+                      const val = Number(e.target.value);
+                      if (val > streamSliceStartMin) setStreamSliceEndMin(val);
+                    }}
+                    className="w-full accent-[#ff7427] cursor-pointer h-1.5 bg-slate-700 rounded-lg"
+                  />
+                  <div className={`px-2 py-1 rounded-md text-xs font-mono font-bold border shrink-0 ${
+                    isLight ? "bg-white border-slate-200 text-slate-800" : "bg-white/5 border-white/10 text-white"
+                  }`}>
+                    {formatMinutes(streamSliceEndMin)}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-5">
+            {/* Selected Video Summary */}
+            <div className="flex items-center gap-3.5 min-w-0">
             {selectedSource.thumbnail ? (
               <img
                 src={selectedSource.thumbnail}
@@ -1642,6 +1832,7 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
             >
               <X className="w-4 h-4" />
             </button>
+          </div>
           </div>
         </div>
       )}
