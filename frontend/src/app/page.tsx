@@ -303,8 +303,9 @@ export default function Home() {
         stream_output_mode: "clips",
         quality: config.quality,
         caption_style: config.captionPreset,
-        synthesize_stories: config.mode === "ai_enhanced",
-        max_clips: config.clipsCount,
+        synthesize_stories: (config as any).selectedMoments?.length ? false : config.mode === "ai_enhanced",
+        max_clips: (config as any).selectedMoments?.length || config.clipsCount,
+        selected_moments: (config as any).selectedMoments || null,
         title: source.title,
       };
 

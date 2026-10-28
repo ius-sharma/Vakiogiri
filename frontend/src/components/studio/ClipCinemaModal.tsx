@@ -376,10 +376,10 @@ export default function ClipCinemaModal({
             </div>
 
             {/* AI Virality Analysis Breakdown */}
-            <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/8 flex flex-col gap-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-indigo-400 flex items-center gap-1.5">
+            <div className="p-3.5 rounded-2xl bg-[#181824] border border-white/8 flex flex-col gap-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-[#ff7427] flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5" />
-                <span>AI Retention Rationale</span>
+                <span>Vakiogiri Creative Director Analysis</span>
               </span>
               <p className="text-xs text-slate-300 leading-relaxed">
                 Vocal energy curve peaked at 00:03 with immediate narrative hook. YouTube replayed curve matches viral retention tier on TikTok & YouTube Shorts algorithms.
@@ -395,14 +395,14 @@ export default function ClipCinemaModal({
                 <button
                   type="button"
                   onClick={copyCaption}
-                  className="text-xs font-semibold text-indigo-400 hover:text-indigo-300 flex items-center gap-1 cursor-pointer"
+                  className="text-xs font-semibold text-[#ff7427] hover:underline flex items-center gap-1 cursor-pointer"
                 >
                   {copiedCaption ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                   <span>{copiedCaption ? "Copied!" : "Copy"}</span>
                 </button>
               </div>
 
-              <div className="p-3 rounded-xl bg-black/50 border border-white/10 font-mono text-[11px] text-slate-400 leading-relaxed max-h-20 overflow-y-auto">
+              <div className="p-3 rounded-xl bg-black/60 border border-white/10 font-mono text-[11px] text-slate-400 leading-relaxed max-h-20 overflow-y-auto">
                 {generatedCaption}
               </div>
             </div>
@@ -414,7 +414,7 @@ export default function ClipCinemaModal({
             <button
               type="button"
               onClick={() => onDownload(currentRawClip)}
-              className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-cyan-500 hover:from-indigo-500 hover:to-cyan-400 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/30 cursor-pointer active:scale-98 transition-all"
+              className="w-full py-3.5 px-4 rounded-2xl bg-[#ff7427] hover:bg-[#ff7427]/90 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-[#ff7427]/25 cursor-pointer active:scale-98 transition-all"
             >
               <Download className="w-4 h-4" />
               <span>Download 1080p MP4 ({previewAspect})</span>
