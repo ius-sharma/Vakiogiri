@@ -51,6 +51,7 @@ from youtube_service import (
     exchange_code_for_tokens,
     fetch_user_channel_profile,
     fetch_channel_videos as fetch_auth_channel_videos,
+    fetch_channel_streams,
     get_valid_access_token,
     FRONTEND_URL
 )
@@ -105,6 +106,8 @@ class DiscoverMomentsRequest(BaseModel):
     duration: Optional[float] = None
     target_duration: Optional[int] = 45
     max_moments: Optional[int] = 8
+    start_sec: Optional[float] = None
+    end_sec: Optional[float] = None
 
 
 class ProcessRequest(BaseModel):
@@ -134,6 +137,7 @@ class StreamProcessRequest(BaseModel):
     quality: Optional[str] = "1080p"
     clipping_mode: Optional[str] = "heuristic"
     generate_chapters: Optional[bool] = True
+    selected_moments: Optional[List[Dict[str, Any]]] = None
 
 
 def process_video_task(
@@ -372,6 +376,50 @@ def get_user_authenticated_videos(user: Dict[str, Any] = Depends(get_current_use
         }
 
 
+@app.get("/auth/youtube/my-streams")
+def get_user_authenticated_streams(user: Dict[str, Any] = Depends(get_current_user_optional), user_id: Optional[str] = None):
+    """Retrieve ONLY live streams and stream VODs from the user's connected YouTube channel."""
+    uid = user.get("id") if user.get("is_authenticated") else (user_id or "guest")
+    channel = get_user_youtube_channel(uid)
+    if not channel:
+        return {
+            "connected": False,
+            "streams": [],
+            "message": "No YouTube channel connected. Please connect your channel first."
+        }
+
+    try:
+        access_token = get_valid_access_token(uid, channel)
+        uploads_playlist_id = channel.get("uploads_playlist_id")
+        channel_id = channel.get("channel_id")
+        streams = fetch_channel_streams(access_token, uploads_playlist_id, channel_id)
+        return {
+            "connected": True,
+            "channel": {
+                "channel_id": channel.get("channel_id"),
+                "channel_title": channel.get("channel_title"),
+                "channel_handle": channel.get("channel_handle"),
+                "channel_thumbnail": channel.get("channel_thumbnail"),
+                "subscriber_count": channel.get("subscriber_count"),
+                "video_count": channel.get("video_count"),
+            },
+            "streams": streams
+        }
+    except Exception as e:
+        print(f"[YouTube Streams] Error fetching channel streams: {e}")
+        return {
+            "connected": True,
+            "channel": {
+                "channel_id": channel.get("channel_id"),
+                "channel_title": channel.get("channel_title"),
+                "channel_handle": channel.get("channel_handle"),
+                "channel_thumbnail": channel.get("channel_thumbnail"),
+            },
+            "streams": [],
+            "error": str(e)
+        }
+
+
 @app.post("/auth/youtube/disconnect")
 def disconnect_youtube_channel(user: Dict[str, Any] = Depends(get_current_user_optional), user_id: Optional[str] = None):
     """Disconnect and unlink the user's YouTube channel."""
@@ -406,6 +454,18 @@ def probe_stream_endpoint(request: ProbeRequest):
             detail=f"'{raw_url}' is not a valid YouTube video URL. Please enter a valid YouTube link."
         )
     meta = probe_stream_metadata(raw_url)
+    dur = float(meta.get("duration") or 0.0)
+    if dur > MAX_STREAM_DURATION_SECONDS:
+        dur_str = format_duration(dur)
+        raise HTTPException(
+            status_code=400,
+            detail=f"This video/stream is {dur_str}. Videos and streams are capped at {int(MAX_STREAM_DURATION_HOURS)} hours to maintain maximum server performance."
+        )
+    if meta.get("is_live"):
+        raise HTTPException(
+            status_code=400,
+            detail="This stream is currently broadcasting LIVE. Please wait until the live stream finishes before creating shorts."
+        )
     return meta
 
 
@@ -838,7 +898,9 @@ def process_stream_endpoint(
     end_min = (request.end_time / 60.0) if request.end_time else None
 
     # Calculate optimal number of clips for target duration
-    if target_reel_dur <= 120:
+    if request.selected_moments and len(request.selected_moments) > 0:
+        max_clips = len(request.selected_moments)
+    elif target_reel_dur <= 120:
         max_clips = 3
     elif target_reel_dur <= 180:
         max_clips = 4
@@ -887,7 +949,8 @@ def process_stream_endpoint(
         stream_output_mode,
         quality,
         start_min,
-        end_min
+        end_min,
+        request.selected_moments
     )
 
     current_credits = (user["credits_remaining"] - 1) if credit_deducted else user["credits_remaining"]
@@ -992,7 +1055,9 @@ def discover_moments_endpoint(
             target_duration=target_dur,
             max_moments=max_m,
             known_title=req.video_title,
-            known_duration=req.duration
+            known_duration=req.duration,
+            start_sec=req.start_sec,
+            end_sec=req.end_sec
         )
         return result
     except Exception as e:

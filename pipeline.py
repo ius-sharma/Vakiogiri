@@ -100,7 +100,9 @@ def probe_stream_metadata(url: str) -> Dict[str, Any]:
             was_live = bool(info.get("was_live") or live_status in ["post_live", "was_live"])
             video_id = info.get("id") or ""
             thumbnail = info.get("thumbnail") or (f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg" if video_id else "")
+            is_stream = bool(was_live or is_live_now or ("/live/" in url.lower()) or (duration >= 900.0))
             return {
+                "is_stream": is_stream,
                 "duration": duration,
                 "duration_formatted": format_duration(duration),
                 "title": title,
