@@ -19,7 +19,10 @@ import {
   Flame,
   ArrowRight,
   Laptop,
-  AlertCircle
+  AlertCircle,
+  ArrowLeft,
+  CheckSquare,
+  Square
 } from "lucide-react";
 
 const Youtube = ({ className = "w-4 h-4" }: { className?: string }) => (
@@ -40,6 +43,20 @@ export interface SelectedVideoSource {
   uploader?: string;
 }
 
+export interface ViralMomentCandidate {
+  id: string;
+  title: string;
+  start: number;
+  end: number;
+  duration: number;
+  duration_formatted?: string;
+  start_formatted?: string;
+  end_formatted?: string;
+  virality_score: number;
+  virality_reason?: string;
+  hook_quote?: string;
+}
+
 export interface GenerationConfig {
   targetDuration: number;
   aspectRatio: "9:16" | "16:9";
@@ -47,6 +64,7 @@ export interface GenerationConfig {
   clipsCount: number;
   mode: "heuristic" | "ai_enhanced";
   quality: string;
+  selectedMoments?: ViralMomentCandidate[];
 }
 
 interface ChannelVideoItem {
@@ -108,21 +126,31 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
         headers["Authorization"] = `Bearer ${sessionToken}`;
       }
 
+      // 1. Check persistent channel connection first
+      const statusRes = await fetch(`${backendUrl}/auth/youtube/status`, { headers });
+      if (statusRes.ok) {
+        const statusData = await statusRes.json();
+        if (statusData.connected && statusData.channel) {
+          setChannelConnected(true);
+          setConnectedChannelData(statusData.channel);
+        }
+      }
+
+      // 2. Fetch authenticated channel videos
       const res = await fetch(`${backendUrl}/auth/youtube/my-videos`, { headers });
       if (res.ok) {
         const data = await res.json();
         if (data.connected && data.channel) {
           setChannelConnected(true);
           setConnectedChannelData(data.channel);
-          setChannelVideos(data.videos || []);
+          if (data.videos && data.videos.length > 0) {
+            setChannelVideos(data.videos);
+          }
           return;
         }
       }
-      setChannelConnected(false);
-      setConnectedChannelData(null);
     } catch (err) {
       console.warn("YouTube channel status check error:", err);
-      setChannelConnected(false);
     } finally {
       setIsLoadingChannel(false);
     }
@@ -213,6 +241,12 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
 
   // Selected Video Source for Pre-Flight Dock
   const [selectedSource, setSelectedSource] = useState<SelectedVideoSource | null>(null);
+
+  // Discover & Curate Shorts Workflow States
+  const [viewMode, setViewMode] = useState<"source_select" | "discovering" | "moments_review">("source_select");
+  const [discoveredMoments, setDiscoveredMoments] = useState<ViralMomentCandidate[]>([]);
+  const [selectedMomentIds, setSelectedMomentIds] = useState<string[]>([]);
+  const [isDiscovering, setIsDiscovering] = useState<boolean>(false);
 
   // Pre-flight generation settings
   const [targetDuration, setTargetDuration] = useState<number>(45);
@@ -358,7 +392,106 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
     }
   };
 
-  // Trigger Generation
+  // Discover Viral Moments using Gemini 2.5 Flash
+  const handleDiscoverMoments = async () => {
+    if (!selectedSource) {
+      showToast("Please select or upload a video first.", "error");
+      return;
+    }
+
+    setIsDiscovering(true);
+    setViewMode("discovering");
+
+    try {
+      const payload: Record<string, any> = {
+        target_duration: targetDuration,
+        max_moments: 6,
+        video_title: selectedSource.title,
+        duration: selectedSource.duration,
+      };
+
+      if (selectedSource.localFilePath) {
+        payload.local_file_path = selectedSource.localFilePath;
+      } else if (selectedSource.url) {
+        payload.video_url = selectedSource.url;
+      } else {
+        throw new Error("No valid video source provided.");
+      }
+
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (sessionToken) {
+        headers["Authorization"] = `Bearer ${sessionToken}`;
+      }
+
+      const res = await fetch(`${backendUrl}/moments/discover`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.detail || "Moment discovery failed.");
+      }
+
+      const data = await res.json();
+      const moments: ViralMomentCandidate[] = data.moments || [];
+      if (moments.length === 0) {
+        throw new Error("No viral moments could be identified for this video.");
+      }
+
+      setDiscoveredMoments(moments);
+      // Pre-select only top 1 moment by default so user gets exactly what they see
+      setSelectedMomentIds(moments.length > 0 ? [moments[0].id] : []);
+      setViewMode("moments_review");
+      showToast(`Found ${moments.length} viral hook moments! Pick which ones to render.`, "success");
+    } catch (err: any) {
+      showToast(err.message || "Failed to discover moments.", "error");
+      setViewMode("source_select");
+    } finally {
+      setIsDiscovering(false);
+    }
+  };
+
+  const toggleMomentSelection = (id: string) => {
+    setSelectedMomentIds((prev) =>
+      prev.includes(id) ? prev.filter((mId) => mId !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAllMoments = () => {
+    setSelectedMomentIds(discoveredMoments.map((m) => m.id));
+  };
+
+  const handleDeselectAllMoments = () => {
+    setSelectedMomentIds([]);
+  };
+
+  const handleRenderSelectedMoments = () => {
+    if (!selectedSource) return;
+    const chosen = discoveredMoments.filter((m) => selectedMomentIds.includes(m.id));
+    if (chosen.length === 0) {
+      showToast("Please select at least 1 moment to render into Shorts.", "error");
+      return;
+    }
+
+    if (clippingMode === "ai_enhanced" && creditsRemaining <= 0) {
+      showToast("Daily AI credit limit reached. Switch to Fast Free mode!", "error");
+      return;
+    }
+
+    onStartGeneration(selectedSource, {
+      targetDuration,
+      aspectRatio,
+      captionPreset,
+      clipsCount: chosen.length,
+      mode: clippingMode,
+      quality,
+      selectedMoments: chosen,
+    });
+  };
+
+  // Trigger Direct Generation (Skip Discovery)
   const handleLaunchGeneration = () => {
     if (!selectedSource) {
       showToast("Please select or upload a video first.", "error");
@@ -440,7 +573,360 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
         </div>
       </div>
 
-      {/* 2. INGESTION SOURCE TABS */}
+      {/* VIEW 1: VAKIOGIRI CREATIVE DIRECTOR RADAR */}
+      {viewMode === "discovering" && (
+        <div className="flex flex-col items-center justify-center py-16 px-4 text-center max-w-xl mx-auto animate-in fade-in zoom-in-95 duration-300">
+          {/* Animated Concentric Waves */}
+          <div className="relative flex items-center justify-center mb-6">
+            <div className="absolute w-32 h-32 rounded-full border border-[#ff7427]/20 animate-ping opacity-30 pointer-events-none" />
+            <div className="absolute w-24 h-24 rounded-full bg-[#ff7427]/10 animate-pulse pointer-events-none" />
+            <div className="w-20 h-20 rounded-2xl bg-[#ff7427]/15 border border-[#ff7427]/40 flex items-center justify-center shadow-lg shadow-[#ff7427]/10 z-10">
+              <Sparkles className="w-8 h-8 text-[#ff7427] animate-pulse" />
+            </div>
+          </div>
+
+          {/* Vakiogiri Creative Director Brand Badge */}
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#ff7427]/15 border border-[#ff7427]/30 text-[#ff7427] text-xs font-bold mb-3 shadow-xs">
+            <Zap className="w-3.5 h-3.5 fill-[#ff7427]" />
+            <span>Vakiogiri Creative Director</span>
+          </div>
+
+          <h3 className={`text-xl sm:text-2xl font-black tracking-tight mb-2 ${isLight ? "text-slate-900" : "text-white"}`}>
+            Discovering Viral Moments...
+          </h3>
+          <p className={`text-xs sm:text-sm max-w-md mb-6 leading-relaxed ${isLight ? "text-slate-600" : "text-slate-400"}`}>
+            Scanning retention heatmaps, chapters, and emotional climaxes in{" "}
+            <span className="font-semibold text-[#ff7427]">"{selectedSource?.title}"</span>.
+          </p>
+
+          {/* Animated Telemetry Checklist */}
+          <div className={`w-full max-w-md p-4 rounded-2xl border mb-6 text-left flex flex-col gap-2.5 ${
+            isLight ? "bg-slate-50 border-slate-200" : "bg-white/[0.03] border-white/10"
+          }`}>
+            <div className="flex items-center justify-between text-xs pb-1 border-b border-white/5">
+              <span className={`font-semibold ${isLight ? "text-slate-800" : "text-slate-200"}`}>Telemetry Checklist</span>
+              <span className="text-[#ff7427] font-bold flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-[#ff7427] animate-ping" />
+                Live Scan
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2 text-[11px] text-emerald-400">
+              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+              <span>Audience heatmap replay peaks ingested</span>
+            </div>
+
+            <div className="flex items-center gap-2 text-[11px] text-[#ff7427]">
+              <Sparkles className="w-3.5 h-3.5 shrink-0 animate-spin" />
+              <span>Vakiogiri Creative Director evaluating hook potency...</span>
+            </div>
+
+            <div className="flex items-center gap-2 text-[11px] text-slate-400">
+              <Clock className="w-3.5 h-3.5 shrink-0" />
+              <span>Calculating 9:16 boundaries & punchline endings</span>
+            </div>
+
+            {/* Simulated Live Audio Bar */}
+            <div className="w-full h-1.5 rounded-full bg-white/10 overflow-hidden mt-1">
+              <div className="h-full bg-gradient-to-r from-[#ff7427] to-amber-400 rounded-full w-3/4 animate-pulse" />
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setIsDiscovering(false);
+              setViewMode("source_select");
+            }}
+            className={`px-4 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+              isLight
+                ? "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                : "border-white/15 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08] hover:text-white"
+            }`}
+          >
+            Cancel & Return
+          </button>
+        </div>
+      )}
+
+      {/* VIEW 2: MOMENTS REVIEW & CURATION CANVAS */}
+      {viewMode === "moments_review" && (
+        <div className="flex flex-col gap-6 animate-in fade-in duration-300">
+          {/* Navigation & Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/[0.08]">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setViewMode("source_select")}
+                className={`px-3.5 py-2 rounded-xl border text-xs font-bold flex items-center gap-2 transition-all cursor-pointer ${
+                  isLight
+                    ? "bg-white hover:bg-slate-100 text-slate-800 border-slate-200 shadow-xs"
+                    : "bg-white/[0.04] hover:bg-white/[0.08] text-slate-200 border-white/10"
+                }`}
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span>Back to Videos</span>
+              </button>
+
+              <div>
+                <h3 className={`text-lg sm:text-xl font-extrabold tracking-tight ${isLight ? "text-slate-900" : "text-white"}`}>
+                  Found {discoveredMoments.length} Viral Moments
+                </h3>
+                <p className={`text-xs mt-0.5 ${isLight ? "text-slate-500" : "text-slate-400"}`}>
+                  Pick the moments you want FFmpeg to slice into 9:16 Shorts.
+                </p>
+              </div>
+            </div>
+
+            {/* Select / Deselect All Controls */}
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={handleSelectAllMoments}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                  isLight
+                    ? "bg-slate-100 hover:bg-slate-200 text-slate-800 border-slate-200"
+                    : "bg-white/[0.04] hover:bg-white/[0.08] text-slate-300 hover:text-white border-white/10"
+                }`}
+              >
+                Select All ({discoveredMoments.length})
+              </button>
+              <button
+                type="button"
+                onClick={handleDeselectAllMoments}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                  isLight
+                    ? "bg-slate-100 hover:bg-slate-200 text-slate-500 border-slate-200"
+                    : "bg-white/[0.04] hover:bg-white/[0.08] text-slate-400 hover:text-white border-white/10"
+                }`}
+              >
+                Clear All
+              </button>
+            </div>
+          </div>
+
+          {/* Video Summary Card */}
+          {selectedSource && (
+            <div
+              className={`p-4 rounded-2xl border flex items-center gap-3 ${
+                isLight ? "bg-slate-50 border-slate-200" : "bg-white/[0.02] border-white/[0.06]"
+              }`}
+            >
+              {selectedSource.thumbnail ? (
+                <img
+                  src={selectedSource.thumbnail}
+                  alt={selectedSource.title}
+                  className="w-16 h-10 object-cover rounded-lg shrink-0 border border-white/10"
+                />
+              ) : (
+                <div className="w-16 h-10 rounded-lg bg-white/5 flex items-center justify-center shrink-0">
+                  <FileVideo className="w-5 h-5 text-slate-400" />
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <h4 className={`text-xs sm:text-sm font-bold truncate ${isLight ? "text-slate-900" : "text-white"}`}>
+                  {selectedSource.title}
+                </h4>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-[10px] font-semibold text-[#ff7427] uppercase tracking-wider">
+                    {selectedSource.sourceType === "channel" ? "Channel Video" : selectedSource.sourceType === "upload" ? "Uploaded Video" : "Direct Link"}
+                  </span>
+                  {selectedSource.durationFormatted && (
+                    <span className={`text-[10px] ${isLight ? "text-slate-500" : "text-slate-400"}`}>
+                      • Total {selectedSource.durationFormatted}
+                    </span>
+                  )}
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    Vakiogiri Creative Director
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Candidate Moments Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-36">
+            {discoveredMoments.map((moment, idx) => {
+              const isSelected = selectedMomentIds.includes(moment.id);
+              const totalDur = selectedSource?.duration && selectedSource.duration > 0 ? selectedSource.duration : 300;
+              const leftPercent = Math.max(0, Math.min(94, (moment.start / totalDur) * 100));
+              const widthPercent = Math.max(6, Math.min(100 - leftPercent, ((moment.end - moment.start) / totalDur) * 100));
+
+              return (
+                <div
+                  key={moment.id}
+                  onClick={() => toggleMomentSelection(moment.id)}
+                  className={`p-4 rounded-2xl border transition-all duration-200 cursor-pointer flex flex-col justify-between relative group ${
+                    isSelected
+                      ? isLight
+                        ? "bg-orange-50/90 border-[#ff7427] ring-1 ring-[#ff7427]/40 shadow-sm"
+                        : "bg-[#ff7427]/[0.08] border-[#ff7427]/70 ring-1 ring-[#ff7427]/40 shadow-md"
+                      : isLight
+                      ? "bg-white hover:bg-slate-50 border-slate-200 hover:border-slate-300 shadow-xs"
+                      : "bg-white/[0.02] hover:bg-white/[0.05] border-white/[0.08] hover:border-white/20"
+                  }`}
+                >
+                  <div>
+                    {/* Header: Checkbox + Simple Refined Badges (No Heavy Glass) */}
+                    <div className="flex items-center justify-between gap-2 mb-3">
+                      <div className="flex items-center gap-2">
+                        <div
+                          className={`w-5 h-5 rounded-lg border flex items-center justify-center transition-colors ${
+                            isSelected
+                              ? "bg-[#ff7427] border-[#ff7427] text-white"
+                              : isLight
+                              ? "border-slate-300 bg-white"
+                              : "border-white/20 bg-white/[0.04]"
+                          }`}
+                        >
+                          {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                        </div>
+                        <span className="text-xs font-bold text-slate-400">#{idx + 1}</span>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        {/* Simple Solid Virality Badge */}
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-[#ff7427]/15 text-[#ff7427] border border-[#ff7427]/30 flex items-center gap-1">
+                          <Flame className="w-3 h-3 text-[#ff7427]" />
+                          {moment.virality_score}% Viral
+                        </span>
+
+                        {/* Simple Duration Tag */}
+                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-medium border flex items-center gap-1 ${
+                          isLight ? "bg-slate-100 text-slate-700 border-slate-200" : "bg-white/[0.05] text-slate-300 border-white/10"
+                        }`}>
+                          <Clock className="w-3 h-3 text-slate-400" />
+                          {moment.duration_formatted || `${moment.duration}s`}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Hook Title */}
+                    <h4 className={`text-sm font-bold leading-snug mb-2 group-hover:text-[#ff7427] transition-colors ${
+                      isLight ? "text-slate-900" : "text-white"
+                    }`}>
+                      {moment.title}
+                    </h4>
+
+                    {/* Pull-Quote with Left Accent Line */}
+                    {moment.hook_quote && (
+                      <div className={`p-2.5 rounded-xl border border-l-2 border-l-[#ff7427] text-xs mb-3 italic leading-relaxed ${
+                        isLight
+                          ? "bg-slate-100/80 border-slate-200 text-slate-800"
+                          : "bg-black/30 border-white/[0.06] text-slate-200"
+                      }`}>
+                        “{moment.hook_quote}”
+                      </div>
+                    )}
+
+                    {/* Virality Reason */}
+                    {moment.virality_reason && (
+                      <p className={`text-[11px] leading-relaxed mb-3 ${isLight ? "text-slate-500" : "text-slate-400"}`}>
+                        <span className="font-semibold text-amber-500/90">Why it works:</span> {moment.virality_reason}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Mini-Timeline Scrubber Bar (Shows Slice Position in Full Video) */}
+                  <div className="mt-2 pt-2 border-t border-white/[0.06]">
+                    <div className="flex items-center justify-between text-[10px] text-slate-400 mb-1">
+                      <span>Timeline Position</span>
+                      <span className="font-mono">{moment.start_formatted} ➔ {moment.end_formatted}</span>
+                    </div>
+                    <div className="w-full h-1.5 rounded-full bg-white/[0.08] relative overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${
+                          isSelected ? "bg-[#ff7427]" : "bg-slate-500"
+                        }`}
+                        style={{
+                          marginLeft: `${leftPercent}%`,
+                          width: `${widthPercent}%`,
+                        }}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between text-[11px] font-medium mt-2">
+                      <span className={`text-[10px] ${isSelected ? "text-[#ff7427] font-bold" : "text-slate-400"}`}>
+                        {isSelected ? "Selected for Short" : "Click to select"}
+                      </span>
+                      <span className={`text-[10px] font-bold ${isSelected ? "text-[#ff7427]" : "text-slate-400"}`}>
+                        {moment.duration_formatted}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Fixed Bottom Dock for Moments Review */}
+          <div
+            className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-[94%] max-w-5xl p-3.5 sm:p-4 rounded-2xl border backdrop-blur-xl flex flex-col md:flex-row items-center justify-between gap-4 shadow-2xl animate-in slide-in-from-bottom-5 duration-300 ${
+              isLight
+                ? "bg-white/95 border-slate-200 shadow-slate-900/10 text-slate-900"
+                : "bg-[#0e0e14]/95 border-white/10 shadow-black/80 text-white"
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-[#ff7427]/10 text-[#ff7427] flex items-center justify-center font-bold text-sm">
+                {selectedMomentIds.length}
+              </div>
+              <div>
+                <h4 className="text-xs sm:text-sm font-bold">
+                  {selectedMomentIds.length} of {discoveredMoments.length} Moments Selected
+                </h4>
+                <p className="text-[11px] text-slate-400">
+                  {selectedMomentIds.length === 0 ? "Select at least 1 moment to render" : "Only your selected moments will be converted into Shorts"}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Caption Style Dropdown */}
+              <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border ${isLight ? "bg-slate-100 border-slate-200" : "bg-white/[0.04] border-white/10"}`}>
+                <span className="text-xs font-bold text-amber-500">CC</span>
+                <select
+                  value={captionPreset}
+                  onChange={(e) => setCaptionPreset(e.target.value)}
+                  className={`bg-transparent text-xs font-semibold focus:outline-none cursor-pointer ${isLight ? "text-slate-800" : "text-white"}`}
+                >
+                  <option value="hormozi" className={isLight ? "bg-white text-slate-900" : "bg-black text-white"}>Hormozi Punch</option>
+                  <option value="beast" className={isLight ? "bg-white text-slate-900" : "bg-black text-white"}>MrBeast Pop</option>
+                  <option value="karaoke" className={isLight ? "bg-white text-slate-900" : "bg-black text-white"}>Karaoke Glow</option>
+                  <option value="minimal" className={isLight ? "bg-white text-slate-900" : "bg-black text-white"}>Minimal Clean</option>
+                </select>
+              </div>
+
+              {/* Quality Selector */}
+              <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border ${isLight ? "bg-slate-100 border-slate-200" : "bg-white/[0.04] border-white/10"}`}>
+                <select
+                  value={quality}
+                  onChange={(e) => setQuality(e.target.value)}
+                  className={`bg-transparent text-xs font-semibold focus:outline-none cursor-pointer ${isLight ? "text-slate-800" : "text-white"}`}
+                >
+                  <option value="1080p" className={isLight ? "bg-white text-slate-900" : "bg-black text-white"}>1080p Full HD</option>
+                  <option value="720p" className={isLight ? "bg-white text-slate-900" : "bg-black text-white"}>720p HD</option>
+                </select>
+              </div>
+
+              {/* Render Button */}
+              <button
+                type="button"
+                onClick={handleRenderSelectedMoments}
+                disabled={selectedMomentIds.length === 0 || isProcessing}
+                className="px-6 py-2.5 rounded-xl bg-[#ff7427] hover:bg-[#ff7427]/90 text-white font-bold text-xs flex items-center gap-2 shadow-md disabled:opacity-40 transition-all cursor-pointer shrink-0"
+              >
+                <Sparkles className="w-4 h-4 text-white" />
+                <span>{isProcessing ? "Processing..." : `Render ${selectedMomentIds.length} Selected Shorts`}</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* VIEW 3: SOURCE SELECT TABS */}
+      {viewMode === "source_select" && (
       <div className="flex flex-col gap-6">
         <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
           {/* Tab 1: Channel Feed */}
@@ -1002,9 +1488,10 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
           </div>
         )}
       </div>
+      )}
 
       {/* 3. PRE-FLIGHT GENERATION DOCK */}
-      {selectedSource && (
+      {viewMode === "source_select" && selectedSource && (
         <div
           className={`sticky bottom-6 z-30 w-full p-4 sm:p-5 rounded-3xl backdrop-blur-2xl transition-all shadow-2xl flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-5 border animate-in fade-in slide-in-from-bottom-5 duration-300 ${
             isLight
@@ -1130,15 +1617,15 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
               <span>{clippingMode === "ai_enhanced" ? "AI Storytelling (1 Credit)" : "Fast Free Mode"}</span>
             </button>
 
-            {/* Primary Action Button */}
+            {/* Primary Action: Discover Viral Moments */}
             <button
               type="button"
-              onClick={handleLaunchGeneration}
-              disabled={isProcessing}
-              className="px-6 py-2.5 rounded-xl bg-[#ff7427] hover:bg-[#ff7427]/90 text-white font-extrabold text-xs flex items-center gap-2 shadow-[0_0_16px_rgba(255,116,39,0.3)] disabled:opacity-50 transition-all cursor-pointer shrink-0"
+              onClick={handleDiscoverMoments}
+              disabled={isDiscovering || isProcessing}
+              className="px-6 py-2.5 rounded-xl bg-[#ff7427] hover:bg-[#ff7427]/90 text-white font-bold text-xs flex items-center gap-2 shadow-md disabled:opacity-50 transition-all cursor-pointer shrink-0"
             >
               <Sparkles className="w-4 h-4 text-white" />
-              <span>{isProcessing ? "Processing..." : "Generate 10 Viral Shorts"}</span>
+              <span>{isDiscovering ? "Discovering..." : "Find Viral Moments"}</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
 
