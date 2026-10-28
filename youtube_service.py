@@ -244,3 +244,105 @@ def fetch_channel_videos(access_token: str, uploads_playlist_id: str, max_result
         })
 
     return result_videos
+
+
+def fetch_channel_streams(access_token: str, uploads_playlist_id: str, channel_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    """
+    Fetch ONLY Live Streams and Stream VODs from the user's channel.
+    Uses official YouTube search (eventType=completed) and playlistItems liveStreamingDetails check.
+    """
+    headers = {"Authorization": f"Bearer {access_token}"}
+    stream_ids = []
+
+    # 1. Search for completed live events
+    if channel_id:
+        try:
+            search_url = "https://www.googleapis.com/youtube/v3/search"
+            s_params = {
+                "part": "snippet",
+                "channelId": channel_id,
+                "type": "video",
+                "eventType": "completed",
+                "maxResults": 50,
+            }
+            s_res = requests.get(search_url, params=s_params, headers=headers, timeout=15)
+            if s_res.ok:
+                for item in s_res.json().get("items", []):
+                    vid = item.get("id", {}).get("videoId")
+                    if vid and vid not in stream_ids:
+                        stream_ids.append(vid)
+        except Exception as e:
+            print(f"[YouTube Streams] Search error: {e}")
+
+    # 2. Check uploads playlist for any videos that have liveStreamingDetails
+    if uploads_playlist_id:
+        try:
+            playlist_url = "https://www.googleapis.com/youtube/v3/playlistItems"
+            params = {
+                "part": "contentDetails",
+                "playlistId": uploads_playlist_id,
+                "maxResults": 50,
+            }
+            res = requests.get(playlist_url, params=params, headers=headers, timeout=15)
+            if res.ok:
+                p_items = res.json().get("items", [])
+                p_ids = [it["contentDetails"]["videoId"] for it in p_items if "contentDetails" in it and "videoId" in it["contentDetails"]]
+                if p_ids:
+                    v_url = "https://www.googleapis.com/youtube/v3/videos"
+                    v_res = requests.get(v_url, params={"part": "snippet,contentDetails,liveStreamingDetails", "id": ",".join(p_ids[:50])}, headers=headers, timeout=15)
+                    if v_res.ok:
+                        for v in v_res.json().get("items", []):
+                            if "liveStreamingDetails" in v or v.get("snippet", {}).get("liveBroadcastContent") in ("completed", "live"):
+                                vid = v.get("id")
+                                if vid and vid not in stream_ids:
+                                    stream_ids.append(vid)
+        except Exception as e:
+            print(f"[YouTube Streams] Playlist inspection error: {e}")
+
+    if not stream_ids:
+        return []
+
+    # Fetch full video details for identified streams
+    videos_url = "https://www.googleapis.com/youtube/v3/videos"
+    v_params = {
+        "part": "snippet,contentDetails,statistics,liveStreamingDetails",
+        "id": ",".join(stream_ids[:50]),
+    }
+    v_res = requests.get(videos_url, params=v_params, headers=headers, timeout=15)
+    if not v_res.ok:
+        return []
+
+    result_streams = []
+    for v in v_res.json().get("items", []):
+        snippet = v.get("snippet", {})
+        content = v.get("contentDetails", {})
+        stats = v.get("statistics", {})
+
+        dur_seconds = parse_iso8601_duration(content.get("duration", ""))
+        v_id = v.get("id")
+        dur_formatted = format_seconds(dur_seconds)
+
+        thumbs = snippet.get("thumbnails", {})
+        thumbnail_url = (
+            thumbs.get("maxres", {}).get("url")
+            or thumbs.get("standard", {}).get("url")
+            or thumbs.get("high", {}).get("url")
+            or thumbs.get("medium", {}).get("url")
+            or thumbs.get("default", {}).get("url")
+            or f"https://i.ytimg.com/vi/{v_id}/hqdefault.jpg"
+        )
+
+        result_streams.append({
+            "id": v_id,
+            "title": snippet.get("title", "Untitled Stream"),
+            "url": f"https://www.youtube.com/watch?v={v_id}",
+            "thumbnail": thumbnail_url,
+            "duration": dur_seconds,
+            "duration_formatted": dur_formatted,
+            "uploader": snippet.get("channelTitle", ""),
+            "view_count": int(stats.get("viewCount", 0)),
+            "published_at": snippet.get("publishedAt", ""),
+            "is_stream": True,
+        })
+
+    return result_streams

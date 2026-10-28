@@ -45,7 +45,6 @@ def get_gemini_client() -> Optional[genai.Client]:
 def probe_video_details(video_source: str) -> Dict[str, Any]:
     """Extract title, duration, chapters, and description using yt-dlp."""
     if os.path.exists(video_source) and os.path.isfile(video_source):
-        # Local video file
         from pipeline import get_video_duration
         dur = get_video_duration(video_source)
         return {
@@ -84,12 +83,15 @@ def discover_viral_moments_gemini(
     target_duration: int = 45,
     max_moments: int = 8,
     known_title: Optional[str] = None,
-    known_duration: Optional[float] = None
+    known_duration: Optional[float] = None,
+    start_sec: Optional[float] = None,
+    end_sec: Optional[float] = None
 ) -> Dict[str, Any]:
     """
     Stage 1: Fast AI Viral Moments Discovery using Google Gemini 2.5 Flash.
     Returns potential viral moments with titles, timestamps, virality scores, and hook quotes
     without performing any heavy FFmpeg video rendering.
+    Optionally scopes moments discovery strictly to [start_sec, end_sec] for stream cuts.
     """
     if known_title and known_duration and known_duration > 0:
         title = known_title
@@ -102,6 +104,12 @@ def discover_viral_moments_gemini(
         duration = video_info["duration"]
         description = video_info["description"]
         chapters = video_info["chapters"]
+
+    window_start = max(0.0, float(start_sec or 0.0))
+    window_end = min(duration, float(end_sec or duration))
+    if window_end <= window_start or (window_end - window_start) < 20.0:
+        window_start = 0.0
+        window_end = duration
 
     # 1. Fetch Heatmaps if YouTube URL
     heatmap_moments = []
@@ -122,6 +130,14 @@ def discover_viral_moments_gemini(
     client = get_gemini_client()
     if client:
         try:
+            range_instruction = ""
+            if window_start > 0 or window_end < duration:
+                range_instruction = (
+                    f"\nSTRICT USER SLICE WINDOW:\n"
+                    f"- The user specifically requested moments ONLY between {window_start:.1f}s ({format_seconds_to_timestamp(window_start)}) and {window_end:.1f}s ({format_seconds_to_timestamp(window_end)}).\n"
+                    f"- Every moment's `start` timestamp MUST be >= {window_start:.1f} and `end` MUST be <= {window_end:.1f}!\n"
+                )
+
             system_instruction = (
                 "You are an elite YouTube Shorts & TikTok Creative Director with 10+ years of viral growth experience. "
                 "Your mission is to analyze video content, chapters, audience heatmap engagement peaks, and context "
@@ -134,11 +150,13 @@ def discover_viral_moments_gemini(
                 "5. Assign a virality score between 80 and 99 based on emotional hook and retention.\n"
                 "6. Provide the exact hook quote (the opening 1-2 sentences in that clip).\n"
                 "7. Output strictly valid JSON format."
+                + range_instruction
             )
 
             prompt = f"""VIDEO CONTEXT:
 - Title: {title}
 - Total Duration: {duration:.1f}s ({format_seconds_to_timestamp(duration)})
+- Scoped Search Window: {window_start:.1f}s to {window_end:.1f}s ({format_seconds_to_timestamp(window_start)} ➔ {format_seconds_to_timestamp(window_end)})
 - Target Short Duration: {target_duration}s (range 25s - 60s)
 - Max Moments Requested: {max_moments}
 
@@ -157,8 +175,8 @@ Return a JSON array of objects with the following schema:
   {{
     "id": "moment_1",
     "title": "Punchy Hook Title Here",
-    "start": 65.0,
-    "end": 108.0,
+    "start": {max(window_start, 65.0):.1f},
+    "end": {min(window_end, max(window_start + 45.0, 108.0)):.1f},
     "virality_score": 97,
     "virality_reason": "High curiosity opening + immediate emotional payoff.",
     "hook_quote": "The biggest reason 90% of developers fail..."
@@ -180,10 +198,10 @@ Return a JSON array of objects with the following schema:
             if isinstance(data, list) and len(data) > 0:
                 validated_moments = []
                 for idx, m in enumerate(data):
-                    s = max(0.0, float(m.get("start", 0.0)))
-                    e = min(duration, float(m.get("end", s + target_duration)))
+                    s = max(window_start, float(m.get("start", window_start)))
+                    e = min(window_end, float(m.get("end", s + target_duration)))
                     if e <= s or (e - s) < 15.0:
-                        e = min(duration, s + target_duration)
+                        e = min(window_end, s + target_duration)
                     dur = round(e - s, 1)
 
                     validated_moments.append({
@@ -215,11 +233,12 @@ Return a JSON array of objects with the following schema:
 
     # Fallback: Generate smart heuristic moments if Gemini client fails
     fallback_moments = []
-    step = max(30.0, duration / float(max_moments + 1))
+    window_dur = max(30.0, window_end - window_start)
+    step = max(30.0, window_dur / float(max_moments + 1))
     for i in range(min(max_moments, 6)):
-        s = round((i + 0.5) * step, 1)
+        s = round(window_start + (i + 0.5) * step, 1)
         dur = target_duration
-        e = min(duration, s + dur)
+        e = min(window_end, s + dur)
         fallback_moments.append({
             "id": f"moment_{i + 1}",
             "title": f"Key Highlight #{i + 1}",
