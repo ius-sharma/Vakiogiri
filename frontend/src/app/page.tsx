@@ -68,6 +68,8 @@ export default function Home() {
   const [step, setStep] = useState<string>("initializing");
   const [clips, setClips] = useState<(string | ClipItemData)[]>([]);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [activeGenerationSource, setActiveGenerationSource] = useState<SelectedVideoSource | null>(null);
+  const [activeGenerationConfig, setActiveGenerationConfig] = useState<GenerationConfig | null>(null);
 
   // Download feedback states
   const [downloadingClips, setDownloadingClips] = useState<Record<string, "downloading" | "done">>({});
@@ -271,12 +273,16 @@ export default function Home() {
     setClips([]);
     setErrorMsg(null);
     setProgress(5);
+    setActiveGenerationSource(null);
+    setActiveGenerationConfig(null);
   };
 
   const handleStartCommandCenterGeneration = async (
     source: SelectedVideoSource,
     config: GenerationConfig
   ) => {
+    setActiveGenerationSource(source);
+    setActiveGenerationConfig(config);
     if (config.mode === "ai_enhanced" && userProfile.credits_remaining <= 0) {
       showToast("You have reached your daily quota (0/3 remaining). Switch to Fast Free mode!", "error");
       return;
@@ -381,6 +387,19 @@ export default function Home() {
     setClips([]);
     setProgress(6);
     setProgressMessage("Starting 3-stage AI best moment pipeline...");
+    setActiveGenerationSource({
+      sourceType: "url",
+      title: "YouTube Video Stream",
+      url: trimmedUrl,
+    });
+    setActiveGenerationConfig({
+      targetDuration: segmentDuration,
+      aspectRatio: aspectRatio,
+      captionPreset: captionStyle,
+      clipsCount: 3,
+      mode: clippingMode,
+      quality: quality,
+    });
     setStatus("processing");
     stopPolling();
 
@@ -668,12 +687,17 @@ export default function Home() {
                 jobId={jobId}
               />
             ) : status === "processing" ? (
-              /* Live Animated Pipeline Radar (Processing State) */
-              <div className="w-full max-w-4xl flex flex-col items-center gap-6 my-auto pt-10">
+              /* Live Multi-Short Production Grid (Processing State) */
+              <div className="w-full flex flex-col items-center gap-6 my-auto pt-6 pb-12 animate-in fade-in">
                 <LivePipelineTracker
                   progress={progress}
                   step={step}
                   progressMessage={progressMessage}
+                  title={activeGenerationSource?.title || "Rendering Curated Shorts"}
+                  thumbnail={activeGenerationSource?.thumbnail}
+                  selectedMoments={activeGenerationConfig?.selectedMoments}
+                  clipsCount={activeGenerationConfig?.selectedMoments?.length || activeGenerationConfig?.clipsCount || 3}
+                  onCancel={handleReset}
                 />
               </div>
             ) : (
@@ -809,6 +833,11 @@ export default function Home() {
                     progress={progress}
                     step={step}
                     progressMessage={progressMessage}
+                    title={activeGenerationSource?.title || "Rendering Curated Shorts"}
+                    thumbnail={activeGenerationSource?.thumbnail}
+                    selectedMoments={activeGenerationConfig?.selectedMoments}
+                    clipsCount={activeGenerationConfig?.selectedMoments?.length || activeGenerationConfig?.clipsCount || 3}
+                    onCancel={handleReset}
                   />
                 )}
 
