@@ -875,12 +875,15 @@ export default function LongStudioView({
 
       {/* STATE 4: LIVE PIPELINE TRACKER */}
       {viewMode === "processing" && (
-        <div className="w-full max-w-3xl mx-auto flex flex-col items-center gap-6 my-auto pt-10 animate-in fade-in">
+        <div className="w-full max-w-6xl mx-auto flex flex-col items-center gap-6 my-auto pt-6 pb-12 animate-in fade-in">
           <LivePipelineTracker
             progress={progress}
             step={step}
             progressMessage={progressMessage}
-            title="Rendering Stream Highlights"
+            title={selectedSource?.title || "Rendering Stream Highlights"}
+            thumbnail={selectedSource?.thumbnail}
+            clipsCount={selectedChapterIds.length || 3}
+            onCancel={() => setViewMode("moments_review")}
           />
         </div>
       )}
