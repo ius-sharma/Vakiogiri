@@ -115,7 +115,9 @@ export default function ClipCinemaModal({
     ? Math.round(currentRawClip.heatmap_score)
     : 94;
   const rawDuration = isObject && currentRawClip.duration ? Math.round(currentRawClip.duration) : 45;
+  const hookQuote = isObject && (currentRawClip.hook_quote || currentRawClip.transcript) ? (currentRawClip.hook_quote || currentRawClip.transcript) : null;
   const title = isObject && currentRawClip.title ? currentRawClip.title : `Viral Clip #${currentIndex + 1}`;
+  const displayTitle = hookQuote ? `"${hookQuote}"` : title;
 
   const trimmedDuration = Math.max(1, trimEnd - trimStart);
 
@@ -149,7 +151,9 @@ export default function ClipCinemaModal({
     setIsPlaying(false);
   };
 
-  const generatedCaption = `${title} 🔥 Best Moments & Key Highlights.\n\nCreated with Vakiogiri AI. #shorts #viral #podcast #trending #foryou #ai`;
+  const generatedCaption = hookQuote
+    ? `"${hookQuote}"\n\n🔥 Best live gaming moments. Created with Vakiogiri AI.\n#shorts #gaming #viral #trending #foryou #ai`
+    : `${title} 🔥 Best Moments & Key Highlights.\n\nCreated with Vakiogiri AI. #shorts #viral #podcast #trending #foryou #ai`;
 
   const copyCaption = () => {
     navigator.clipboard.writeText(generatedCaption);
@@ -370,8 +374,8 @@ export default function ClipCinemaModal({
                 </span>
               </div>
 
-              <h3 className="text-lg font-bold text-white tracking-tight mt-1">
-                {title}
+              <h3 className="text-lg font-bold text-white tracking-tight mt-1 line-clamp-2">
+                {displayTitle}
               </h3>
             </div>
 

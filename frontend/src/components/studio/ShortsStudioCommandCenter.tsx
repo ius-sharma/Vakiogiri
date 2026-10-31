@@ -25,7 +25,8 @@ import {
   Square,
   Radio,
   Scissors,
-  Play
+  Play,
+  Globe
 } from "lucide-react";
 
 const Youtube = ({ className = "w-4 h-4" }: { className?: string }) => (
@@ -65,6 +66,7 @@ export interface GenerationConfig {
   targetDuration: number;
   aspectRatio: "9:16" | "16:9";
   captionPreset: string;
+  subtitleLanguage?: "hinglish" | "english" | "auto";
   clipsCount: number;
   mode: "heuristic" | "ai_enhanced";
   quality: string;
@@ -290,6 +292,7 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
   const [targetDuration, setTargetDuration] = useState<number>(45);
   const [aspectRatio, setAspectRatio] = useState<"9:16" | "16:9">("9:16");
   const [captionPreset, setCaptionPreset] = useState<string>("hormozi");
+  const [subtitleLanguage, setSubtitleLanguage] = useState<"hinglish" | "english" | "auto">("hinglish");
   const [clipsCount, setClipsCount] = useState<number>(3);
   const [clippingMode, setClippingMode] = useState<"heuristic" | "ai_enhanced">("ai_enhanced");
   const [quality, setQuality] = useState<string>("1080p");
@@ -536,6 +539,7 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
       targetDuration,
       aspectRatio,
       captionPreset,
+      subtitleLanguage,
       clipsCount: chosen.length,
       mode: clippingMode,
       quality,
@@ -561,6 +565,7 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
       targetDuration,
       aspectRatio,
       captionPreset,
+      subtitleLanguage,
       clipsCount,
       mode: clippingMode,
       quality,
@@ -1069,7 +1074,7 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
                 }`}
               >
                 <option value="hormozi" className={isLight ? "bg-white text-slate-900" : "bg-black text-white"}>
-                  Hormozi Punch
+                  Vakiogiri Signature (Hormozi)
                 </option>
                 <option value="beast" className={isLight ? "bg-white text-slate-900" : "bg-black text-white"}>
                   MrBeast Pop
@@ -1079,6 +1084,9 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
                 </option>
                 <option value="minimal" className={isLight ? "bg-white text-slate-900" : "bg-black text-white"}>
                   Minimal Clean
+                </option>
+                <option value="none" className={isLight ? "bg-white text-slate-900" : "bg-black text-white"}>
+                  No Captions
                 </option>
               </select>
             </div>
@@ -1513,11 +1521,28 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
                   value={captionPreset}
                   onChange={(e) => setCaptionPreset(e.target.value)}
                   className={`bg-transparent text-xs font-semibold focus:outline-none cursor-pointer ${isLight ? "text-slate-800" : "text-white"}`}
+                  title="Caption Visual Style"
                 >
-                  <option value="hormozi" className={isLight ? "bg-white text-slate-900" : "bg-black text-white"}>Hormozi</option>
-                  <option value="beast" className={isLight ? "bg-white text-slate-900" : "bg-black text-white"}>MrBeast</option>
-                  <option value="karaoke" className={isLight ? "bg-white text-slate-900" : "bg-black text-white"}>Karaoke</option>
-                  <option value="minimal" className={isLight ? "bg-white text-slate-900" : "bg-black text-white"}>Minimal</option>
+                  <option value="hormozi" className={isLight ? "bg-white text-slate-900" : "bg-black text-white"}>Vakiogiri Signature (Hormozi)</option>
+                  <option value="beast" className={isLight ? "bg-white text-slate-900" : "bg-black text-white"}>MrBeast Pop</option>
+                  <option value="karaoke" className={isLight ? "bg-white text-slate-900" : "bg-black text-white"}>Karaoke Glow</option>
+                  <option value="minimal" className={isLight ? "bg-white text-slate-900" : "bg-black text-white"}>Minimal Clean</option>
+                  <option value="none" className={isLight ? "bg-white text-slate-900" : "bg-black text-white"}>No Captions</option>
+                </select>
+              </div>
+
+              {/* Subtitle Language Dropdown (Hinglish vs English) */}
+              <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border ${isLight ? "bg-slate-50 border-slate-200" : "bg-white/[0.04] border-white/10"}`}>
+                <Globe className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                <select
+                  value={subtitleLanguage}
+                  onChange={(e) => setSubtitleLanguage(e.target.value as "hinglish" | "english" | "auto")}
+                  className={`bg-transparent text-xs font-semibold focus:outline-none cursor-pointer ${isLight ? "text-slate-800" : "text-white"}`}
+                  title="Subtitle Language Format: Hinglish (Roman Hindi) or English"
+                >
+                  <option value="hinglish" className={isLight ? "bg-white text-slate-900" : "bg-black text-white"}>🇮🇳 Hinglish (Desi / Gaming)</option>
+                  <option value="english" className={isLight ? "bg-white text-slate-900" : "bg-black text-white"}>🌐 English (Accurate)</option>
+                  <option value="auto" className={isLight ? "bg-white text-slate-900" : "bg-black text-white"}>✨ Auto Detect</option>
                 </select>
               </div>
 

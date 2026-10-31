@@ -31,6 +31,8 @@ export interface ClipItemData {
   content_type?: string;
   chapters?: Array<{ timestamp: string; title: string; duration: number }>;
   chapter_description?: string;
+  hook_quote?: string;
+  transcript?: string;
 }
 
 interface ClipCardProps {

@@ -309,6 +309,7 @@ export default function Home() {
         stream_output_mode: "clips",
         quality: config.quality,
         caption_style: config.captionPreset,
+        subtitle_language: (config as any).subtitleLanguage || "hinglish",
         synthesize_stories: (config as any).selectedMoments?.length ? false : config.mode === "ai_enhanced",
         max_clips: (config as any).selectedMoments?.length || config.clipsCount,
         selected_moments: (config as any).selectedMoments || null,
@@ -421,6 +422,7 @@ export default function Home() {
           stream_output_mode: "clips",
           quality: quality,
           caption_style: captionStyle,
+          subtitle_language: "hinglish",
           synthesize_stories: clippingMode === "ai_enhanced",
         }),
       });
