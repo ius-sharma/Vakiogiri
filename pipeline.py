@@ -454,7 +454,8 @@ def split_and_crop_video(
     caption_style: str = "hormozi",
     speech_segments: Optional[List[Dict[str, Any]]] = None,
     progress_callback: Optional[Callable[[str, int, str], None]] = None,
-    subtitle_language: str = "hinglish"
+    subtitle_language: str = "hinglish",
+    layout_mode: str = "gaming_split"
 ) -> List[Dict[str, Any]]:
     """
     Split and render video clips based on dynamic best moments.
@@ -539,7 +540,8 @@ def split_and_crop_video(
             facecam_box = vakiogiri_layout_engine.detect_facecam_box(
                 video_path=video_path,
                 start_time=start_time,
-                duration=clip_dur
+                duration=clip_dur,
+                layout_mode=layout_mode
             )
 
             # 2. Build center-anchored subtitle file if caption_style != 'none'
@@ -577,7 +579,8 @@ def split_and_crop_video(
                         video_h=target_h,
                         style=caption_style,
                         clip_start=0.0,
-                        clip_end=clip_dur
+                        clip_end=clip_dur,
+                        layout_mode=layout_mode
                     )
                     # Update title and hook_quote with first spoken words
                     if direct_segs[0].get("text") and str(target.get("title", "")).startswith("Key Highlight #"):
@@ -595,7 +598,8 @@ def split_and_crop_video(
                             video_h=target_h,
                             style=caption_style,
                             clip_start=start_time,
-                            clip_end=start_time + clip_dur
+                            clip_end=start_time + clip_dur,
+                            layout_mode=layout_mode
                         )
 
             # 3. Construct dual-stack split layout or fallback vertical crop
@@ -603,11 +607,13 @@ def split_and_crop_video(
                 target_w=target_w,
                 target_h=target_h,
                 facecam_box=facecam_box,
-                ass_subtitle_path=ass_sub_path
+                ass_subtitle_path=ass_sub_path,
+                layout_mode=layout_mode
             )
             use_filter_complex = True
 
         if use_filter_complex and current_filtergraph:
+            fg_with_pts = current_filtergraph + ",setpts=PTS-STARTPTS[outv]"
             ffmpeg_cmd = [
                 "ffmpeg",
                 "-y",
@@ -615,7 +621,10 @@ def split_and_crop_video(
                 "-t", str(clip_dur),
                 "-i", video_path,
                 "-avoid_negative_ts", "make_zero",
-                "-filter_complex", current_filtergraph,
+                "-filter_complex", fg_with_pts,
+                "-map", "[outv]",
+                "-map", "0:a?",
+                "-af", "asetpts=PTS-STARTPTS",
                 "-c:v", "libx264",
                 "-preset", "faster",
                 "-crf", "15",
@@ -628,6 +637,7 @@ def split_and_crop_video(
                 clip_path
             ]
         else:
+            vf_with_pts = current_vf + (",setpts=PTS-STARTPTS" if current_vf else "setpts=PTS-STARTPTS")
             ffmpeg_cmd = [
                 "ffmpeg",
                 "-y",
@@ -635,7 +645,8 @@ def split_and_crop_video(
                 "-t", str(clip_dur),
                 "-i", video_path,
                 "-avoid_negative_ts", "make_zero",
-                "-vf", current_vf,
+                "-vf", vf_with_pts,
+                "-af", "asetpts=PTS-STARTPTS",
                 "-c:v", "libx264",
                 "-preset", "faster",
                 "-crf", "15",
@@ -650,10 +661,28 @@ def split_and_crop_video(
         
         try:
             subprocess.run(ffmpeg_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+            
+            # Extract instant visual preview thumbnail poster from rendered video
+            thumb_name = f"thumb_{i + 1}.jpg"
+            thumb_path = os.path.join(output_dir, thumb_name)
+            thumb_seek = min(1.5, max(0.5, clip_dur * 0.2))
+            try:
+                subprocess.run([
+                    "ffmpeg", "-y",
+                    "-ss", str(thumb_seek),
+                    "-i", clip_path,
+                    "-vframes", "1",
+                    "-q:v", "2",
+                    thumb_path
+                ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+            except Exception as th_err:
+                print(f"[Pipeline Notice] Could not extract thumbnail: {th_err}")
+
             safe_title = str(target.get('title', '')).encode('ascii', 'replace').decode('ascii')
             print(f"  -> Created {clip_name} (starts at {start_time:.1f}s, len: {clip_dur:.1f}s, score: {target['score']}, title: '{safe_title}')")
             created_clips.append({
                 "filename": clip_name,
+                "thumbnail": thumb_name,
                 "title": target["title"],
                 "score": target["score"],
                 "heatmap_score": target.get("heatmap_score"),
@@ -661,6 +690,7 @@ def split_and_crop_video(
                 "end": round(start_time + clip_dur, 2),
                 "duration": round(clip_dur, 2),
                 "aspect_ratio": aspect_ratio,
+                "layout_mode": layout_mode,
                 "quality": quality,
                 "resolution": f"{target_w}x{target_h}"
             })
@@ -696,7 +726,8 @@ def run_pipeline(
     progress_callback: Optional[Callable[[str, int, str], None]] = None,
     selected_moments: Optional[List[Dict[str, Any]]] = None,
     caption_style: str = "hormozi",
-    subtitle_language: str = "hinglish"
+    subtitle_language: str = "hinglish",
+    layout_mode: str = "gaming_split"
 ) -> List[Dict[str, Any]]:
     """
     Run complete AI / Heuristic video clipping pipeline:
@@ -910,12 +941,14 @@ def run_pipeline(
             caption_style=caption_style,
             speech_segments=speech_segments,
             progress_callback=progress_callback,
-            subtitle_language=subtitle_language
+            subtitle_language=subtitle_language,
+            layout_mode=layout_mode
         )
         
         for c in clips:
             c["mode"] = mode
             c["aspect_ratio"] = aspect_ratio
+            c["layout_mode"] = layout_mode
             c["content_type"] = content_type
             c["quality"] = quality
 
