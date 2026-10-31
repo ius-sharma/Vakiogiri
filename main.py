@@ -125,6 +125,8 @@ class ProcessRequest(BaseModel):
     stream_start_min: Optional[float] = Field(default=0.0)  # Skip first N minutes (e.g. 15 min intro)
     stream_end_min: Optional[float] = Field(default=None)  # Optional end boundary in minutes
     selected_moments: Optional[List[Dict[str, Any]]] = None
+    caption_style: Optional[str] = Field(default="hormozi")  # "hormozi", "beast", "vakiogiri", "none"
+    subtitle_language: Optional[str] = Field(default="hinglish")  # "hinglish", "english", "auto"
 
 
 class StreamProcessRequest(BaseModel):
@@ -155,7 +157,9 @@ def process_video_task(
     quality: str = "1080p",
     stream_start_min: float = 0.0,
     stream_end_min: Optional[float] = None,
-    selected_moments: Optional[List[Dict[str, Any]]] = None
+    selected_moments: Optional[List[Dict[str, Any]]] = None,
+    caption_style: str = "hormozi",
+    subtitle_language: str = "hinglish"
 ):
     """Background task to run video processing pipeline with progress callback and job recording."""
     clips_output_dir = os.path.join("clips", job_id)
@@ -183,7 +187,9 @@ def process_video_task(
             stream_start_min=stream_start_min,
             stream_end_min=stream_end_min,
             progress_callback=progress_callback,
-            selected_moments=selected_moments
+            selected_moments=selected_moments,
+            caption_style=caption_style,
+            subtitle_language=subtitle_language
         )
 
         # Upload generated clips to Supabase Cloud Storage & purge local disk
@@ -805,7 +811,9 @@ def process_video(
         quality,
         float(request.stream_start_min or 0.0),
         float(request.stream_end_min) if request.stream_end_min else None,
-        request.selected_moments
+        request.selected_moments,
+        request.caption_style or "hormozi",
+        request.subtitle_language or "hinglish"
     )
     
     current_credits = (user["credits_remaining"] - 1) if credit_deducted else user["credits_remaining"]
