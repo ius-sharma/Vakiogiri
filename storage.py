@@ -39,7 +39,7 @@ def upload_file_to_supabase(
         with open(local_path, "rb") as f:
             file_data = f.read()
 
-        response = requests.post(upload_url, headers=headers, data=file_data, timeout=4)
+        response = requests.post(upload_url, headers=headers, data=file_data, timeout=180)
         
         if response.status_code in [200, 201]:
             public_url = f"{SUPABASE_URL}/storage/v1/object/public/{BUCKET_NAME}/{destination_path}"
@@ -112,6 +112,20 @@ def upload_clips_and_cleanup(
 
         destination_path = f"{job_id}/{filename}"
         public_url = upload_file_to_supabase(local_clip_path, destination_path)
+
+        # Upload thumbnail if present
+        raw_thumb = base_meta.get("thumbnail")
+        if raw_thumb:
+            thumb_filename = os.path.basename(str(raw_thumb))
+            local_thumb_path = os.path.join(clips_dir, thumb_filename)
+            if os.path.exists(local_thumb_path):
+                if storage_active:
+                    pub_thumb_url = upload_file_to_supabase(local_thumb_path, f"{job_id}/{thumb_filename}", content_type="image/jpeg")
+                    base_meta["thumbnail"] = pub_thumb_url or f"/clips/{job_id}/{thumb_filename}"
+                else:
+                    base_meta["thumbnail"] = f"/clips/{job_id}/{thumb_filename}"
+            else:
+                base_meta["thumbnail"] = f"/clips/{job_id}/{thumb_filename}"
 
         if public_url:
             base_meta.update({
