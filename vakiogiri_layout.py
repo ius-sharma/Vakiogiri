@@ -1,12 +1,20 @@
 """
-vakiogiri_layout.py - Signature 9:16 Vertical Gaming Split Layout Engine
+vakiogiri_layout.py - Signature 9:16 Vertical Gaming Split & Reaction Layout Engine
 
-Implements the official Vakiogiri signature editing format for high-retention gaming/streamer shorts:
-1. Top Half (1080x960): Center/Action-focused Gameplay
-2. Bottom Half (1080x960): Streamer Facecam / Reaction, auto-detected via OpenCV Haar Cascade
-3. Center Separation Line: Ultra-thin, crisp 1-2px white separator (color=white@0.85) at exactly Y=960
-4. Center-Anchored Word-by-Word Kinetic Animated Captions (Hormozi / MrBeast pop style)
-5. Fallback Protection: Seamless 9:16 vertical crop if no facecam detected.
+Supports two high-retention vertical editing formats:
+1. 'gaming_split' (Preserved Default - 50/50 Split):
+   - Top Half (1080x960): Center/Action-focused Gameplay
+   - Bottom Half (1080x960): Streamer Facecam / Reaction
+   - Center Separation Line: 5px crisp white line at Y=958
+   - Subtitles: 60pt font anchored at Y=920 (above center divider)
+
+2. 'face_top_game_bottom' (Inverted - 37.5% Face / 62.5% Big Game):
+   - Top Section (1080x720): Streamer Facecam / Reaction
+   - Bottom Section (1080x1200): Dominant full-view Gameplay
+   - Separation Line: 5px crisp white line at Y=718
+   - Subtitles: 68pt bold kinetic font at Y=760 (below divider at top of gameplay),
+     rapid 2-word cards, hot keywords punched in Electric Neon Amber (&H0000D4FF& / 120% bounce)
+     and regular active words in Gold (&H002774FF& / 115% bounce), inactive words clean white.
 """
 
 import os
@@ -16,6 +24,13 @@ import math
 import subprocess
 from typing import Optional, Dict, Any, Tuple, List
 from hinglish_transliterator import transliterate_word
+
+HOT_KEYWORDS = {
+    "JUMP", "SURFACE", "CIRCLE", "CIRCLES", "BHAI", "BRO", "LADLE", "BHAGJA",
+    "LITERALLY", "BACH", "BACHA", "OP", "KILL", "HEADSHOT", "DEAD", "WIN", "RUN",
+    "DANGER", "EPIC", "NOOB", "PRO", "AAGAYA", "MARO", "GAYA", "KHATAM", "SHIT",
+    "WHAT", "WTF", "HELL", "SUPER", "NICE", "ROST", "CHALO", "DEKHO", "LOOK"
+}
 
 
 def format_ass_time(seconds: float) -> str:
@@ -37,7 +52,8 @@ class VakiogiriLayoutEngine:
         video_path: str,
         start_time: float,
         duration: float,
-        sample_count: int = 6
+        sample_count: int = 6,
+        layout_mode: str = "gaming_split"
     ) -> Optional[Dict[str, int]]:
         """
         Scan sample frames across the clip segment to detect if a streamer facecam
@@ -100,7 +116,9 @@ class VakiogiriLayoutEngine:
         median_fw = int(sorted(fw_list)[len(fw_list) // 2])
 
         cam_target_w = int(max(median_fw * 2.8, 300))
-        cam_target_h = int(cam_target_w * (960 / 1080))
+        # Top-box aspect ratio: 720/1080 for face_top_game_bottom, 960/1080 for gaming_split
+        target_aspect_h = 720 if layout_mode == "face_top_game_bottom" else 960
+        cam_target_h = int(cam_target_w * (target_aspect_h / 1080))
 
         cam_x = max(0, median_cx - cam_target_w // 2)
         cam_y = max(0, median_cy - int(cam_target_h * 0.42))
@@ -133,11 +151,14 @@ class VakiogiriLayoutEngine:
         video_h: int = 1920,
         style: str = "hormozi",
         clip_start: float = 0.0,
-        clip_end: Optional[float] = None
+        clip_end: Optional[float] = None,
+        layout_mode: str = "gaming_split"
     ) -> Optional[str]:
         """
-        Generate ASS subtitle file with animated, word-by-word active pop keywords
-        anchored right above the center separation line (Y=960).
+        Generate ASS subtitle file with animated, word-by-word active pop keywords.
+        - 'gaming_split': 60pt font anchored right above center divider (Y=920).
+        - 'face_top_game_bottom': 68pt bold font anchored below divider at top of gameplay (Y=760),
+          fast 2-word pacing, HOT keywords highlighted in Electric Neon Amber.
         """
         if not speech_segments:
             return None
@@ -145,9 +166,6 @@ class VakiogiriLayoutEngine:
         clip_duration = (clip_end - clip_start) if clip_end is not None else 60.0
 
         # Primary highlight colors in ASS &HAABBGGRR format:
-        # Hormozi/Vakiogiri Gold-Amber: &H002774FF (BGR: R=FF, G=74, B=27)
-        # Yellow Pop: &H0000FFFF
-        # Beast Cyan: &H00FFFF00
         if style in ["hormozi", "vakiogiri"]:
             highlight_color = "&H002774FF&"
         elif style == "beast":
@@ -215,22 +233,6 @@ class VakiogiriLayoutEngine:
         if not all_words:
             return None
 
-        # 2. Build high-impact Single-Word Animated Kinetic Captions (Hormozi / Viral Shorts 1-word pop)
-        ass_header = f"""[Script Info]
-Title: Vakiogiri Kinetic Animated Captions
-ScriptType: v4.00+
-PlayResX: {video_w}
-PlayResY: {video_h}
-WrapStyle: 0
-ScaledBorderAndShadow: yes
-
-[V4+ Styles]
-Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: VakiogiriKinetic,Arial,60,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,4.5,2.2,5,24,24,0,1
-
-[Events]
-Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-"""
         # 2. Strict Monotonic Cleaning: sort all words and ensure strictly increasing time boundaries
         all_words = sorted(all_words, key=lambda w: float(w["start"]))
         clean_words = []
@@ -246,16 +248,25 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         if not clean_words:
             return None
 
-        # 3. Group into dynamic 2-3 word phrase cards (prevents fast-speech flicker and ensures 100% readability)
+        # 3. Dynamic phrase cards:
+        # For 'face_top_game_bottom': faster pacing (2 words max per card, or 3 if all short <= 4 chars)
+        # For 'gaming_split': 3 words max per card
         phrase_groups = []
         current_grp = []
+        is_face_top = (layout_mode == "face_top_game_bottom")
+        gap_threshold = 0.35 if is_face_top else 0.40
+
         for w in clean_words:
             if not current_grp:
                 current_grp.append(w)
             else:
                 gap = w["start"] - current_grp[-1]["end"]
-                # Start a new phrase card on natural silence (>0.40s) or when 3 words reached
-                if gap > 0.40 or len(current_grp) >= 3:
+                if is_face_top:
+                    max_in_grp = 3 if all(len(x["word"]) <= 4 for x in current_grp) else 2
+                else:
+                    max_in_grp = 3
+
+                if gap > gap_threshold or len(current_grp) >= max_in_grp:
                     phrase_groups.append(current_grp)
                     current_grp = [w]
                 else:
@@ -263,10 +274,37 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         if current_grp:
             phrase_groups.append(current_grp)
 
+        # 4. ASS Header Configuration
+        if is_face_top:
+            style_name = "BigPunchKinetic"
+            style_line = "Style: BigPunchKinetic,Arial,68,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,5.0,2.5,5,24,24,0,1"
+            sub_pos_y = 760  # Right below the 720px divider line, top edge of gameplay
+        else:
+            style_name = "VakiogiriKinetic"
+            style_line = "Style: VakiogiriKinetic,Arial,60,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,4.5,2.2,5,24,24,0,1"
+            sub_pos_y = 920  # Right above the 960px center line
+
+        ass_header = f"""[Script Info]
+Title: Vakiogiri Kinetic Animated Captions
+ScriptType: v4.00+
+PlayResX: {video_w}
+PlayResY: {video_h}
+WrapStyle: 0
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+{style_line}
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+"""
+
         events = []
         for g_idx, grp in enumerate(phrase_groups):
             card_start = grp[0]["start"]
-            natural_end = max(grp[-1]["end"] + 0.25, card_start + 0.80)
+            card_end_padding = 0.20 if is_face_top else 0.25
+            natural_end = max(grp[-1]["end"] + card_end_padding, card_start + (0.65 if is_face_top else 0.80))
             if g_idx + 1 < len(phrase_groups):
                 # Clamp card_end strictly to the start of the next card so dialogues never overlap
                 card_end = min(natural_end, phrase_groups[g_idx + 1][0]["start"])
@@ -280,7 +318,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             # Partition card_start -> card_end into N strictly non-overlapping contiguous intervals
             boundaries = [card_start]
             for k in range(1, N):
-                b_val = max(boundaries[-1] + 0.12, min(grp[k]["start"], card_end - 0.08 * (N - k)))
+                b_val = max(boundaries[-1] + 0.10, min(grp[k]["start"], card_end - 0.08 * (N - k)))
                 boundaries.append(b_val)
             boundaries.append(card_end)
 
@@ -290,15 +328,23 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
                 tokens = []
                 for idx_other, other_w in enumerate(grp):
+                    tok_word = other_w["word"]
                     if idx_other == w_idx:
-                        tokens.append(f"{{\\c{highlight_color}\\fscx115\\fscy115}}{other_w['word']}{{\\r}}")
+                        if is_face_top:
+                            clean_token = "".join(c for c in tok_word if c.isalnum())
+                            is_hot = clean_token in HOT_KEYWORDS
+                            active_color = "&H0000D4FF&" if is_hot else highlight_color
+                            scale_val = "120" if is_hot else "115"
+                            tokens.append(f"{{\\c{active_color}\\fscx{scale_val}\\fscy{scale_val}}}{tok_word}{{\\r}}")
+                        else:
+                            tokens.append(f"{{\\c{highlight_color}\\fscx115\\fscy115}}{tok_word}{{\\r}}")
                     else:
-                        tokens.append(f"{{\\c&H00FFFFFF&}}{other_w['word']}{{\\r}}")
+                        tokens.append(f"{{\\c&H00FFFFFF&}}{tok_word}{{\\r}}")
                 line_text = " ".join(tokens)
 
                 start_fmt = format_ass_time(w_active_start)
                 end_fmt = format_ass_time(w_active_end)
-                event_str = f"Dialogue: 0,{start_fmt},{end_fmt},VakiogiriKinetic,,0,0,0,,{{\\pos(540,920)}}{line_text}"
+                event_str = f"Dialogue: 0,{start_fmt},{end_fmt},{style_name},,0,0,0,,{{\\pos(540,{sub_pos_y})}}{line_text}"
                 events.append(event_str)
 
         if not events:
@@ -316,57 +362,98 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         target_w: int = 1080,
         target_h: int = 1920,
         facecam_box: Optional[Dict[str, int]] = None,
-        ass_subtitle_path: Optional[str] = None
+        ass_subtitle_path: Optional[str] = None,
+        layout_mode: str = "gaming_split"
     ) -> str:
         """
         Constructs the complete FFmpeg filtergraph:
-        - If facecam is detected:
-          [0:v] split into gameplay & facecam
-          Top: Gameplay cropped/scaled to target_w x (target_h / 2) with Lanczos & subtle unsharp
-          Bottom: Facecam cropped/scaled to target_w x (target_h / 2)
-          Stacked: vstack
-          Divider: drawbox at Y=(target_h / 2 - 1) with 2px crisp white line
-          Subtitles: ASS center-anchored animated subtitles
-        - Fallback (no facecam):
-          Direct 9:16 vertical crop with center-anchored animated subtitles & sharp Lanczos
-        """
-        half_h = target_h // 2
-        line_thickness = 5
-        line_y = half_h - (line_thickness // 2)
+        - 'face_top_game_bottom':
+          Top: Facecam (1080x720) with Lanczos & unsharp
+          Bottom: Gameplay (1080x1200) with Lanczos & unsharp
+          Divider: 5px crisp white line at Y=718
+          Subtitles: Fast, large kinetic captions anchored at Y=760
 
+        - 'gaming_split' (Preserved Default):
+          Top: Gameplay (1080x960) with Lanczos & unsharp
+          Bottom: Facecam (1080x960) with Lanczos & unsharp
+          Divider: 5px crisp white line at Y=958
+          Subtitles: 60pt kinetic captions anchored at Y=920
+
+        - Fallback (no facecam):
+          Direct 9:16 vertical crop with sharp Lanczos & animated subtitles
+        """
+        line_thickness = 5
         sub_filter = ""
         if ass_subtitle_path and os.path.exists(ass_subtitle_path):
             escaped_path = ass_subtitle_path.replace("\\", "/").replace(":", "\\:")
             sub_filter = f",subtitles='{escaped_path}'"
 
-        if facecam_box:
-            cx = facecam_box["x"]
-            cy = facecam_box["y"]
-            cw = facecam_box["w"]
-            ch = facecam_box["h"]
+        if layout_mode == "face_top_game_bottom":
+            face_h = 720
+            game_h = 1200
+            line_y = face_h - (line_thickness // 2)  # 718
 
-            filtergraph = (
-                f"[0:v]split=2[gameplay_in][cam_in];"
-                f"[gameplay_in]scale={target_w}:{half_h}:force_original_aspect_ratio=increase:flags=lanczos,"
-                f"crop={target_w}:{half_h},"
-                f"unsharp=5:5:0.5:5:5:0.0[top_half];"
-                f"[cam_in]crop={cw}:{ch}:{cx}:{cy},"
-                f"scale={target_w}:{half_h}:force_original_aspect_ratio=increase:flags=lanczos,"
-                f"crop={target_w}:{half_h},"
-                f"unsharp=5:5:0.6:5:5:0.0[bot_half];"
-                f"[top_half][bot_half]vstack=inputs=2[stacked];"
-                f"[stacked]drawbox=x=0:y={line_y}:w={target_w}:h={line_thickness}:color=white@0.95:t=fill"
-                f"{sub_filter}"
-            )
-            return filtergraph
+            if facecam_box:
+                cx = facecam_box["x"]
+                cy = facecam_box["y"]
+                cw = facecam_box["w"]
+                ch = facecam_box["h"]
+
+                filtergraph = (
+                    f"[0:v]split=2[gameplay_in][cam_in];"
+                    f"[cam_in]crop={cw}:{ch}:{cx}:{cy},"
+                    f"scale={target_w}:{face_h}:force_original_aspect_ratio=increase:flags=lanczos,"
+                    f"crop={target_w}:{face_h},"
+                    f"unsharp=5:5:0.6:5:5:0.0,setsar=1[top_half];"
+                    f"[gameplay_in]scale={target_w}:{game_h}:force_original_aspect_ratio=increase:flags=lanczos,"
+                    f"crop={target_w}:{game_h},"
+                    f"unsharp=5:5:0.5:5:5:0.0,setsar=1[bot_half];"
+                    f"[top_half][bot_half]vstack=inputs=2,setsar=1[stacked];"
+                    f"[stacked]drawbox=x=0:y={line_y}:w={target_w}:h={line_thickness}:color=white@0.95:t=fill"
+                    f"{sub_filter}"
+                )
+                return filtergraph
+            else:
+                filtergraph = (
+                    f"[0:v]scale={target_w}:{target_h}:force_original_aspect_ratio=increase:flags=lanczos,"
+                    f"crop={target_w}:{target_h},"
+                    f"unsharp=5:5:0.6:5:5:0.0,setsar=1"
+                    f"{sub_filter}"
+                )
+                return filtergraph
         else:
-            filtergraph = (
-                f"scale={target_w}:{target_h}:force_original_aspect_ratio=increase:flags=lanczos,"
-                f"crop={target_w}:{target_h},"
-                f"unsharp=5:5:0.6:5:5:0.0"
-                f"{sub_filter}"
-            )
-            return filtergraph
+            # Preserved 'gaming_split' 50/50 layout
+            half_h = target_h // 2
+            line_y = half_h - (line_thickness // 2)  # 958
+
+            if facecam_box:
+                cx = facecam_box["x"]
+                cy = facecam_box["y"]
+                cw = facecam_box["w"]
+                ch = facecam_box["h"]
+
+                filtergraph = (
+                    f"[0:v]split=2[gameplay_in][cam_in];"
+                    f"[gameplay_in]scale={target_w}:{half_h}:force_original_aspect_ratio=increase:flags=lanczos,"
+                    f"crop={target_w}:{half_h},"
+                    f"unsharp=5:5:0.5:5:5:0.0,setsar=1[top_half];"
+                    f"[cam_in]crop={cw}:{ch}:{cx}:{cy},"
+                    f"scale={target_w}:{half_h}:force_original_aspect_ratio=increase:flags=lanczos,"
+                    f"crop={target_w}:{half_h},"
+                    f"unsharp=5:5:0.6:5:5:0.0,setsar=1[bot_half];"
+                    f"[top_half][bot_half]vstack=inputs=2,setsar=1[stacked];"
+                    f"[stacked]drawbox=x=0:y={line_y}:w={target_w}:h={line_thickness}:color=white@0.95:t=fill"
+                    f"{sub_filter}"
+                )
+                return filtergraph
+            else:
+                filtergraph = (
+                    f"[0:v]scale={target_w}:{target_h}:force_original_aspect_ratio=increase:flags=lanczos,"
+                    f"crop={target_w}:{target_h},"
+                    f"unsharp=5:5:0.6:5:5:0.0,setsar=1"
+                    f"{sub_filter}"
+                )
+                return filtergraph
 
 
 # Singleton instance for direct pipeline usage
