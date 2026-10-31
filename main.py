@@ -13,9 +13,10 @@ if sys.platform == "win32":
         sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
         pass
-from fastapi import FastAPI, BackgroundTasks, HTTPException, Depends, Query, File, UploadFile
+from fastapi import FastAPI, BackgroundTasks, HTTPException, Depends, Query, File, UploadFile, Request
+import re
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse, RedirectResponse
+from fastapi.responses import FileResponse, StreamingResponse, RedirectResponse, Response
 import time
 from pydantic import BaseModel, Field
 
@@ -127,6 +128,7 @@ class ProcessRequest(BaseModel):
     selected_moments: Optional[List[Dict[str, Any]]] = None
     caption_style: Optional[str] = Field(default="hormozi")  # "hormozi", "beast", "vakiogiri", "none"
     subtitle_language: Optional[str] = Field(default="hinglish")  # "hinglish", "english", "auto"
+    layout_mode: Optional[str] = Field(default="gaming_split")  # "gaming_split" | "face_top_game_bottom"
 
 
 class StreamProcessRequest(BaseModel):
@@ -159,7 +161,8 @@ def process_video_task(
     stream_end_min: Optional[float] = None,
     selected_moments: Optional[List[Dict[str, Any]]] = None,
     caption_style: str = "hormozi",
-    subtitle_language: str = "hinglish"
+    subtitle_language: str = "hinglish",
+    layout_mode: str = "gaming_split"
 ):
     """Background task to run video processing pipeline with progress callback and job recording."""
     clips_output_dir = os.path.join("clips", job_id)
@@ -189,7 +192,8 @@ def process_video_task(
             progress_callback=progress_callback,
             selected_moments=selected_moments,
             caption_style=caption_style,
-            subtitle_language=subtitle_language
+            subtitle_language=subtitle_language,
+            layout_mode=layout_mode
         )
 
         # Upload generated clips to Supabase Cloud Storage & purge local disk
@@ -813,7 +817,8 @@ def process_video(
         float(request.stream_end_min) if request.stream_end_min else None,
         request.selected_moments,
         request.caption_style or "hormozi",
-        request.subtitle_language or "hinglish"
+        request.subtitle_language or "hinglish",
+        request.layout_mode or "gaming_split"
     )
     
     current_credits = (user["credits_remaining"] - 1) if credit_deducted else user["credits_remaining"]
@@ -994,20 +999,101 @@ def get_job_status(job_id: str):
     return response
 
 
-@app.get("/clips/{job_id}/{filename}")
-def serve_clip(job_id: str, filename: str):
-    """Serve a specific generated video clip file locally if not on cloud."""
+@app.head("/clips/{job_id}/{filename}")
+def head_clip(job_id: str, filename: str):
+    """Serve HEAD requests for preflight media probing by browsers."""
     clip_path = os.path.join("clips", job_id, filename)
-    
     if not os.path.exists(clip_path):
         raise HTTPException(status_code=404, detail="Clip file not found")
-        
-    return FileResponse(
-        path=clip_path,
-        media_type="video/mp4",
-        filename=filename,
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    file_size = os.path.getsize(clip_path)
+    ext = os.path.splitext(filename)[1].lower()
+    media_type = "image/jpeg" if ext in [".jpg", ".jpeg"] else "image/png" if ext == ".png" else "video/mp4"
+    return Response(
+        status_code=200,
+        headers={
+            "Accept-Ranges": "bytes",
+            "Content-Length": str(file_size),
+            "Content-Type": media_type,
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges",
+        }
     )
+
+
+@app.get("/clips/{job_id}/{filename}")
+def serve_clip(job_id: str, filename: str, request: Request):
+    """
+    Serve video clips with full HTTP Byte-Range (206 Partial Content) streaming support
+    and inline Content-Disposition so browsers/mobile webviews play video immediately.
+    Also serves thumbnail images (.jpg, .jpeg, .png).
+    """
+    clip_path = os.path.join("clips", job_id, filename)
+    if not os.path.exists(clip_path):
+        raise HTTPException(status_code=404, detail="Clip file not found")
+
+    ext = os.path.splitext(filename)[1].lower()
+    if ext in [".jpg", ".jpeg"]:
+        return FileResponse(clip_path, media_type="image/jpeg", content_disposition_type="inline", headers={"Access-Control-Allow-Origin": "*"})
+    elif ext == ".png":
+        return FileResponse(clip_path, media_type="image/png", content_disposition_type="inline", headers={"Access-Control-Allow-Origin": "*"})
+
+    # For MP4 video: Implement proper HTTP Range request handling for smooth HTML5 video playback
+    file_size = os.path.getsize(clip_path)
+    range_header = request.headers.get("range")
+
+    if not range_header:
+        def iter_full_file():
+            with open(clip_path, "rb") as f:
+                while chunk := f.read(1024 * 512):
+                    yield chunk
+        headers = {
+            "Content-Length": str(file_size),
+            "Accept-Ranges": "bytes",
+            "Content-Type": "video/mp4",
+            "Content-Disposition": f'inline; filename="{filename}"',
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges"
+        }
+        return StreamingResponse(iter_full_file(), status_code=200, headers=headers)
+
+    # Parse byte range (e.g. bytes=0- or bytes=0-1048576 or bytes=500-)
+    match = re.match(r"bytes=(\d+)-(\d*)", range_header)
+    if not match:
+        raise HTTPException(status_code=416, detail="Invalid Range header")
+
+    start = int(match.group(1))
+    if match.group(2) and match.group(2).strip():
+        end = min(int(match.group(2)), file_size - 1)
+    else:
+        end = file_size - 1
+
+    if start > end or start >= file_size:
+        raise HTTPException(status_code=416, detail="Requested range not satisfiable")
+
+    content_length = (end - start) + 1
+
+    def iter_byte_range():
+        with open(clip_path, "rb") as f:
+            f.seek(start)
+            remaining = content_length
+            while remaining > 0:
+                chunk_size = min(remaining, 1024 * 512)
+                data = f.read(chunk_size)
+                if not data:
+                    break
+                remaining -= len(data)
+                yield data
+
+    headers = {
+        "Content-Range": f"bytes {start}-{end}/{file_size}",
+        "Accept-Ranges": "bytes",
+        "Content-Length": str(content_length),
+        "Content-Type": "video/mp4",
+        "Content-Disposition": f'inline; filename="{filename}"',
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges"
+    }
+    return StreamingResponse(iter_byte_range(), status_code=206, headers=headers)
 
 
 @app.get("/download/proxy")
