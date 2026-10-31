@@ -21,6 +21,7 @@ from moment_detector import detect_best_moments, transcribe_video_audio
 from story_synthesizer import synthesize_story_blueprints, stitch_synthesized_story
 from stream_detector import detect_stream_audio_peaks, stitch_highlight_compilation
 from gemini_stream_detector import detect_stream_highlights_gemini
+from vakiogiri_layout import vakiogiri_layout_engine
 
 # ==============================================================================
 # CONFIGURATION CONSTANTS
@@ -450,7 +451,10 @@ def split_and_crop_video(
     max_clips: int = MAX_CLIPS_PER_VIDEO,
     aspect_ratio: str = "9:16",
     quality: str = "1080p",
-    progress_callback: Optional[Callable[[str, int, str], None]] = None
+    caption_style: str = "hormozi",
+    speech_segments: Optional[List[Dict[str, Any]]] = None,
+    progress_callback: Optional[Callable[[str, int, str], None]] = None,
+    subtitle_language: str = "hinglish"
 ) -> List[Dict[str, Any]]:
     """
     Split and render video clips based on dynamic best moments.
@@ -525,25 +529,124 @@ def split_and_crop_video(
                 f"Rendering clip {i + 1} of {num_clips} ({ratio_label} '{target['title']}', score {target['score']})..."
             )
 
-        ffmpeg_cmd = [
-            "ffmpeg",
-            "-y",
-            "-ss", str(start_time),
-            "-t", str(clip_dur),
-            "-i", video_path,
-            "-avoid_negative_ts", "make_zero",
-            "-vf", vf_filter,
-            "-c:v", "libx264",
-            "-preset", "faster",
-            "-crf", "15",
-            "-tune", "film",
-            "-pix_fmt", "yuv420p",
-            "-c:a", "aac",
-            "-b:a", "256k",
-            "-ar", "48000",
-            "-movflags", "+faststart",
-            clip_path
-        ]
+        # Dynamic Vakiogiri 9:16 Signature Layout Engine (Top Gameplay + Bottom Facecam + Center Line & Captions)
+        current_vf = vf_filter
+        use_filter_complex = False
+        current_filtergraph = None
+
+        if aspect_ratio == "9:16":
+            # 1. Detect facecam/reaction window in video
+            facecam_box = vakiogiri_layout_engine.detect_facecam_box(
+                video_path=video_path,
+                start_time=start_time,
+                duration=clip_dur
+            )
+
+            # 2. Build center-anchored subtitle file if caption_style != 'none'
+            ass_sub_path = None
+            if caption_style != "none":
+                ass_file = os.path.join(output_dir, f"subs_{i + 1}.ass")
+                
+                # Always transcribe this specific clip's audio slice directly for 100% full-clip subtitle coverage
+                slice_wav = os.path.join(output_dir, f"temp_slice_{i + 1}.wav")
+                subprocess.run([
+                    "ffmpeg", "-y",
+                    "-ss", str(start_time),
+                    "-t", str(clip_dur),
+                    "-i", video_path,
+                    "-vn", "-ac", "1", "-ar", "16000",
+                    slice_wav
+                ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                
+                direct_segs = []
+                if os.path.exists(slice_wav):
+                    try:
+                        direct_segs = transcribe_video_audio(slice_wav, subtitle_language=subtitle_language)
+                    finally:
+                        if os.path.exists(slice_wav):
+                            try:
+                                os.remove(slice_wav)
+                            except Exception:
+                                pass
+
+                if direct_segs:
+                    ass_sub_path = vakiogiri_layout_engine.generate_center_ass_subtitles(
+                        ass_path=ass_file,
+                        speech_segments=direct_segs,
+                        video_w=target_w,
+                        video_h=target_h,
+                        style=caption_style,
+                        clip_start=0.0,
+                        clip_end=clip_dur
+                    )
+                    # Update title and hook_quote with first spoken words
+                    if direct_segs[0].get("text") and str(target.get("title", "")).startswith("Key Highlight #"):
+                        first_hook = direct_segs[0]["text"].strip()
+                        target["title"] = f'"{first_hook}"'
+                        target["hook_quote"] = first_hook
+                elif speech_segments:
+                    # Fallback to global speech segments if slice transcription was empty
+                    clip_words = [s for s in speech_segments if float(s.get("end", 0.0)) > start_time and float(s.get("start", 0.0)) < (start_time + clip_dur)]
+                    if clip_words:
+                        ass_sub_path = vakiogiri_layout_engine.generate_center_ass_subtitles(
+                            ass_path=ass_file,
+                            speech_segments=speech_segments,
+                            video_w=target_w,
+                            video_h=target_h,
+                            style=caption_style,
+                            clip_start=start_time,
+                            clip_end=start_time + clip_dur
+                        )
+
+            # 3. Construct dual-stack split layout or fallback vertical crop
+            current_filtergraph = vakiogiri_layout_engine.build_ffmpeg_filter(
+                target_w=target_w,
+                target_h=target_h,
+                facecam_box=facecam_box,
+                ass_subtitle_path=ass_sub_path
+            )
+            use_filter_complex = True
+
+        if use_filter_complex and current_filtergraph:
+            ffmpeg_cmd = [
+                "ffmpeg",
+                "-y",
+                "-ss", str(start_time),
+                "-t", str(clip_dur),
+                "-i", video_path,
+                "-avoid_negative_ts", "make_zero",
+                "-filter_complex", current_filtergraph,
+                "-c:v", "libx264",
+                "-preset", "faster",
+                "-crf", "15",
+                "-tune", "film",
+                "-pix_fmt", "yuv420p",
+                "-c:a", "aac",
+                "-b:a", "256k",
+                "-ar", "48000",
+                "-movflags", "+faststart",
+                clip_path
+            ]
+        else:
+            ffmpeg_cmd = [
+                "ffmpeg",
+                "-y",
+                "-ss", str(start_time),
+                "-t", str(clip_dur),
+                "-i", video_path,
+                "-avoid_negative_ts", "make_zero",
+                "-vf", current_vf,
+                "-c:v", "libx264",
+                "-preset", "faster",
+                "-crf", "15",
+                "-tune", "film",
+                "-pix_fmt", "yuv420p",
+                "-c:a", "aac",
+                "-b:a", "256k",
+                "-ar", "48000",
+                "-movflags", "+faststart",
+                clip_path
+            ]
         
         try:
             subprocess.run(ffmpeg_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
@@ -591,7 +694,9 @@ def run_pipeline(
     stream_start_min: float = 0.0,
     stream_end_min: Optional[float] = None,
     progress_callback: Optional[Callable[[str, int, str], None]] = None,
-    selected_moments: Optional[List[Dict[str, Any]]] = None
+    selected_moments: Optional[List[Dict[str, Any]]] = None,
+    caption_style: str = "hormozi",
+    subtitle_language: str = "hinglish"
 ) -> List[Dict[str, Any]]:
     """
     Run complete AI / Heuristic video clipping pipeline:
@@ -781,7 +886,18 @@ def run_pipeline(
                 progress_callback=progress_callback
             )
         
-        # 4. Crop & Split dynamically identified moments (9:16 or 16:9 in target quality)
+        # 4. Transcribe speech segments for center-anchored kinetic captions (if caption_style != 'none')
+        speech_segments = None
+        if caption_style != "none" and aspect_ratio == "9:16":
+            try:
+                if progress_callback:
+                    lang_label = "Hinglish (Hindi in English)" if subtitle_language == "hinglish" else "English" if subtitle_language == "english" else "Auto-Detected Language"
+                    progress_callback("transcribing", 72, f"Transcribing speech in {lang_label} for Vakiogiri kinetic captions...")
+                speech_segments = transcribe_video_audio(video_path, subtitle_language=subtitle_language)
+            except Exception as tr_err:
+                print(f"[Pipeline Notice] Speech transcription for captions notice: {tr_err}")
+
+        # 5. Crop & Split dynamically identified moments (9:16 Vakiogiri Signature Split or 16:9 in target quality)
         clips = split_and_crop_video(
             video_path=video_path,
             output_dir=clips_output_dir,
@@ -791,7 +907,10 @@ def run_pipeline(
             max_clips=max_clips,
             aspect_ratio=aspect_ratio,
             quality=quality,
-            progress_callback=progress_callback
+            caption_style=caption_style,
+            speech_segments=speech_segments,
+            progress_callback=progress_callback,
+            subtitle_language=subtitle_language
         )
         
         for c in clips:
