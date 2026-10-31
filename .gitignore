@@ -45,6 +45,7 @@ stitch_assets/
 *.avi
 *.mov
 *.webm
+*.wav
 
 # Frontend / Node
 node_modules/
@@ -63,6 +64,10 @@ test_stitch_*.py
 test_refined_*.py
 test_synthesizer_run.py
 verify_*.py
+test_*.png
+test_*.jpg
+test_*.jpeg
+test_*.wav
 phase1_clips/
 phase2_clips/
 synthesized_clips/
