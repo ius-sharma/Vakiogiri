@@ -34,6 +34,7 @@ interface ClipCinemaModalProps {
   initialIndex: number;
   onDownload: (clip: string | ClipItemData) => void;
   backendUrl: string;
+  jobId?: string | null;
 }
 
 export default function ClipCinemaModal({
@@ -43,6 +44,7 @@ export default function ClipCinemaModal({
   initialIndex,
   onDownload,
   backendUrl,
+  jobId,
 }: ClipCinemaModalProps) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -105,8 +107,14 @@ export default function ClipCinemaModal({
   const clipUrl = isObject && currentRawClip.url
     ? currentRawClip.url.startsWith("http")
       ? currentRawClip.url
-      : `${backendUrl}${currentRawClip.url}`
-    : `${backendUrl}/clips/${filename}`;
+      : `${backendUrl}${currentRawClip.url.startsWith("/") ? "" : "/"}${currentRawClip.url}`
+    : `${backendUrl}/clips/${jobId ? `${jobId}/` : ""}${filename}`;
+
+  const posterUrl = isObject && (currentRawClip as any).thumbnail
+    ? (currentRawClip as any).thumbnail.startsWith("http")
+      ? (currentRawClip as any).thumbnail
+      : `${backendUrl}${(currentRawClip as any).thumbnail.startsWith("/") ? "" : "/"}${(currentRawClip as any).thumbnail}`
+    : undefined;
 
   const viralityScore = isObject && typeof currentRawClip.score === "number"
     ? Math.round(currentRawClip.score)
@@ -121,14 +129,29 @@ export default function ClipCinemaModal({
 
   const trimmedDuration = Math.max(1, trimEnd - trimStart);
 
-  const togglePlay = () => {
-    if (!videoRef.current) return;
-    if (isPlaying) {
-      videoRef.current.pause();
+  const togglePlay = async () => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (!video.paused) {
+      video.pause();
       setIsPlaying(false);
     } else {
-      videoRef.current.play();
-      setIsPlaying(true);
+      video.muted = isMuted;
+      try {
+        await video.play();
+        setIsPlaying(true);
+      } catch (err) {
+        console.warn("Cinema play failed, retrying muted fallback:", err);
+        video.muted = true;
+        setIsMuted(true);
+        try {
+          await video.play();
+          setIsPlaying(true);
+        } catch (e2) {
+          console.error("Cinema video play failed completely:", e2);
+          setIsPlaying(false);
+        }
+      }
     }
   };
 
@@ -275,11 +298,18 @@ export default function ClipCinemaModal({
             <video
               ref={videoRef}
               src={clipUrl}
+              poster={posterUrl}
               playsInline
               loop
               muted={isMuted}
+              crossOrigin="anonymous"
+              preload="metadata"
               onPlay={() => setIsPlaying(true)}
               onPause={() => setIsPlaying(false)}
+              onError={(e) => {
+                console.error("Cinema video error:", e);
+                setIsPlaying(false);
+              }}
               className="w-full h-full object-cover"
             />
 

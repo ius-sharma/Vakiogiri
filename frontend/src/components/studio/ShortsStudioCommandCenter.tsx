@@ -67,6 +67,7 @@ export interface GenerationConfig {
   aspectRatio: "9:16" | "16:9";
   captionPreset: string;
   subtitleLanguage?: "hinglish" | "english" | "auto";
+  layoutMode?: "gaming_split" | "face_top_game_bottom";
   clipsCount: number;
   mode: "heuristic" | "ai_enhanced";
   quality: string;
@@ -293,6 +294,7 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
   const [aspectRatio, setAspectRatio] = useState<"9:16" | "16:9">("9:16");
   const [captionPreset, setCaptionPreset] = useState<string>("hormozi");
   const [subtitleLanguage, setSubtitleLanguage] = useState<"hinglish" | "english" | "auto">("hinglish");
+  const [layoutMode, setLayoutMode] = useState<"gaming_split" | "face_top_game_bottom">("gaming_split");
   const [clipsCount, setClipsCount] = useState<number>(3);
   const [clippingMode, setClippingMode] = useState<"heuristic" | "ai_enhanced">("ai_enhanced");
   const [quality, setQuality] = useState<string>("1080p");
@@ -540,6 +542,7 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
       aspectRatio,
       captionPreset,
       subtitleLanguage,
+      layoutMode,
       clipsCount: chosen.length,
       mode: clippingMode,
       quality,
@@ -566,6 +569,7 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
       aspectRatio,
       captionPreset,
       subtitleLanguage,
+      layoutMode,
       clipsCount,
       mode: clippingMode,
       quality,
@@ -1091,6 +1095,30 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
               </select>
             </div>
 
+            {/* Layout Mode Selector */}
+            <div
+              className={`flex items-center gap-2 px-3.5 py-2.5 rounded-xl border ${
+                isLight ? "bg-slate-50 border-slate-200" : "bg-white/[0.03] border-white/[0.08]"
+              }`}
+            >
+              <Scissors className="w-3.5 h-3.5 text-indigo-400" />
+              <span className={`text-xs font-medium ${isLight ? "text-slate-500" : "text-slate-400"}`}>Layout:</span>
+              <select
+                value={layoutMode}
+                onChange={(e) => setLayoutMode(e.target.value as "gaming_split" | "face_top_game_bottom")}
+                className={`bg-transparent text-xs font-bold focus:outline-none cursor-pointer ${
+                  isLight ? "text-slate-800" : "text-white"
+                }`}
+              >
+                <option value="gaming_split" className={isLight ? "bg-white text-slate-900" : "bg-black text-white"}>
+                  🎮 Gaming Split (50/50)
+                </option>
+                <option value="face_top_game_bottom" className={isLight ? "bg-white text-slate-900" : "bg-black text-white"}>
+                  ⚡ Face Top / Big Game (38/62)
+                </option>
+              </select>
+            </div>
+
             {/* AI Mode Toggle with Gradient border/glow */}
             <button
               type="button"
@@ -1543,6 +1571,20 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
                   <option value="hinglish" className={isLight ? "bg-white text-slate-900" : "bg-black text-white"}>🇮🇳 Hinglish (Desi / Gaming)</option>
                   <option value="english" className={isLight ? "bg-white text-slate-900" : "bg-black text-white"}>🌐 English (Accurate)</option>
                   <option value="auto" className={isLight ? "bg-white text-slate-900" : "bg-black text-white"}>✨ Auto Detect</option>
+                </select>
+              </div>
+
+              {/* Layout Mode Selector */}
+              <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border ${isLight ? "bg-slate-50 border-slate-200" : "bg-white/[0.04] border-white/10"}`}>
+                <Scissors className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                <select
+                  value={layoutMode}
+                  onChange={(e) => setLayoutMode(e.target.value as "gaming_split" | "face_top_game_bottom")}
+                  className={`bg-transparent text-xs font-semibold focus:outline-none cursor-pointer ${isLight ? "text-slate-800" : "text-white"}`}
+                  title="Layout Style: 50/50 Gaming Split or Inverted Reaction Top"
+                >
+                  <option value="gaming_split" className={isLight ? "bg-white text-slate-900" : "bg-black text-white"}>🎮 Gaming Split (50/50)</option>
+                  <option value="face_top_game_bottom" className={isLight ? "bg-white text-slate-900" : "bg-black text-white"}>⚡ Face Top / Big Game (38/62)</option>
                 </select>
               </div>
 

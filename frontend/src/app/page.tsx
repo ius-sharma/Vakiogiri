@@ -310,6 +310,7 @@ export default function Home() {
         quality: config.quality,
         caption_style: config.captionPreset,
         subtitle_language: (config as any).subtitleLanguage || "hinglish",
+        layout_mode: (config as any).layoutMode || "gaming_split",
         synthesize_stories: (config as any).selectedMoments?.length ? false : config.mode === "ai_enhanced",
         max_clips: (config as any).selectedMoments?.length || config.clipsCount,
         selected_moments: (config as any).selectedMoments || null,

@@ -393,6 +393,7 @@ export default function ClipShowcaseGrid({
         initialIndex={cinemaIndex}
         onDownload={onDownloadSingle}
         backendUrl={backendUrl}
+        jobId={jobId}
       />
     </div>
   );

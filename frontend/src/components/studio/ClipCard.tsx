@@ -60,6 +60,7 @@ export default function ClipCard({
   const [isMuted, setIsMuted] = useState(true);
   const [showSafeZone, setShowSafeZone] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [currentTime, setCurrentTime] = useState<number>(0);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   // Normalize clip data
@@ -68,8 +69,14 @@ export default function ClipCard({
   const clipUrl = isObject && clip.url
     ? clip.url.startsWith("http")
       ? clip.url
-      : `${backendUrl}${clip.url}`
-    : `${backendUrl}/clips/${filename}`;
+      : `${backendUrl}${clip.url.startsWith("/") ? "" : "/"}${clip.url}`
+    : `${backendUrl}/clips/${jobId ? `${jobId}/` : ""}${filename}`;
+
+  const posterUrl = isObject && (clip as any).thumbnail
+    ? (clip as any).thumbnail.startsWith("http")
+      ? (clip as any).thumbnail
+      : `${backendUrl}${(clip as any).thumbnail.startsWith("/") ? "" : "/"}${(clip as any).thumbnail}`
+    : undefined;
 
   const viralityScore = isObject && typeof clip.score === "number" ? Math.round(clip.score) : 85 + (index % 12);
   const heatmapScore = isObject && typeof clip.heatmap_score === "number" ? Math.round(clip.heatmap_score) : 92 - (index * 4);
@@ -77,18 +84,33 @@ export default function ClipCard({
   const clipTitle = isObject && clip.title ? clip.title : `Short #${index + 1} • High Energy Hook`;
   const isVertical = !isObject || clip.aspect_ratio !== "16:9";
 
-  const togglePlay = () => {
-    if (!videoRef.current) return;
-    if (isPlaying) {
-      videoRef.current.pause();
+  const togglePlay = async () => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (!video.paused) {
+      video.pause();
       setIsPlaying(false);
     } else {
       // Pause all other videos on the page
       document.querySelectorAll("video").forEach((v) => {
-        if (v !== videoRef.current && !v.paused) v.pause();
+        if (v !== video && !v.paused) v.pause();
       });
-      videoRef.current.play();
-      setIsPlaying(true);
+      video.muted = isMuted;
+      try {
+        await video.play();
+        setIsPlaying(true);
+      } catch (err) {
+        console.warn("Unmuted autoplay restricted, attempting muted fallback:", err);
+        video.muted = true;
+        setIsMuted(true);
+        try {
+          await video.play();
+          setIsPlaying(true);
+        } catch (e2) {
+          console.error("Video play failed:", e2);
+          setIsPlaying(false);
+        }
+      }
     }
   };
 
@@ -168,12 +190,34 @@ export default function ClipCard({
         <video
           ref={videoRef}
           src={clipUrl}
+          poster={posterUrl}
           playsInline
+          loop
           muted={isMuted}
+          crossOrigin="anonymous"
           preload="metadata"
+          onPlay={() => setIsPlaying(true)}
+          onPause={() => setIsPlaying(false)}
+          onTimeUpdate={() => {
+            if (videoRef.current) {
+              setCurrentTime(videoRef.current.currentTime);
+            }
+          }}
           onEnded={() => setIsPlaying(false)}
+          onError={(e) => {
+            console.error("ClipCard video error:", e);
+            setIsPlaying(false);
+          }}
           className="w-full h-full object-cover"
         />
+
+        {/* Animated Playback Progress Bar */}
+        <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/10 z-20 overflow-hidden">
+          <div
+            className="h-full bg-gradient-to-r from-amber-400 via-[#ff7427] to-[#e65100] transition-all duration-100"
+            style={{ width: `${(currentTime / Math.max(1, clipDuration)) * 100}%` }}
+          />
+        </div>
 
         {/* TikTok / Reels Safe Zone Overlay */}
         {showSafeZone && (
@@ -199,7 +243,7 @@ export default function ClipCard({
         {/* Center Play/Pause Button on Hover / Pause */}
         {(!isPlaying || !showSafeZone) && (
           <div
-            className={`absolute inset-0 flex items-center justify-center transition-opacity duration-150 z-10 ${
+            className={`absolute inset-0 flex items-center justify-center transition-opacity duration-150 z-10 pointer-events-none ${
               !isPlaying ? "bg-black/25 opacity-100" : "opacity-0 group-hover:opacity-100"
             }`}
           >
@@ -209,7 +253,7 @@ export default function ClipCard({
                 e.stopPropagation();
                 togglePlay();
               }}
-              className="w-12 h-12 rounded-full bg-[#ff7427] hover:bg-[#ff7427]/90 text-white flex items-center justify-center shadow-xl hover:scale-105 active:scale-95 transition-all cursor-pointer"
+              className="w-12 h-12 rounded-full bg-[#ff7427] hover:bg-[#ff7427]/90 text-white flex items-center justify-center shadow-xl hover:scale-105 active:scale-95 transition-all cursor-pointer pointer-events-auto"
             >
               {isPlaying ? (
                 <Pause className="w-5 h-5 fill-current" />
@@ -224,7 +268,7 @@ export default function ClipCard({
         <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between z-10 pointer-events-auto">
           {/* Duration Pill */}
           <span className="text-[10px] font-mono font-bold text-white bg-black/85 px-1.5 py-0.5 rounded border border-white/15">
-            {clipDuration}s
+            {isPlaying ? `${Math.floor(currentTime)}s / ${clipDuration}s` : `${clipDuration}s`}
           </span>
 
           <div className="flex items-center gap-1">
