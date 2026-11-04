@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Mail, Lock, AlertCircle, CheckCircle2, Loader2, ArrowRight } from "lucide-react";
+import { Mail, Lock, AlertCircle, CheckCircle2, Loader2, ArrowRight, ArrowLeft } from "lucide-react";
 import { signInWithGoogle, signInWithEmail, signUpWithEmail, isSupabaseConfigured } from "@/lib/supabase";
 import { isAuthorizedEmail, UNAUTHORIZED_ACCESS_MESSAGE } from "@/lib/authConfig";
 import ParticleOrbCanvas from "./ParticleOrbCanvas";
@@ -105,6 +105,17 @@ export default function AuthCard({ initialMode }: AuthCardProps) {
             isExploding ? "scale-105 opacity-90 transition-all duration-700" : ""
           }`}>
             
+            {/* Top Navigation Row: Back to Studio */}
+            <div className="flex items-center justify-between w-full -mb-2">
+              <Link
+                href="/"
+                className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors cursor-pointer group"
+              >
+                <ArrowLeft className="w-3.5 h-3.5 transition-transform group-hover:-translate-x-1 text-[#ff7427]" />
+                <span>Back to Studio</span>
+              </Link>
+            </div>
+
             {/* Brand Header */}
             <div className="text-center flex flex-col items-center gap-3">
               <Link

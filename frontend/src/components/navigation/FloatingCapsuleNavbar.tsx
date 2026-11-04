@@ -139,12 +139,6 @@ export default function FloatingCapsuleNavbar({
         <div className="flex items-center gap-3 pl-2 pr-1">
           <Link
             href="/login"
-            onClick={(e) => {
-              if (onOpenAuth) {
-                e.preventDefault();
-                onOpenAuth("login");
-              }
-            }}
             className="px-3 py-1.5 text-xs font-semibold text-slate-300 hover:text-white transition-colors cursor-pointer"
           >
             Log in
@@ -153,12 +147,6 @@ export default function FloatingCapsuleNavbar({
           {/* Inset White Pill CTA */}
           <Link
             href="/signup"
-            onClick={(e) => {
-              if (onOpenAuth) {
-                e.preventDefault();
-                onOpenAuth("signup");
-              }
-            }}
             className="h-10 px-5 rounded-full bg-white hover:bg-slate-100 text-black font-bold text-xs tracking-tight transition-all duration-200 cursor-pointer shadow-md hover:shadow-lg active:scale-95 flex items-center gap-1.5 shrink-0"
           >
             <span>Start Free</span>
@@ -203,12 +191,6 @@ export default function FloatingCapsuleNavbar({
         <div className="flex items-center gap-1.5">
           <Link
             href="/signup"
-            onClick={(e) => {
-              if (onOpenAuth) {
-                e.preventDefault();
-                onOpenAuth("signup");
-              }
-            }}
             className="h-8 px-3.5 rounded-full bg-white hover:bg-slate-100 text-black font-bold text-[11px] tracking-tight transition-all active:scale-95 flex items-center justify-center shadow-sm"
           >
             Start Free
