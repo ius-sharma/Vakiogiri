@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import SidebarNav from "@/components/navigation/SidebarNav";
 import TopUtilityHeader from "@/components/navigation/TopUtilityHeader";
 import FloatingCapsuleNavbar from "@/components/navigation/FloatingCapsuleNavbar";
@@ -13,7 +14,6 @@ import ClipShowcaseGrid from "@/components/studio/ClipShowcaseGrid";
 import LongStudioView from "@/components/studio/LongStudioView";
 import { ShortsStudioCommandCenter, SelectedVideoSource, GenerationConfig } from "@/components/studio/ShortsStudioCommandCenter";
 import HistoryView, { HistoryProject } from "@/components/studio/HistoryView";
-import AuthModal from "@/components/AuthModal";
 import { useUIFeedback } from "@/components/UIFeedback";
 import { supabase, signOut } from "@/lib/supabase";
 import { isAuthorizedEmail } from "@/lib/authConfig";
@@ -30,6 +30,7 @@ interface UserProfile {
 }
 
 export default function Home() {
+  const router = useRouter();
   const { showToast, showConfirm } = useUIFeedback();
   const [mounted, setMounted] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark">("dark");
@@ -48,8 +49,40 @@ export default function Home() {
     credits_remaining: 3,
     max_daily_credits: 3,
   });
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [authModalMode, setAuthModalMode] = useState<"login" | "signup">("login");
+  const handleOpenAuth = (mode: "login" | "signup" = "login") => {
+    router.push(mode === "login" ? "/login" : "/signup");
+  };
+
+  // Check for pending video URL after signin redirect
+  useEffect(() => {
+    if (session && typeof window !== "undefined") {
+      const pendingUrl = sessionStorage.getItem("pending_youtube_url");
+      if (pendingUrl) {
+        sessionStorage.removeItem("pending_youtube_url");
+        setYoutubeUrl(pendingUrl);
+        showToast("Welcome back! Starting shorts generation...", "info");
+        setTimeout(() => {
+          handleStartCommandCenterGeneration(
+            {
+              sourceType: "url",
+              url: pendingUrl,
+              title: "YouTube Video",
+            },
+            {
+              targetDuration: 45,
+              aspectRatio: "9:16",
+              captionPreset: "hormozi",
+              subtitleLanguage: "hinglish",
+              layoutMode: "gaming_split",
+              clipsCount: 3,
+              mode: "ai_enhanced",
+              quality: "1080p",
+            }
+          );
+        }, 500);
+      }
+    }
+  }, [session]);
 
   // Video generation state
   const [youtubeUrl, setYoutubeUrl] = useState("");
@@ -599,8 +632,7 @@ export default function Home() {
             activeView={activeView}
             onSelectView={(view) => {
               if (view === "history" && !session) {
-                setAuthModalMode("login");
-                setIsAuthModalOpen(true);
+                handleOpenAuth("login");
               } else {
                 setActiveView(view as any);
                 if (view === "history") fetchUserHistory();
@@ -609,10 +641,7 @@ export default function Home() {
             historyCount={history.length}
             session={session}
             userProfile={userProfile}
-            onOpenAuth={() => {
-              setAuthModalMode("login");
-              setIsAuthModalOpen(true);
-            }}
+            onOpenAuth={() => handleOpenAuth("login")}
             onSignOut={handleSignOut}
             isExpanded={isSidebarExpanded}
             onToggleExpand={() => setIsSidebarExpanded((prev) => !prev)}
@@ -633,10 +662,7 @@ export default function Home() {
               }
               userProfile={userProfile}
               session={session}
-              onOpenAuth={() => {
-                setAuthModalMode("login");
-                setIsAuthModalOpen(true);
-              }}
+              onOpenAuth={() => handleOpenAuth("login")}
               onSignOut={handleSignOut}
               theme={theme}
               onToggleTheme={toggleTheme}
@@ -785,10 +811,7 @@ export default function Home() {
             },
           },
         ]}
-        onOpenAuth={(mode) => {
-          setAuthModalMode(mode);
-          setIsAuthModalOpen(true);
-        }}
+        onOpenAuth={(mode) => handleOpenAuth(mode || "login")}
         theme={theme}
         onToggleTheme={toggleTheme}
       />
@@ -817,16 +840,15 @@ export default function Home() {
                 onGenerate={(url) => {
                   setYoutubeUrl(url);
                   if (!session) {
-                    setAuthModalMode("signup");
-                    setIsAuthModalOpen(true);
+                    if (typeof window !== "undefined") {
+                      sessionStorage.setItem("pending_youtube_url", url);
+                    }
+                    handleOpenAuth("signup");
                   } else {
                     handleGenerate();
                   }
                 }}
-                onOpenAuth={(mode) => {
-                  setAuthModalMode(mode || "signup");
-                  setIsAuthModalOpen(true);
-                }}
+                onOpenAuth={(mode) => handleOpenAuth(mode || "signup")}
               />
             ) : (
               <div className="w-full max-w-6xl mx-auto flex flex-col items-center gap-8 text-center px-4 pt-28 pb-16">
@@ -875,15 +897,7 @@ export default function Home() {
     </div>
   )}
 
-      {/* Supabase Authentication Modal */}
-      <AuthModal
-        isOpen={isAuthModalOpen}
-        onClose={() => setIsAuthModalOpen(false)}
-        initialMode={authModalMode}
-        onAuthSuccess={() => {
-          showToast("Signed in successfully!", "success");
-        }}
-      />
+
     </div>
   );
 }
