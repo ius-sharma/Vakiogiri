@@ -76,3 +76,6 @@ test_clips/
 test_download/
 test_leetcode/
 test_leetcode_clips/
+
+# Project Memory & Private Context
+SECOND_BRAIN.md
