@@ -48,6 +48,10 @@ export default function ParticleOrbCanvas({
   explodingRef.current = isExploding;
 
   useEffect(() => {
+    // Disable heavy 3D particle canvas on mobile screens (< 768px)
+    if (typeof window !== "undefined" && window.innerWidth < 768) {
+      return;
+    }
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
@@ -318,8 +322,7 @@ export default function ParticleOrbCanvas({
   return (
     <canvas
       ref={canvasRef}
-      className="fixed inset-0 w-full h-full pointer-events-none z-20"
-      style={{ display: "block" }}
+      className="hidden md:block fixed inset-0 w-full h-full pointer-events-none z-20"
     />
   );
 }

@@ -84,20 +84,22 @@ export default function AuthCard({ initialMode }: AuthCardProps) {
   return (
     <main className="min-h-screen w-full relative flex items-center justify-center p-4 sm:p-8 bg-black overflow-hidden select-none">
       
-      {/* Full-Screen 3D Particle Orb: Particles flow across entire screen converging to the left orb */}
-      <ParticleOrbCanvas
-        isExploding={isExploding}
-        targetCenterRatioX={0.28}
-        onExplodeComplete={() => {
-          router.push("/");
-        }}
-      />
+      {/* Full-Screen 3D Particle Orb: Rendered on desktop screens; hidden on mobile for clean & fast UI */}
+      <div className="hidden md:block">
+        <ParticleOrbCanvas
+          isExploding={isExploding}
+          targetCenterRatioX={0.28}
+          onExplodeComplete={() => {
+            router.push("/");
+          }}
+        />
+      </div>
 
-      {/* Side-by-Side: Left space reserved for the rotating Orb, Right has the clean frosted Auth Card */}
+      {/* Side-by-Side: Left space reserved for the rotating Orb (Desktop only), Right has the clean frosted Auth Card */}
       <div className="w-full max-w-6xl grid grid-cols-1 md:grid-cols-2 gap-8 items-center relative z-10 pointer-events-none">
         
-        {/* LEFT COLUMN: Empty transparent stage where the 3D Orb revolves smoothly */}
-        <div className="w-full h-[320px] md:h-[540px] pointer-events-none" />
+        {/* LEFT COLUMN: Empty transparent stage where the 3D Orb revolves smoothly (Hidden on mobile) */}
+        <div className="hidden md:block w-full h-[540px] pointer-events-none" />
 
         {/* RIGHT COLUMN: Interactive Frosted Glass Login/Signup Card */}
         <div className="w-full flex justify-center md:justify-end pointer-events-auto">
