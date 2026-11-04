@@ -39,6 +39,7 @@ yarn-debug.log*
 # Generated Media / Temporary Cache
 downloads/
 clips/
+raw_sources/
 stitch_assets/
 *.mp4
 *.mkv
