@@ -20,7 +20,7 @@ import { isAuthorizedEmail } from "@/lib/authConfig";
 import { Sparkles, AlertTriangle, RefreshCw, Flame } from "lucide-react";
 import { ClipItemData } from "@/components/studio/ClipCard";
 
-const BACKEND_URL = "http://localhost:8000";
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
 interface UserProfile {
   id: string;
