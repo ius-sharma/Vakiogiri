@@ -81,6 +81,7 @@ def probe_stream_metadata(url: str) -> Dict[str, Any]:
     Fast pre-flight inspection using yt-dlp without downloading media.
     Takes ~1-2 seconds and extracts duration, title, and live status.
     """
+    cookie_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cookies.txt")
     ydl_opts = {
         'skip_download': True,
         'quiet': True,
@@ -88,7 +89,14 @@ def probe_stream_metadata(url: str) -> Dict[str, Any]:
         'extract_flat': True,
         'nocheckcertificate': True,
         'no_color': True,
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'ios', 'mweb'],
+            }
+        }
     }
+    if os.path.exists(cookie_path):
+        ydl_opts['cookiefile'] = cookie_path
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
@@ -256,6 +264,11 @@ def download_video(
         'http_chunk_size': 10 * 1024 * 1024,  # 10MB chunking prevents YouTube 250KiB/s throttle & 403 token expiration
         'concurrent_fragment_downloads': 4,
         'progress_hooks': [ytdl_hook],
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'ios', 'mweb'],
+            }
+        },
         'downloader_args': {
             'ffmpeg': ['-nostdin'],
             'ffmpeg_i': [
@@ -269,6 +282,10 @@ def download_video(
             'ffmpeg': ['-nostdin']
         }
     }
+
+    cookie_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cookies.txt")
+    if os.path.exists(cookie_path):
+        base_ydl_opts['cookiefile'] = cookie_path
 
     stop_slice_monitor = threading.Event()
 
