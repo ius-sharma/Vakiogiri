@@ -89,11 +89,7 @@ def probe_stream_metadata(url: str) -> Dict[str, Any]:
         'extract_flat': True,
         'nocheckcertificate': True,
         'no_color': True,
-        'extractor_args': {
-            'youtube': {
-                'player_client': ['android', 'ios', 'mweb'],
-            }
-        }
+
     }
     if os.path.exists(cookie_path):
         ydl_opts['cookiefile'] = cookie_path
@@ -244,6 +240,7 @@ def download_video(
         format_selector = (
             f"bestvideo[height<={max_h}][vcodec!*=none]+bestaudio[acodec!*=none]/"
             f"bestvideo[height<={max_h}]+bestaudio/"
+            f"bestvideo+bestaudio/"
             f"best[height<={max_h}]/"
             f"best"
         )
@@ -264,11 +261,6 @@ def download_video(
         'http_chunk_size': 10 * 1024 * 1024,  # 10MB chunking prevents YouTube 250KiB/s throttle & 403 token expiration
         'concurrent_fragment_downloads': 4,
         'progress_hooks': [ytdl_hook],
-        'extractor_args': {
-            'youtube': {
-                'player_client': ['android', 'ios', 'mweb'],
-            }
-        },
         'downloader_args': {
             'ffmpeg': ['-nostdin'],
             'ffmpeg_i': [
@@ -348,7 +340,7 @@ def download_video(
                 filename = ydl.prepare_filename(info)
         except Exception as primary_err:
             err_text = str(primary_err).lower()
-            if "403" in err_text or "forbidden" in err_text or "unable to download video data" in err_text:
+            if "403" in err_text or "forbidden" in err_text or "unable to download video data" in err_text or "requested format is not available" in err_text:
                 print(f"\n[Downloader Notice] 403 Forbidden detected. Engaging resilient HLS/DASH fallback...", flush=True)
                 if progress_callback:
                     progress_callback("downloading", 12, "Re-routing via resilient HLS/DASH stream to bypass 403...")
