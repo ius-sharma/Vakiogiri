@@ -54,6 +54,7 @@ def probe_video_details(video_source: str) -> Dict[str, Any]:
             "chapters": [],
         }
 
+    cookie_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cookies.txt")
     ydl_opts = {
         'skip_download': True,
         'quiet': True,
@@ -62,6 +63,8 @@ def probe_video_details(video_source: str) -> Dict[str, Any]:
         'nocheckcertificate': True,
         'no_color': True,
     }
+    if os.path.exists(cookie_path):
+        ydl_opts['cookiefile'] = cookie_path
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(video_source, download=False)
