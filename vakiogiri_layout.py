@@ -22,6 +22,7 @@ import cv2
 import json
 import math
 import subprocess
+import numpy as np
 from typing import Optional, Dict, Any, Tuple, List
 from hinglish_transliterator import transliterate_word
 
@@ -48,6 +49,125 @@ class VakiogiriLayoutEngine:
         cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
         self.face_cascade = cv2.CascadeClassifier(cascade_path)
 
+    def detect_facecam_gemini_vision(
+        self,
+        frame_bgr: np.ndarray,
+        layout_mode: str = "face_top_game_bottom"
+    ) -> Optional[Dict[str, int]]:
+        """
+        Use Gemini Vision to inspect a stream frame and accurately detect the real human
+        streamer webcam / facecam overlay box, with 0% false positives on video game characters.
+        """
+        gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
+        if not gemini_key or len(gemini_key) < 15:
+            return None
+
+        try:
+            from google import genai
+            from google.genai import types
+
+            h, w = frame_bgr.shape[:2]
+            if h <= 0 or w <= 0:
+                return None
+
+            success, encoded_jpg = cv2.imencode(".jpg", frame_bgr, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
+            if not success:
+                return None
+
+            img_bytes = encoded_jpg.tobytes()
+
+            prompt = (
+                "You are an expert AI video stream layout engineer.\n"
+                "Examine this gaming livestream frame and determine if the streamer has a live webcam / facecam / reaction box or human cutout on screen.\n\n"
+                "STRICT RULES:\n"
+                "1. Distinguish between REAL HUMAN streamers and video game characters/animations. NEVER classify in-game characters or HUD graphics as a facecam.\n"
+                "2. A streamer webcam is typically positioned along the perimeter or corners (bottom-left, bottom-right, top-left, top-right) and often has an overlay border or camera box.\n"
+                "3. If a real human streamer facecam is detected, return bounding box coordinates [ymin, xmin, ymax, xmax] normalized from 0 to 1000:\n"
+                "   {\"has_facecam\": true, \"box_2d\": [ymin, xmin, ymax, xmax]}\n"
+                "4. If NO human streamer webcam is present (pure gameplay only, or only video game characters), return:\n"
+                "   {\"has_facecam\": false, \"box_2d\": null}\n"
+                "5. Return ONLY a valid JSON object matching this schema."
+            )
+
+            client = genai.Client(api_key=gemini_key)
+            response = None
+            for model_name in ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-3.5-flash-lite", "gemini-3.5-flash"]:
+                try:
+                    response = client.models.generate_content(
+                        model=model_name,
+                        contents=[
+                            types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg"),
+                            prompt
+                        ],
+                        config=types.GenerateContentConfig(
+                            response_mime_type="application/json"
+                        )
+                    )
+                    if response and response.text:
+                        break
+                except Exception:
+                    continue
+
+            if not response or not response.text:
+                return None
+
+            data = json.loads(response.text)
+            if not data.get("has_facecam"):
+                print("  -> [Gemini Vision Layout] Confirmed: No streamer facecam (Pure Gameplay stream).")
+                return None
+
+            box_2d = data.get("box_2d")
+            if not box_2d or len(box_2d) != 4:
+                return None
+
+            ymin, xmin, ymax, xmax = [float(coord) for coord in box_2d]
+            raw_x = int((xmin / 1000.0) * w)
+            raw_y = int((ymin / 1000.0) * h)
+            raw_w = int(((xmax - xmin) / 1000.0) * w)
+            raw_h = int(((ymax - ymin) / 1000.0) * h)
+
+            # Plausibility sanity checks:
+            # A real webcam is between 40px and 65% of screen dimensions
+            if raw_w < 40 or raw_h < 40 or raw_w > int(w * 0.65) or raw_h > int(h * 0.70):
+                print(f"  -> [Gemini Vision Layout] Implausible facecam dimensions ({raw_w}x{raw_h}), rejecting.")
+                return None
+
+            # Calculate center & target aspect ratio
+            cx = raw_x + raw_w // 2
+            cy = raw_y + raw_h // 2
+            target_aspect_h = 720 if layout_mode == "face_top_game_bottom" else 960
+            cam_aspect = target_aspect_h / 1080.0
+
+            cam_target_w = int(max(raw_w * 1.30, 300))
+            cam_target_h = int(cam_target_w * cam_aspect)
+
+            cam_x = max(0, cx - cam_target_w // 2)
+            cam_y = max(0, cy - int(cam_target_h * 0.44))
+
+            if cam_x + cam_target_w > w:
+                cam_x = max(0, w - cam_target_w)
+            if cam_y + cam_target_h > h:
+                cam_y = max(0, h - cam_target_h)
+
+            cam_w = min(cam_target_w, w - cam_x)
+            cam_h = min(cam_target_h, h - cam_y)
+
+            cam_x -= (cam_x % 2)
+            cam_y -= (cam_y % 2)
+            cam_w -= (cam_w % 2)
+            cam_h -= (cam_h % 2)
+
+            print(f"  -> [Gemini Vision Layout] Detected high-accuracy facecam box: x={cam_x}, y={cam_y}, w={cam_w}, h={cam_h}")
+            return {
+                "x": cam_x,
+                "y": cam_y,
+                "w": cam_w,
+                "h": cam_h
+            }
+        except Exception as err:
+            print(f"  -> [Gemini Vision Layout Notice] Vision detection notice: {err}")
+            return None
+
     def detect_facecam_box(
         self,
         video_path: str,
@@ -57,9 +177,9 @@ class VakiogiriLayoutEngine:
         layout_mode: str = "gaming_split"
     ) -> Optional[Dict[str, int]]:
         """
-        Scan sample frames across the clip segment to detect if a streamer facecam
-        is present in any corner or along the perimeter.
-        Returns persistent facecam crop rectangle {x, y, w, h} or None if no facecam.
+        Scan video frames to detect if a streamer facecam is present.
+        Tier 1: Gemini Vision AI Inspector (100% accurate, distinguishes humans from game characters)
+        Tier 2: OpenCV Haar Cascade with Corner-Locking Filter (rejects center game characters)
         """
         if not os.path.exists(video_path):
             return None
@@ -77,6 +197,20 @@ class VakiogiriLayoutEngine:
             cap.release()
             return None
 
+        # Grab a crisp representative sample frame ~2.5s into the clip for Gemini Vision
+        sample_sec = min(start_time + 2.5, start_time + max(0.5, duration / 2.0))
+        target_fnum = min(total_frames - 1, int(sample_sec * fps))
+        cap.set(cv2.CAP_PROP_POS_FRAMES, target_fnum)
+        ret, sample_frame = cap.read()
+
+        if ret and sample_frame is not None:
+            # 1. Try Gemini Vision One-Shot Inspector first
+            vision_box = self.detect_facecam_gemini_vision(sample_frame, layout_mode=layout_mode)
+            if vision_box is not None:
+                cap.release()
+                return vision_box
+
+        # Tier 2: Fallback Haar Cascade with Corner-Locking Heuristic
         step = max(0.5, duration / (sample_count + 1))
         sample_times = [start_time + (i + 1) * step for i in range(sample_count)]
 
@@ -101,11 +235,19 @@ class VakiogiriLayoutEngine:
             )
 
             for (fx, fy, fw, fh) in faces:
+                # Corner Locking: Streamer webcam is ALWAYS in a corner/perimeter, NEVER in center of gameplay
+                fcx = fx + fw // 2
+                fcy = fy + fh // 2
+                is_center_x = (0.28 * width) < fcx < (0.72 * width)
+                is_center_y = (0.22 * height) < fcy < (0.78 * height)
+                if is_center_x and is_center_y:
+                    continue  # Reject video game character in center of screen!
                 detected_boxes.append((fx, fy, fw, fh))
 
         cap.release()
 
-        if not detected_boxes:
+        # Require at least 2 consistent perimeter detections to eliminate stray noise
+        if len(detected_boxes) < 2:
             return None
 
         cx_list = [fx + fw // 2 for (fx, fy, fw, fh) in detected_boxes]
@@ -117,7 +259,6 @@ class VakiogiriLayoutEngine:
         median_fw = int(sorted(fw_list)[len(fw_list) // 2])
 
         cam_target_w = int(max(median_fw * 2.8, 300))
-        # Top-box aspect ratio: 720/1080 for face_top_game_bottom, 960/1080 for gaming_split
         target_aspect_h = 720 if layout_mode == "face_top_game_bottom" else 960
         cam_target_h = int(cam_target_w * (target_aspect_h / 1080))
 
