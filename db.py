@@ -166,11 +166,14 @@ def update_job_status(job_id: str, status: str, clips_count: int = 0, clips_data
 
 
 def delete_user_job(job_id: str, user_id: str) -> bool:
-    """Delete a job entry from database for a specific user."""
+    """Delete a job entry from database for a specific user (or guest)."""
     init_db()
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM jobs WHERE id = ? AND user_id = ?", (job_id, user_id))
+        if user_id and user_id != "guest":
+            cursor.execute("DELETE FROM jobs WHERE id = ? AND (user_id = ? OR user_id = 'guest')", (job_id, user_id))
+        else:
+            cursor.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
         conn.commit()
         return cursor.rowcount > 0
 

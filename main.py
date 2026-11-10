@@ -3,6 +3,7 @@
 import os
 import sys
 import uuid
+import shutil
 import requests
 from typing import Dict, Any, List, Optional
 from dotenv import load_dotenv
@@ -252,17 +253,37 @@ def get_user_clips(user: Dict[str, Any] = Depends(get_current_user_optional)):
     }
 
 
+@app.delete("/projects/{job_id}")
 @app.delete("/user/clips/{job_id}")
-def delete_user_clip_project(job_id: str, user: Dict[str, Any] = Depends(get_current_user)):
-    """Delete a generated project from database and Supabase storage."""
-    deleted = delete_user_job(job_id, user["id"])
-    if not deleted:
-        raise HTTPException(status_code=404, detail="Project not found or not owned by user.")
+def delete_user_clip_project(
+    job_id: str,
+    user: Dict[str, Any] = Depends(get_current_user_optional)
+):
+    """Delete a generated project from database, local disk, and Supabase cloud storage."""
+    uid = user.get("id") if user.get("is_authenticated") else "guest"
+    deleted = delete_user_job(job_id, uid)
 
-    # Delete storage files from Supabase bucket
+    # 1. Purge local clips folder from disk if present
+    local_clip_dir = os.path.join("clips", job_id)
+    if os.path.exists(local_clip_dir):
+        try:
+            shutil.rmtree(local_clip_dir)
+            print(f"[Cleanup] Deleted local clips folder for job {job_id}")
+        except Exception as err:
+            print(f"[Cleanup Notice] Could not remove local clips folder: {err}")
+
+    # 2. Purge local downloads folder if present
+    local_dl_dir = os.path.join("downloads", job_id)
+    if os.path.exists(local_dl_dir):
+        try:
+            shutil.rmtree(local_dl_dir)
+        except Exception:
+            pass
+
+    # 3. Delete storage files from Supabase bucket
     delete_job_files_from_supabase(job_id)
-    
-    # Remove from active jobs memory if present
+
+    # 4. Remove from active jobs memory if present
     if job_id in jobs:
         del jobs[job_id]
 

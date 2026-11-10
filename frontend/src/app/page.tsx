@@ -593,8 +593,6 @@ export default function Home() {
   };
 
   const handleDeleteProject = (projectId: string) => {
-    if (!session?.access_token) return;
-
     showConfirm({
       title: "Delete Project",
       message: "Are you sure you want to delete this project and all its generated clips?",
@@ -603,13 +601,21 @@ export default function Home() {
       isDanger: true,
       onConfirm: async () => {
         try {
+          const headers: Record<string, string> = {};
+          if (session?.access_token) {
+            headers["Authorization"] = `Bearer ${session.access_token}`;
+          }
+
           const res = await fetch(`${BACKEND_URL}/projects/${projectId}`, {
             method: "DELETE",
-            headers: { Authorization: `Bearer ${session.access_token}` },
+            headers,
           });
+
           if (res.ok) {
             setHistory((prev) => prev.filter((p) => p.id !== projectId));
-            showToast("Project deleted.", "info");
+            showToast("Project deleted successfully.", "info");
+          } else {
+            showToast("Could not delete project. Please retry.", "error");
           }
         } catch (err) {
           showToast("Failed to delete project.", "error");
