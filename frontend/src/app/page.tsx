@@ -624,6 +624,44 @@ export default function Home() {
     });
   };
 
+  const handleDeleteMultipleProjects = (projectIds: string[]) => {
+    if (!projectIds || projectIds.length === 0) return;
+    const isAll = projectIds.length === history.length;
+    showConfirm({
+      title: isAll ? "Delete All Projects" : `Delete ${projectIds.length} Projects`,
+      message: isAll
+        ? `Are you sure you want to delete all ${projectIds.length} projects and their generated clips? This action cannot be undone.`
+        : `Are you sure you want to delete ${projectIds.length} selected projects and their clips?`,
+      confirmText: isAll ? "Delete All" : `Delete (${projectIds.length})`,
+      cancelText: "Keep",
+      isDanger: true,
+      onConfirm: async () => {
+        try {
+          const headers: Record<string, string> = { "Content-Type": "application/json" };
+          if (session?.access_token) {
+            headers["Authorization"] = `Bearer ${session.access_token}`;
+          }
+
+          const res = await fetch(`${BACKEND_URL}/projects/bulk-delete`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ job_ids: projectIds }),
+          });
+
+          if (res.ok) {
+            const toRemove = new Set(projectIds);
+            setHistory((prev) => prev.filter((p) => !toRemove.has(p.id)));
+            showToast(`${projectIds.length} project(s) deleted successfully.`, "info");
+          } else {
+            showToast("Could not delete selected projects. Please retry.", "error");
+          }
+        } catch (err) {
+          showToast("Failed to delete selected projects.", "error");
+        }
+      },
+    });
+  };
+
   if (!mounted) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
@@ -693,6 +731,7 @@ export default function Home() {
             history={history}
             loading={loadingHistory}
             onDeleteProject={handleDeleteProject}
+            onDeleteMultipleProjects={handleDeleteMultipleProjects}
             onDownloadSingle={handleDownloadSingle}
             onBackToStudio={() => setActiveView("studio")}
             backendUrl={BACKEND_URL}
@@ -839,6 +878,7 @@ export default function Home() {
               history={history}
               loading={loadingHistory}
               onDeleteProject={handleDeleteProject}
+              onDeleteMultipleProjects={handleDeleteMultipleProjects}
               onDownloadSingle={handleDownloadSingle}
               onBackToStudio={() => setActiveView("studio")}
               backendUrl={BACKEND_URL}

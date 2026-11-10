@@ -1,7 +1,7 @@
 "use client";
 
-import React from "react";
-import { Video, Trash2, Download, ExternalLink, Clock, Sparkles, FolderOpen, ArrowLeft } from "lucide-react";
+import React, { useState } from "react";
+import { Video, Trash2, Download, ExternalLink, Clock, Sparkles, FolderOpen, ArrowLeft, Check, CheckSquare, Square } from "lucide-react";
 import { ClipItemData } from "./ClipCard";
 
 export interface HistoryProject {
@@ -18,6 +18,7 @@ interface HistoryViewProps {
   history: HistoryProject[];
   loading: boolean;
   onDeleteProject: (projectId: string) => void;
+  onDeleteMultipleProjects?: (projectIds: string[]) => void;
   onDownloadSingle: (clip: string | ClipItemData, jobId?: string) => void;
   onBackToStudio: () => void;
   backendUrl: string;
@@ -28,12 +29,60 @@ export default function HistoryView({
   history,
   loading,
   onDeleteProject,
+  onDeleteMultipleProjects,
   onDownloadSingle,
   onBackToStudio,
   backendUrl,
   theme = "dark",
 }: HistoryViewProps) {
   const isLight = theme === "light";
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const isAllSelected = history.length > 0 && selectedIds.size === history.length;
+  const isSomeSelected = selectedIds.size > 0 && selectedIds.size < history.length;
+
+  const toggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(history.map((p) => p.id)));
+    }
+  };
+
+  const toggleSelectOne = (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const handleDeleteSelected = () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    if (onDeleteMultipleProjects) {
+      onDeleteMultipleProjects(ids);
+    } else {
+      ids.forEach((id) => onDeleteProject(id));
+    }
+    setSelectedIds(new Set());
+  };
+
+  const handleDeleteAll = () => {
+    const allIds = history.map((p) => p.id);
+    if (allIds.length === 0) return;
+    if (onDeleteMultipleProjects) {
+      onDeleteMultipleProjects(allIds);
+    } else {
+      allIds.forEach((id) => onDeleteProject(id));
+    }
+    setSelectedIds(new Set());
+  };
 
   if (loading) {
     return (
@@ -120,6 +169,74 @@ export default function HistoryView({
         </span>
       </div>
 
+      {/* Bulk Action Toolbar */}
+      <div
+        className={`flex flex-wrap items-center justify-between gap-3 p-3 sm:px-4 rounded-2xl border transition-all ${
+          isLight
+            ? "bg-slate-50/90 border-slate-200/90 shadow-sm"
+            : "bg-[#101018]/90 border-white/10"
+        }`}
+      >
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={toggleSelectAll}
+            className={`flex items-center gap-2 text-xs font-bold px-3 py-1.5 rounded-xl border transition-all cursor-pointer ${
+              isAllSelected
+                ? "bg-[#ff7427] border-[#ff7427] text-white shadow-md shadow-orange-500/20"
+                : isLight
+                ? "bg-white border-slate-200 text-slate-700 hover:border-slate-300"
+                : "bg-white/5 border-white/10 text-slate-300 hover:bg-white/10"
+            }`}
+          >
+            {isAllSelected ? (
+              <CheckSquare className="w-4 h-4" />
+            ) : isSomeSelected ? (
+              <div className="w-4 h-4 rounded border border-[#ff7427] bg-[#ff7427]/20 flex items-center justify-center">
+                <div className="w-2 h-0.5 bg-[#ff7427] rounded" />
+              </div>
+            ) : (
+              <Square className="w-4 h-4 opacity-60" />
+            )}
+            <span>{isAllSelected ? "Deselect All" : "Select All"}</span>
+          </button>
+
+          {selectedIds.size > 0 && (
+            <span className="text-xs font-mono font-medium text-[#ff7427]">
+              {selectedIds.size} of {history.length} selected
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          {selectedIds.size > 0 && (
+            <button
+              type="button"
+              onClick={handleDeleteSelected}
+              className="px-3.5 py-1.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-400 hover:text-rose-300 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+              title={`Delete ${selectedIds.size} selected projects`}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Delete Selected ({selectedIds.size})</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={handleDeleteAll}
+            className={`px-3.5 py-1.5 rounded-xl font-medium text-xs flex items-center gap-1.5 transition-all cursor-pointer border ${
+              isLight
+                ? "bg-rose-50 hover:bg-rose-100/80 border-rose-200 text-rose-600"
+                : "bg-rose-500/10 hover:bg-rose-500/20 border-rose-500/20 text-rose-400 hover:text-rose-300"
+            }`}
+            title="Delete all clipping projects"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>Delete All ({history.length})</span>
+          </button>
+        </div>
+      </div>
+
       {/* Projects List */}
       <div className="flex flex-col gap-5">
         {history.map((project) => {
@@ -131,11 +248,17 @@ export default function HistoryView({
             minute: "2-digit",
           });
 
+          const isSelected = selectedIds.has(project.id);
+
           return (
             <div
               key={project.id}
               className={`p-5 rounded-3xl transition-all flex flex-col gap-4 border ${
-                isLight
+                isSelected
+                  ? isLight
+                    ? "border-[#ff7427] ring-2 ring-[#ff7427]/40 bg-orange-50/20 shadow-md"
+                    : "border-[#ff7427] ring-1 ring-[#ff7427]/40 bg-[#ff7427]/[0.03] shadow-xl"
+                  : isLight
                   ? "bg-white border-slate-200/90 hover:border-slate-300 shadow-sm hover:shadow-md"
                   : "bg-[#101018] border-white/10 hover:border-[#ff7427]/30 shadow-xl"
               }`}
@@ -147,6 +270,22 @@ export default function HistoryView({
                 }`}
               >
                 <div className="flex items-center gap-3 min-w-0">
+                  {/* Select Checkbox */}
+                  <button
+                    type="button"
+                    onClick={(e) => toggleSelectOne(project.id, e)}
+                    className={`w-6 h-6 rounded-lg border flex items-center justify-center transition-all cursor-pointer shrink-0 ${
+                      isSelected
+                        ? "bg-[#ff7427] border-[#ff7427] text-white shadow-sm"
+                        : isLight
+                        ? "border-slate-300 hover:border-slate-400 bg-white"
+                        : "border-white/20 hover:border-white/40 bg-white/5"
+                    }`}
+                    title={isSelected ? "Deselect project" : "Select project"}
+                  >
+                    {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                  </button>
+
                   <div className="w-10 h-10 rounded-2xl bg-[#ff7427]/15 border border-[#ff7427]/30 flex items-center justify-center text-[#ff7427] shrink-0">
                     <Video className="w-5 h-5" />
                   </div>

@@ -290,6 +290,62 @@ def delete_user_clip_project(
     return {"success": True, "message": "Project deleted successfully"}
 
 
+class BulkDeleteRequest(BaseModel):
+    job_ids: List[str] = Field(default_factory=list)
+
+
+@app.post("/projects/bulk-delete")
+def bulk_delete_projects(
+    req: BulkDeleteRequest,
+    user: Dict[str, Any] = Depends(get_current_user_optional)
+):
+    """
+    Bulk delete multiple projects and completely wipe their files from local disk and cloud storage.
+    Supports both batch selected deletion and 'delete all'.
+    """
+    uid = user.get("id") if user.get("is_authenticated") else "guest"
+    deleted_ids = []
+
+    for job_id in req.job_ids:
+        job_id = str(job_id).strip()
+        if not job_id:
+            continue
+        delete_user_job(job_id, uid)
+
+        # 1. Purge local clips folder from disk if present
+        local_clip_dir = os.path.join("clips", job_id)
+        if os.path.exists(local_clip_dir):
+            try:
+                shutil.rmtree(local_clip_dir)
+            except Exception:
+                pass
+
+        # 2. Purge local downloads folder if present
+        local_dl_dir = os.path.join("downloads", job_id)
+        if os.path.exists(local_dl_dir):
+            try:
+                shutil.rmtree(local_dl_dir)
+            except Exception:
+                pass
+
+        # 3. Delete cloud files from Supabase
+        delete_job_files_from_supabase(job_id)
+
+        # 4. Remove from active memory if present
+        if job_id in jobs:
+            del jobs[job_id]
+
+        deleted_ids.append(job_id)
+
+    print(f"[Bulk Delete] Successfully wiped {len(deleted_ids)} projects.")
+    return {
+        "success": True,
+        "deleted_count": len(deleted_ids),
+        "deleted_ids": deleted_ids,
+        "message": f"Successfully deleted {len(deleted_ids)} project(s)."
+    }
+
+
 # ==========================================
 # YOUTUBE OAUTH 2.0 & PERSONAL CHANNEL APIs
 # ==========================================
