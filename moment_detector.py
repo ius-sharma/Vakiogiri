@@ -349,7 +349,7 @@ def transcribe_audio_groq(audio_path: str, subtitle_language: str = "hinglish") 
         from groq import Groq
         client = Groq(api_key=groq_key)
         lang_mode = (subtitle_language or "hinglish").lower().strip()
-        gaming_prompt = "Indian gaming stream in Hindi and Hinglish. Words: bhai, bro, jump, surface, circle, angle, chat, literally, kya bacha hoon, nahi kar pa raha tha, live, game."
+        gaming_prompt = "Oye bhai dekh kya bacha hoon main! Literally jump nahi ho raha tha is surface pe, bhagja bhagja!"
         whisper_lang = "en" if lang_mode == "english" else "hi"
         whisper_prompt = None if lang_mode == "english" else gaming_prompt
 
@@ -376,6 +376,12 @@ def transcribe_audio_groq(audio_path: str, subtitle_language: str = "hinglish") 
             if raw_w and any(c.isalnum() for c in raw_w):
                 w_st = round(float(w.get("start", 0.0)), 2)
                 w_et = round(float(w.get("end", 0.0)), 2)
+                # Filter microscopic glitch/hallucination tokens (< 0.05s)
+                if (w_et - w_st) < 0.05:
+                    continue
+                # Cap single word duration so it never freezes across speech pauses/silences
+                if (w_et - w_st) > 0.80:
+                    w_et = round(w_st + 0.65, 2)
                 if lang_mode == "english":
                     w_clean = raw_w.upper()
                 else:

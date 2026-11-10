@@ -53,7 +53,7 @@ COMMON_HINGLISH_MAP = {
     "जम्प": "jump", "जंप": "jump", "एंगल": "angle", "संगल": "angle", "गेम": "game", "गेम्स": "games",
     "किल": "kill", "हेडशॉट": "headshot", "प्लेयर": "player", "लाइव": "live", "स्ट्रीम": "stream",
     "सर्फेस": "surface", "सरफेस": "surface", "सर्पेस": "surface", "सर्फस": "surface", "जाहब": "sahab", "ओरी": "oye", "वाटर": "water", "लोड": "load", "स्टार्ट": "start",
-    "सर्कल": "circle", "सर्कल्स": "circles", "संकल्स": "circles", "संकलस": "circles",
+    "सर्कल": "circle", "सर्कल्स": "circles", "संकल्स": "circles", "संकलस": "circles", "संकृत": "circle", "सक्रित": "circle", "सर्कुल": "circle", "सर्किल": "circle", "ओरी": "oye", "ओए": "oye", "चढ़": "chadh", "चढ़ा": "chadha", "चढ़ना": "chadhna", "चट": "chadh",
     "क्योंकि": "kyunki", "क्युकी": "kyunki", "क्योकि": "kyunki", "मुकाबले": "mukable", "मुकामले": "mukable",
     "चटनी": "chat", "चट": "chat",
     "भागे": "bhage", "भागी": "bhagi", "bhaagi": "bhagi",

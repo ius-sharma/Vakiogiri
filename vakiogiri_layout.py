@@ -29,7 +29,8 @@ HOT_KEYWORDS = {
     "JUMP", "SURFACE", "CIRCLE", "CIRCLES", "BHAI", "BRO", "LADLE", "BHAGJA",
     "LITERALLY", "BACH", "BACHA", "OP", "KILL", "HEADSHOT", "DEAD", "WIN", "RUN",
     "DANGER", "EPIC", "NOOB", "PRO", "AAGAYA", "MARO", "GAYA", "KHATAM", "SHIT",
-    "WHAT", "WTF", "HELL", "SUPER", "NICE", "ROST", "CHALO", "DEKHO", "LOOK"
+    "WHAT", "WTF", "HELL", "SUPER", "NICE", "ROST", "CHALO", "DEKHO", "LOOK",
+    "CHADH", "OYE", "ARRE", "KARENGE", "MAJA", "BHAIYA"
 }
 
 
@@ -240,10 +241,13 @@ class VakiogiriLayoutEngine:
         for w in all_words:
             s = max(last_t, round(float(w["start"]), 2))
             e = max(s + 0.10, round(float(w["end"]), 2))
+            # Never let a single word freeze across long silences
+            if e - s > 0.80:
+                e = round(s + 0.65, 2)
             tok = w["word"].replace("{", "").replace("}", "").strip().upper()
             if tok and any(c.isalnum() for c in tok):
                 clean_words.append({"start": s, "end": e, "word": tok})
-                last_t = s + 0.05
+                last_t = s + 0.04
 
         if not clean_words:
             return None
@@ -303,8 +307,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         events = []
         for g_idx, grp in enumerate(phrase_groups):
             card_start = grp[0]["start"]
-            card_end_padding = 0.20 if is_face_top else 0.25
-            natural_end = max(grp[-1]["end"] + card_end_padding, card_start + (0.65 if is_face_top else 0.80))
+            card_end_padding = 0.15 if is_face_top else 0.20
+            # Natural card end follows voice closely with snappy padding, never freezing across pauses
+            natural_end = grp[-1]["end"] + card_end_padding
             if g_idx + 1 < len(phrase_groups):
                 # Clamp card_end strictly to the start of the next card so dialogues never overlap
                 card_end = min(natural_end, phrase_groups[g_idx + 1][0]["start"])
