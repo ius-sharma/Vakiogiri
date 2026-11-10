@@ -539,7 +539,7 @@ export default function Home() {
     return `${BACKEND_URL}/clips/${activeJobId}/${clip?.filename || "clip.mp4"}`;
   };
 
-  const downloadClipFile = (clipUrl: string, filename: string, targetJobId?: string) => {
+  const downloadClipFile = (clipUrl: string, filename: string, targetJobId?: string | null) => {
     // Dedicated clean download endpoint with no query strings to prevent browser naming bugs (e.g. saving as '1')
     const activeJobId = targetJobId || jobId;
     let downloadEndpoint = clipUrl;
@@ -565,7 +565,7 @@ export default function Home() {
     const clipUrl = getClipUrl(clip, targetJobId);
 
     setDownloadingClips((prev) => ({ ...prev, [filename]: "downloading" }));
-    downloadClipFile(clipUrl, filename, targetJobId || jobId);
+    downloadClipFile(clipUrl, filename, targetJobId || jobId || undefined);
 
     setTimeout(() => {
       setDownloadingClips((prev) => ({ ...prev, [filename]: "done" }));
