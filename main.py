@@ -1021,10 +1021,16 @@ def head_clip(job_id: str, filename: str):
 
 
 @app.get("/clips/{job_id}/{filename}")
-def serve_clip(job_id: str, filename: str, request: Request):
+def serve_clip(
+    job_id: str,
+    filename: str,
+    request: Request,
+    download: Optional[int] = Query(0, description="Force file download if 1")
+):
     """
     Serve video clips with full HTTP Byte-Range (206 Partial Content) streaming support
     and inline Content-Disposition so browsers/mobile webviews play video immediately.
+    If download=1, returns attachment Content-Disposition with full Content-Length for high-speed download.
     Also serves thumbnail images (.jpg, .jpeg, .png).
     """
     clip_path = os.path.join("clips", job_id, filename)
@@ -1036,6 +1042,19 @@ def serve_clip(job_id: str, filename: str, request: Request):
         return FileResponse(clip_path, media_type="image/jpeg", content_disposition_type="inline", headers={"Access-Control-Allow-Origin": "*"})
     elif ext == ".png":
         return FileResponse(clip_path, media_type="image/png", content_disposition_type="inline", headers={"Access-Control-Allow-Origin": "*"})
+
+    # If user explicitly requested file download:
+    if download:
+        return FileResponse(
+            clip_path,
+            media_type="video/mp4",
+            filename=filename,
+            content_disposition_type="attachment",
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Expose-Headers": "Content-Disposition, Content-Length, Accept-Ranges",
+            }
+        )
 
     # For MP4 video: Implement proper HTTP Range request handling for smooth HTML5 video playback
     file_size = os.path.getsize(clip_path)
@@ -1099,21 +1118,45 @@ def serve_clip(job_id: str, filename: str, request: Request):
 @app.get("/download/proxy")
 def download_proxy(url: str = Query(..., description="Target file URL"), filename: str = Query("clip.mp4")):
     """
-    Force browser to download remote video file as an attachment
-    (solves cross-origin download tag ignoring issues in browsers).
+    Force browser to download remote video file as an attachment.
+    If URL points to a local clip (/clips/{job_id}/{filename}), serve directly from disk at maximum speed.
     """
     try:
+        # Check if URL references a local clip
+        match = re.search(r"/clips/([^/?]+)/([^/?]+)", url)
+        if match:
+            job_id, fname = match.group(1), match.group(2)
+            local_path = os.path.join("clips", job_id, fname)
+            if os.path.exists(local_path):
+                return FileResponse(
+                    local_path,
+                    media_type="video/mp4",
+                    filename=filename or fname,
+                    content_disposition_type="attachment",
+                    headers={
+                        "Access-Control-Allow-Origin": "*",
+                        "Access-Control-Expose-Headers": "Content-Disposition, Content-Length, Accept-Ranges",
+                    }
+                )
+
+        # Fallback for external URLs with Content-Length preserved
         req = requests.get(url, stream=True, timeout=60)
         if req.status_code != 200:
             raise HTTPException(status_code=req.status_code, detail="Remote video could not be retrieved.")
 
+        content_length = req.headers.get("Content-Length")
+        headers = {
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Expose-Headers": "Content-Disposition, Content-Length, Accept-Ranges",
+        }
+        if content_length:
+            headers["Content-Length"] = content_length
+
         return StreamingResponse(
-            req.iter_content(chunk_size=65536),
+            req.iter_content(chunk_size=1024 * 256),
             media_type="video/mp4",
-            headers={
-                "Content-Disposition": f'attachment; filename="{filename}"',
-                "Access-Control-Allow-Origin": "*",
-            }
+            headers=headers
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Download proxy failed: {str(e)}")

@@ -540,9 +540,9 @@ export default function Home() {
   };
 
   const downloadClipFile = (clipUrl: string, filename: string) => {
-    const downloadEndpoint = clipUrl.startsWith("http")
-      ? `${BACKEND_URL}/download/proxy?url=${encodeURIComponent(clipUrl)}&filename=${encodeURIComponent(filename)}`
-      : clipUrl;
+    // Direct fast download endpoint with ?download=1 (bypasses proxy bottlenecks, full Content-Length)
+    const separator = clipUrl.includes("?") ? "&" : "?";
+    const downloadEndpoint = `${clipUrl}${separator}download=1`;
 
     const link = document.createElement("a");
     link.href = downloadEndpoint;
