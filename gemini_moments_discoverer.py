@@ -187,15 +187,23 @@ Return a JSON array of objects with the following schema:
 ]
 """
 
-            response = client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=prompt,
-                config={
-                    "system_instruction": system_instruction,
-                    "response_mime_type": "application/json",
-                    "temperature": 0.3,
-                }
-            )
+            # Try gemini-3.5-flash-lite first, fallback to gemini-3.5-flash
+            response = None
+            for m_name in ["gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-3.8-flash"]:
+                try:
+                    response = client.models.generate_content(
+                        model=m_name,
+                        contents=prompt,
+                        config={
+                            "system_instruction": system_instruction,
+                            "response_mime_type": "application/json",
+                            "temperature": 0.3,
+                        }
+                    )
+                    if response and response.text:
+                        break
+                except Exception:
+                    continue
 
             data = json.loads(response.text.strip())
             if isinstance(data, list) and len(data) > 0:
@@ -229,7 +237,7 @@ Return a JSON array of objects with the following schema:
                     "duration": duration,
                     "duration_formatted": format_seconds_to_timestamp(duration),
                     "moments": validated_moments[:max_moments],
-                    "engine": "gemini-2.5-flash"
+                    "engine": "gemini-3.5-flash-lite"
                 }
         except Exception as e:
             print(f"[GeminiMoments] Gemini inference error: {e}")

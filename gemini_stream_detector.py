@@ -176,15 +176,22 @@ RETURN ONLY A VALID JSON ARRAY OF OBJECTS matching this exact schema:
 """
 
     try:
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt,
-            config={
-                "system_instruction": system_instruction,
-                "response_mime_type": "application/json",
-                "temperature": 0.2,
-            }
-        )
+        response = None
+        for m_name in ["gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-3.8-flash"]:
+            try:
+                response = client.models.generate_content(
+                    model=m_name,
+                    contents=prompt,
+                    config={
+                        "system_instruction": system_instruction,
+                        "response_mime_type": "application/json",
+                        "temperature": 0.2,
+                    }
+                )
+                if response and response.text:
+                    break
+            except Exception:
+                continue
 
         response_text = response.text.strip()
         data = json.loads(response_text)
@@ -214,7 +221,7 @@ RETURN ONLY A VALID JSON ARRAY OF OBJECTS matching this exact schema:
                 "type": item.get("type", "highlight"),
                 "rationale": item.get("rationale", ""),
                 "chapter_name": item.get("chapter_name") or item.get("title", "Highlight"),
-                "detected_by": "gemini-2.5-flash"
+                "detected_by": "gemini-3.5-flash-lite"
             })
 
         # Sort chronologically for natural compilation timeline

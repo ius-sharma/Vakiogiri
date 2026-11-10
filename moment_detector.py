@@ -280,9 +280,9 @@ def transcribe_audio_gemini_hinglish(temp_wav: str) -> List[Dict[str, Any]]:
             "Timestamps must be accurate in seconds relative to audio start."
         )
 
-        # Try gemini-2.0-flash first, fallback to gemini-1.5-flash
+        # Try gemini-3.5-flash-lite first (fast & reliable), fallback to gemini-3.5-flash / gemini-3.8-flash
         response = None
-        for model_name in ["gemini-2.0-flash", "gemini-1.5-flash"]:
+        for model_name in ["gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-3.8-flash"]:
             try:
                 response = client.models.generate_content(
                     model=model_name,
