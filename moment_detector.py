@@ -242,9 +242,9 @@ def get_cached_whisper_model():
 
 
 def transcribe_audio_gemini_hinglish(temp_wav: str) -> List[Dict[str, Any]]:
-    """Native Gemini 2.5 Flash audio transcription for 100% natural Roman Hinglish."""
+    """Native Gemini 2.0 Flash audio transcription for 100% natural Roman Hinglish."""
     gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
-    if not gemini_key or gemini_key == "PASTE_YOUR_GEMINI_API_KEY_HERE":
+    if not gemini_key or not gemini_key.startswith("AIzaSy"):
         return []
 
     try:
@@ -257,39 +257,47 @@ def transcribe_audio_gemini_hinglish(temp_wav: str) -> List[Dict[str, Any]]:
 
         prompt = (
             "You are an expert audio transcriber specializing in Indian gaming streams and conversational Hinglish (Hindi written in Roman / English alphabet).\n"
-            "Transcribe the speech in this audio accurately.\n\n"
+            "Transcribe the speech in this audio accurately into Roman Hinglish.\n\n"
             "CRITICAL REQUIREMENTS:\n"
             "1. Output language MUST be Roman Hinglish (English alphabet only, A-Z, a-z).\n"
-            "   Example: 'Bhai jump nahi ho raha, is angle se gir jaunga'\n"
-            "2. NEVER use Devanagari script (no हिन्दी) and NEVER output foreign scripts (no Korean, Russian, Thai, etc.).\n"
-            "3. Keep standard gaming words in English (e.g. 'jump', 'angle', 'bro', 'bhai', 'op', 'surface', 'kill', 'wait').\n"
-            "4. Return a valid JSON object with the exact schema:\n"
+            "   Example: 'Bhai dekh kya bacha hoon main literally, jump nahi ho raha tha!'\n"
+            "2. NEVER use Devanagari script (NO Hindi characters) and NEVER output foreign scripts.\n"
+            "3. Keep standard gaming words in English (e.g. 'jump', 'circle', 'angle', 'bro', 'bhai', 'op', 'surface', 'clutch', 'kill').\n"
+            "4. Return a valid JSON object matching this schema:\n"
             "{\n"
             '  "segments": [\n'
             '    {\n'
             '      "start": 0.0,\n'
             '      "end": 2.5,\n'
-            '      "text": "Bhai jump nahi ho raha",\n'
+            '      "text": "Bhai dekh kya bacha hoon main",\n'
             '      "words": [\n'
-            '        {"word": "BHAI", "start": 0.0, "end": 0.5},\n'
-            '        {"word": "JUMP", "start": 0.5, "end": 1.1}\n'
+            '        {"word": "BHAI", "start": 0.0, "end": 0.4},\n'
+            '        {"word": "DEKH", "start": 0.45, "end": 0.8}\n'
             '      ]\n'
             '    }\n'
             '  ]\n'
             '}\n'
-            "Timestamps must be relative to audio start in seconds."
+            "Timestamps must be accurate in seconds relative to audio start."
         )
 
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=[
-                types.Part.from_bytes(data=audio_bytes, mime_type="audio/wav"),
-                prompt
-            ],
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json"
-            )
-        )
+        # Try gemini-2.0-flash first, fallback to gemini-1.5-flash
+        response = None
+        for model_name in ["gemini-2.0-flash", "gemini-1.5-flash"]:
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=[
+                        types.Part.from_bytes(data=audio_bytes, mime_type="audio/wav"),
+                        prompt
+                    ],
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json"
+                    )
+                )
+                if response and response.text:
+                    break
+            except Exception as m_err:
+                continue
 
         if not response or not response.text:
             return []
@@ -300,24 +308,43 @@ def transcribe_audio_gemini_hinglish(temp_wav: str) -> List[Dict[str, Any]]:
         for s in raw_segs:
             raw_text = clean_foreign_unicode(s.get("text", "")).strip()
             if raw_text and any(c.isalnum() for c in raw_text):
+                s_st = round(float(s.get("start", 0.0)), 2)
+                s_et = round(float(s.get("end", 0.0)), 2)
                 w_items = []
                 for w in s.get("words", []):
                     w_word = clean_foreign_unicode(str(w.get("word", ""))).strip().upper()
                     if w_word and any(c.isalnum() for c in w_word):
+                        w_start = round(float(w.get("start", s_st)), 2)
+                        w_end = round(float(w.get("end", s_et)), 2)
+                        if (w_end - w_start) > 0.80:
+                            w_end = round(w_start + 0.65, 2)
                         w_items.append({
                             "word": w_word,
-                            "start": round(float(w.get("start", s.get("start", 0.0))), 2),
-                            "end": round(float(w.get("end", s.get("end", 0.0))), 2)
+                            "start": w_start,
+                            "end": w_end
                         })
+                # If word array was empty, synthesize word timings from segment
+                if not w_items:
+                    toks = raw_text.split()
+                    if toks:
+                        dur_per = max(0.2, (s_et - s_st) / len(toks))
+                        for ti, tok in enumerate(toks):
+                            tok_c = clean_foreign_unicode(tok).strip().upper()
+                            if tok_c and any(c.isalnum() for c in tok_c):
+                                w_items.append({
+                                    "word": tok_c,
+                                    "start": round(s_st + ti * dur_per, 2),
+                                    "end": round(min(s_et, s_st + (ti + 1) * dur_per), 2)
+                                })
                 clean_segs.append({
-                    "start": round(float(s.get("start", 0.0)), 2),
-                    "end": round(float(s.get("end", 0.0)), 2),
+                    "start": s_st,
+                    "end": s_et,
                     "text": raw_text,
                     "words": w_items
                 })
 
         if clean_segs:
-            print(f"  -> Successfully transcribed {len(clean_segs)} segments via Gemini 2.5 Flash native audio!")
+            print(f"  -> Successfully transcribed {len(clean_segs)} segments via Gemini 2.0 Flash native audio!")
         return clean_segs
     except Exception as e:
         print(f"  -> Gemini native audio transcription notice: {e}")
@@ -451,31 +478,41 @@ def transcribe_video_audio(video_or_audio_path: str, subtitle_language: str = "h
     os.close(temp_fd)
 
     try:
+        # Pre-clean vocals with bandpass + background noise suppression
         extract_cmd = [
             "ffmpeg", "-y", "-i", video_or_audio_path,
+            "-af", "highpass=f=120,lowpass=f=3800,afftdn=nf=-20,acompressor=threshold=-20dB:ratio=4:attack=5:release=50",
             "-vn", "-ac", "1", "-ar", "16000", temp_wav
         ]
         subprocess.run(extract_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
-    except Exception as e:
-        print(f"  -> Error extracting audio for transcription: {e}")
-        if os.path.exists(temp_wav):
-            try:
-                os.remove(temp_wav)
-            except Exception:
-                pass
-        return []
+    except Exception:
+        # Fallback to direct raw extraction if filter is not supported
+        try:
+            extract_cmd = [
+                "ffmpeg", "-y", "-i", video_or_audio_path,
+                "-vn", "-ac", "1", "-ar", "16000", temp_wav
+            ]
+            subprocess.run(extract_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+        except Exception as e:
+            print(f"  -> Error extracting audio for transcription: {e}")
+            if os.path.exists(temp_wav):
+                try:
+                    os.remove(temp_wav)
+                except Exception:
+                    pass
+            return []
 
     try:
-        # Tier 1: Groq Cloud Whisper Large V3 + Gaming Prompt (Ultra-accurate acoustic timestamps, 0% hallucinations)
-        groq_segs = transcribe_audio_groq(temp_wav, subtitle_language=lang_mode)
-        if groq_segs:
-            return groq_segs
-
-        # Tier 2: Gemini 2.5 Flash Native Audio (fallback)
+        # Tier 1: Gemini 2.0 Flash Native Audio (Pure Roman Hinglish, zero Devanagari)
         if lang_mode in ["hinglish", "auto"]:
             gemini_segs = transcribe_audio_gemini_hinglish(temp_wav)
             if gemini_segs:
                 return gemini_segs
+
+        # Tier 2: Groq Cloud Whisper Large V3 + Vocal Filter (Ultra-fast acoustic timestamps fallback)
+        groq_segs = transcribe_audio_groq(temp_wav, subtitle_language=lang_mode)
+        if groq_segs:
+            return groq_segs
 
         # Tier 3: Local faster-whisper
         model = get_cached_whisper_model()
