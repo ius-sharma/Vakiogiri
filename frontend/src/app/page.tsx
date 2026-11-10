@@ -539,10 +539,18 @@ export default function Home() {
     return `${BACKEND_URL}/clips/${activeJobId}/${clip?.filename || "clip.mp4"}`;
   };
 
-  const downloadClipFile = (clipUrl: string, filename: string) => {
-    // Direct fast download endpoint with ?download=1 (bypasses proxy bottlenecks, full Content-Length)
-    const separator = clipUrl.includes("?") ? "&" : "?";
-    const downloadEndpoint = `${clipUrl}${separator}download=1`;
+  const downloadClipFile = (clipUrl: string, filename: string, targetJobId?: string) => {
+    // Dedicated clean download endpoint with no query strings to prevent browser naming bugs (e.g. saving as '1')
+    const activeJobId = targetJobId || jobId;
+    let downloadEndpoint = clipUrl;
+    if (activeJobId && filename && !filename.startsWith("http")) {
+      downloadEndpoint = `${BACKEND_URL}/download/${activeJobId}/${filename}`;
+    } else if (clipUrl.includes("/clips/")) {
+      downloadEndpoint = clipUrl.replace("/clips/", "/download/");
+    } else {
+      const separator = clipUrl.includes("?") ? "&" : "?";
+      downloadEndpoint = `${clipUrl}${separator}download=1`;
+    }
 
     const link = document.createElement("a");
     link.href = downloadEndpoint;
@@ -557,7 +565,7 @@ export default function Home() {
     const clipUrl = getClipUrl(clip, targetJobId);
 
     setDownloadingClips((prev) => ({ ...prev, [filename]: "downloading" }));
-    downloadClipFile(clipUrl, filename);
+    downloadClipFile(clipUrl, filename, targetJobId || jobId);
 
     setTimeout(() => {
       setDownloadingClips((prev) => ({ ...prev, [filename]: "done" }));

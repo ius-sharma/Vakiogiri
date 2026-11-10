@@ -1015,7 +1015,32 @@ def head_clip(job_id: str, filename: str):
             "Content-Length": str(file_size),
             "Content-Type": media_type,
             "Access-Control-Allow-Origin": "*",
-            "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges",
+            "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges, Content-Disposition",
+        }
+    )
+
+
+@app.get("/download/{job_id}/{filename}")
+def direct_download_clip_file(job_id: str, filename: str):
+    """
+    Dedicated high-speed direct download route with full Content-Length and attachment disposition.
+    Clean REST URL prevents browser filename parsing bugs (e.g. saving as '1').
+    """
+    clip_path = os.path.join("clips", job_id, filename)
+    if not os.path.exists(clip_path):
+        raise HTTPException(status_code=404, detail="Clip file not found")
+
+    ext = os.path.splitext(filename)[1].lower()
+    media_type = "video/mp4" if ext == ".mp4" else ("image/jpeg" if ext in [".jpg", ".jpeg"] else "application/octet-stream")
+
+    return FileResponse(
+        clip_path,
+        media_type=media_type,
+        filename=filename,
+        content_disposition_type="attachment",
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Expose-Headers": "Content-Disposition, Content-Length, Accept-Ranges",
         }
     )
 

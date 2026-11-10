@@ -963,7 +963,7 @@ export default function StreamStudio() {
                 </button>
                 {activeClip && (
                   <a
-                    href={activeClip.url}
+                    href={activeClip.url?.includes("/clips/") ? activeClip.url.replace("/clips/", "/download/") : activeClip.url}
                     download={activeClip.filename}
                     className="px-5 py-2.5 bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white rounded-xl font-bold text-xs transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
                   >

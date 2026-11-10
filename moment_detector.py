@@ -242,9 +242,9 @@ def get_cached_whisper_model():
 
 
 def transcribe_audio_gemini_hinglish(temp_wav: str) -> List[Dict[str, Any]]:
-    """Native Gemini 2.0 Flash audio transcription for 100% natural Roman Hinglish."""
+    """Native Gemini Flash audio transcription for 100% natural Roman Hinglish."""
     gemini_key = os.getenv("GEMINI_API_KEY", "").strip()
-    if not gemini_key or not gemini_key.startswith("AIzaSy"):
+    if not gemini_key or len(gemini_key) < 15:
         return []
 
     try:
@@ -263,7 +263,8 @@ def transcribe_audio_gemini_hinglish(temp_wav: str) -> List[Dict[str, Any]]:
             "   Example: 'Bhai dekh kya bacha hoon main literally, jump nahi ho raha tha!'\n"
             "2. NEVER use Devanagari script (NO Hindi characters) and NEVER output foreign scripts.\n"
             "3. Keep standard gaming words in English (e.g. 'jump', 'circle', 'angle', 'bro', 'bhai', 'op', 'surface', 'clutch', 'kill').\n"
-            "4. Return a valid JSON object matching this schema:\n"
+            "4. Transcribe the ENTIRE duration of the audio clip from beginning to end. DO NOT stop after the first sentence or first 10-15 seconds. Cover all spoken commentary through to the very end.\n"
+            "5. Return a valid JSON object matching this schema:\n"
             "{\n"
             '  "segments": [\n'
             '    {\n'
@@ -280,9 +281,9 @@ def transcribe_audio_gemini_hinglish(temp_wav: str) -> List[Dict[str, Any]]:
             "Timestamps must be accurate in seconds relative to audio start."
         )
 
-        # Try gemini-3.5-flash-lite first (fast & reliable), fallback to gemini-3.5-flash / gemini-3.8-flash
+        # Try multiple Gemini models in order of audio capability & quota resilience
         response = None
-        for model_name in ["gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-3.8-flash"]:
+        for model_name in ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-3.5-flash-lite", "gemini-3.5-flash"]:
             try:
                 response = client.models.generate_content(
                     model=model_name,
@@ -421,31 +422,43 @@ def transcribe_audio_groq(audio_path: str, subtitle_language: str = "hinglish") 
                     })
 
         final_segs = []
-        if raw_segs:
+        if all_clean_words:
+            # Group all acoustic words into natural 2-4 word kinetic phrase cards with full continuous timestamps
+            current_chunk = []
+            for cw in all_clean_words:
+                if not current_chunk:
+                    current_chunk.append(cw)
+                else:
+                    time_gap = cw["start"] - current_chunk[-1]["end"]
+                    if len(current_chunk) >= 4 or time_gap > 1.2:
+                        final_segs.append({
+                            "start": current_chunk[0]["start"],
+                            "end": current_chunk[-1]["end"],
+                            "text": " ".join([w["word"] for w in current_chunk]),
+                            "words": list(current_chunk)
+                        })
+                        current_chunk = [cw]
+                    else:
+                        current_chunk.append(cw)
+            if current_chunk:
+                final_segs.append({
+                    "start": current_chunk[0]["start"],
+                    "end": current_chunk[-1]["end"],
+                    "text": " ".join([w["word"] for w in current_chunk]),
+                    "words": list(current_chunk)
+                })
+        elif raw_segs:
             for s in raw_segs:
                 s_start = round(float(s.get("start", 0.0)), 2)
                 s_end = round(float(s.get("end", 0.0)), 2)
-                seg_words = []
-                for cw in all_clean_words:
-                    if s_start <= cw["start"] < s_end or (s == raw_segs[-1] and cw["start"] >= s_start):
-                        seg_words.append(cw)
-                seg_text = " ".join([w["word"] for w in seg_words])
-                if seg_text and seg_words:
+                raw_text = clean_foreign_unicode(s.get("text", "")).strip()
+                if raw_text and any(c.isalnum() for c in raw_text):
                     final_segs.append({
-                        "start": seg_words[0]["start"],
-                        "end": seg_words[-1]["end"],
-                        "text": seg_text,
-                        "words": seg_words
+                        "start": s_start,
+                        "end": s_end,
+                        "text": transliterate_word(raw_text).upper(),
+                        "words": []
                     })
-        elif all_clean_words:
-            for c_i in range(0, len(all_clean_words), 4):
-                chunk = all_clean_words[c_i:c_i + 4]
-                final_segs.append({
-                    "start": chunk[0]["start"],
-                    "end": chunk[-1]["end"],
-                    "text": " ".join([w["word"] for w in chunk]),
-                    "words": chunk
-                })
 
         if final_segs:
             mode_lbl = "English" if lang_mode == "english" else "Roman Hinglish"
@@ -478,10 +491,10 @@ def transcribe_video_audio(video_or_audio_path: str, subtitle_language: str = "h
     os.close(temp_fd)
 
     try:
-        # Pre-clean vocals with bandpass + background noise suppression
+        # Extract audio with vocal-preserving filter (gentle rumble removal + loudnorm, NO destructive noise gating)
         extract_cmd = [
             "ffmpeg", "-y", "-i", video_or_audio_path,
-            "-af", "highpass=f=120,lowpass=f=3800,afftdn=nf=-20,acompressor=threshold=-20dB:ratio=4:attack=5:release=50",
+            "-af", "highpass=f=80,lowpass=f=7500,loudnorm=I=-16:TP=-1.5:LRA=11",
             "-vn", "-ac", "1", "-ar", "16000", temp_wav
         ]
         subprocess.run(extract_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
