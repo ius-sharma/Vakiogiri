@@ -238,7 +238,11 @@ def download_video(
         )
     else:
         format_selector = (
+            f"bestvideo[height<={max_h}][vcodec!*=none]+bestaudio[acodec!*=none][xtags*=original]/"
+            f"bestvideo[height<={max_h}][vcodec!*=none]+bestaudio[acodec!*=none][language=hi]/"
             f"bestvideo[height<={max_h}][vcodec!*=none]+bestaudio[acodec!*=none]/"
+            f"bestvideo[height<={max_h}]+bestaudio[xtags*=original]/"
+            f"bestvideo[height<={max_h}]+bestaudio[language=hi]/"
             f"bestvideo[height<={max_h}]+bestaudio/"
             f"bestvideo+bestaudio/"
             f"best[height<={max_h}]/"
@@ -247,7 +251,7 @@ def download_video(
 
     base_ydl_opts = {
         'format': format_selector,
-        'format_sort': ['res', 'fps', 'tbr', 'vbr'],
+        'format_sort': ['res', 'fps', 'tbr', 'vbr', 'hasaud', 'lang:hi,default,original'],
         'outtmpl': os.path.join(output_dir, '%(id)s.%(ext)s'),
         'merge_output_format': 'mp4',
         'windowsfilenames': True,
@@ -352,9 +356,10 @@ def download_video(
                     )
                 else:
                     fallback_opts['format'] = (
-                        f"bestvideo[height<={max_h}][protocol*=_dash]+bestaudio/"
-                        f"bestvideo[height<={max_h}][protocol*=m3u8]+bestaudio/"
-                        f"bestvideo[height<={max_h}]+bestaudio/best"
+                        f"bestvideo[height<={max_h}]+bestaudio/"
+                        f"bestvideo+bestaudio/"
+                        f"best[height<={max_h}]/"
+                        f"best"
                     )
                 if has_slice:
                     fallback_opts['download_ranges'] = base_ydl_opts['download_ranges']
