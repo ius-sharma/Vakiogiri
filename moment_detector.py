@@ -2219,23 +2219,48 @@ def detect_best_moments(
         title = generate_smart_title_from_text(os.path.splitext(os.path.basename(video_path))[0])
 
         return [{
-
             "start": 0.0,
-
             "end": round(duration, 2),
-
             "title": title,
-
             "score": 95
-
         }]
 
-
+    # --------------------------------------------------------------------------
+    # STAGE 0: GAMING MULTIMODAL VIRAL ENGINE (If AI Enabled)
+    # --------------------------------------------------------------------------
+    if ai_enabled:
+        try:
+            from gaming_moments_engine import discover_gaming_viral_moments
+            source_for_gaming = youtube_url if youtube_url else video_path
+            if source_for_gaming:
+                if progress_callback:
+                    progress_callback("discovering_gaming_peaks", 45, "Multimodal Gaming Engine analyzing clutches, reactions & heatmaps...")
+                gaming_res = discover_gaming_viral_moments(
+                    video_source=source_for_gaming,
+                    target_duration=target_duration,
+                    max_moments=top_k,
+                    known_duration=duration
+                )
+                g_moments = gaming_res.get("moments", [])
+                if g_moments and len(g_moments) >= 1:
+                    print(f"[Smart Moment Detector 2.0] Successfully generated {len(g_moments)} multimodal gaming moments!")
+                    formatted = []
+                    for m in g_moments[:top_k]:
+                        formatted.append({
+                            "start": float(m.get("start", 0.0)),
+                            "end": float(m.get("end", target_duration)),
+                            "duration": float(m.get("duration", m.get("end", 0.0) - m.get("start", 0.0))),
+                            "title": m.get("title") or "Viral Gaming Moment 🎯",
+                            "score": int(m.get("virality_score", 95)),
+                            "virality_reason": m.get("virality_reason", ""),
+                            "hook_quote": m.get("hook_quote", ""),
+                        })
+                    return formatted
+        except Exception as g_err:
+            print(f"[Smart Moment Detector 2.0] Gaming multimodal notice: {g_err}. Falling back to standard pipeline.")
 
     # --------------------------------------------------------------------------
-
     # STAGE 1: SPEECH TRANSCRIPTION & PHRASE TIMESTAMPS
-
     # --------------------------------------------------------------------------
 
     if progress_callback:
