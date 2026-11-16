@@ -828,17 +828,35 @@ def run_pipeline(
                     f"Please choose a stream under {int(MAX_STREAM_DURATION_HOURS)} hours to avoid system overload."
                 )
 
-            # Determine slice bounds for stream mode if active
+            # Determine slice bounds for stream mode or user-selected moments
             stream_slice_start = max(0.0, float(stream_start_min or 0.0) * 60.0) if content_type == "stream" else 0.0
             stream_slice_end = (float(stream_end_min) * 60.0) if (content_type == "stream" and stream_end_min and float(stream_end_min) > 0) else None
+            
+            # If user selected specific viral moments, automatically scope download slice to cover those moments!
+            # This turns a 10 GB (4.7-hour) download into a lightweight ~20-50 MB slice that downloads in seconds!
+            if selected_moments and len(selected_moments) > 0:
+                min_m_start = max(0.0, min(float(m.get("start", 0.0)) for m in selected_moments) - 15.0)
+                max_m_end = max(float(m.get("end", 0.0)) for m in selected_moments) + 15.0
+                if max_m_end > min_m_start and (max_m_end - min_m_start) <= 5400.0:
+                    stream_slice_start = min_m_start
+                    stream_slice_end = max_m_end
+                    print(f"[Pipeline] Smart Slice Active for {len(selected_moments)} selected moments: {format_duration(stream_slice_start)} to {format_duration(stream_slice_end)}")
+
             # Only perform time-sliced download when an explicit, bounded end timestamp is provided
-            is_partial_stream = content_type == "stream" and (stream_slice_end is not None and stream_slice_end > stream_slice_start)
+            is_partial_stream = (stream_slice_end is not None and stream_slice_end > stream_slice_start)
+
+            # For full-length downloads of long livestreams (> 30 mins) without slicing,
+            # cap quality to 720p to guarantee safe remuxing within server disk limits (prevents 20GB disk full crash)
+            effective_quality = quality
+            if not is_partial_stream and stream_dur > 1800.0 and quality.lower() in ["1080p", "best"]:
+                print(f"[Pipeline] Long stream detected ({format_duration(stream_dur)}). Using 720p to guarantee safe remuxing within disk limits.")
+                effective_quality = "720p"
 
             # 1. Download YouTube video in requested quality (partial range download if stream slice active)
             video_path = download_video(
                 url=youtube_url,
                 output_dir=download_dir,
-                quality=quality,
+                quality=effective_quality,
                 start_sec=stream_slice_start if is_partial_stream else 0.0,
                 end_sec=stream_slice_end if is_partial_stream else None,
                 progress_callback=progress_callback
@@ -935,13 +953,22 @@ def run_pipeline(
                 progress_callback("curating_moments", 60, f"Processing {len(selected_moments)} curated viral moment(s)...")
             moments = []
             for idx, m in enumerate(selected_moments):
-                s = max(0.0, float(m.get("start", 0.0)))
-                e = min(duration, float(m.get("end", s + segment_duration)))
-                dur = max(1.0, e - s)
+                orig_s = max(0.0, float(m.get("start", 0.0)))
+                orig_e = float(m.get("end", orig_s + segment_duration))
+                dur = max(1.0, orig_e - orig_s)
+
+                # If partial slice was downloaded, shift timestamps relative to slice start!
+                if is_partial_stream:
+                    s = max(0.0, orig_s - stream_slice_start)
+                    e = min(duration, s + dur)
+                else:
+                    s = max(0.0, orig_s)
+                    e = min(duration, orig_e)
+
                 moments.append({
                     "start": s,
                     "end": e,
-                    "duration": dur,
+                    "duration": round(e - s, 2),
                     "title": m.get("title") or f"Short {idx + 1}",
                     "score": int(m.get("virality_score", m.get("score", 95))),
                     "heatmap_score": int(m.get("virality_score", m.get("score", 95))),
