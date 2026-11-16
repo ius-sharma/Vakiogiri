@@ -988,8 +988,11 @@ def run_pipeline(
             )
         
         # 4. Transcribe speech segments for center-anchored kinetic captions (if caption_style != 'none')
+        # For long videos (> 10 mins) or curated moments, skip whole-video transcription:
+        # split_and_crop_video directly and accurately transcribes each 30-second slice in 2 seconds without OOM!
         speech_segments = None
-        if caption_style != "none" and aspect_ratio == "9:16":
+        has_curated_moments = bool(selected_moments and len(selected_moments) > 0)
+        if caption_style != "none" and aspect_ratio == "9:16" and duration <= 600.0 and not has_curated_moments:
             try:
                 if progress_callback:
                     lang_label = "Hinglish (Hindi in English)" if subtitle_language == "hinglish" else "English" if subtitle_language == "english" else "Auto-Detected Language"
@@ -997,6 +1000,8 @@ def run_pipeline(
                 speech_segments = transcribe_video_audio(video_path, subtitle_language=subtitle_language)
             except Exception as tr_err:
                 print(f"[Pipeline Notice] Speech transcription for captions notice: {tr_err}")
+        elif progress_callback:
+            progress_callback("clipping", 75, "Preparing high-speed precision rendering & animated subtitles...")
 
         # 5. Crop & Split dynamically identified moments (9:16 Vakiogiri Signature Split or 16:9 in target quality)
         clips = split_and_crop_video(
