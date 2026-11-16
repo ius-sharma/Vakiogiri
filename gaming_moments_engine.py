@@ -55,7 +55,8 @@ def get_gemini_client() -> Optional[genai.Client]:
     if not api_key or api_key == "PASTE_YOUR_GEMINI_API_KEY_HERE":
         return None
     try:
-        return genai.Client(api_key=api_key)
+        from google.genai import types
+        return genai.Client(api_key=api_key, http_options=types.HttpOptions(timeout=10000))
     except Exception as e:
         print(f"[GamingEngine] Client initialization error: {e}")
         return None
@@ -472,7 +473,7 @@ Return a JSON array of objects with this schema:
 ]
 """
             response = None
-            for m_name in ["gemini-3.8-flash", "gemini-3.5-flash", "gemini-flash-latest", "gemini-3.5-flash-lite"]:
+            for m_name in ["gemini-flash-latest", "gemini-3.8-flash", "gemini-3.5-flash"]:
                 try:
                     response = client.models.generate_content(
                         model=m_name,
@@ -486,7 +487,7 @@ Return a JSON array of objects with this schema:
                     if response and response.text:
                         break
                 except Exception as ex_m:
-                    print(f"[GamingEngine] Model {m_name} notice: {ex_m}")
+                    print(f"[GamingEngine] Model {m_name} notice: {ex_m}", flush=True)
                     continue
 
             data = json.loads(response.text.strip())

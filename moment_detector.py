@@ -580,33 +580,30 @@ def transcribe_video_audio(video_or_audio_path: str, subtitle_language: str = "h
 
 
 DANGLING_END_WORDS = {
-
+    # English
     "and", "or", "but", "so", "because", "that", "to", "with", "if", "when", 
-
     "like", "uh", "um", "the", "a", "an", "then", "which", "who", "whom", "where",
-
     "as", "for", "of", "in", "on", "at", "by", "from", "about", "into", "onto",
-
     "just", "my", "your", "our", "their", "his", "her", "its", "this", "these",
-
     "is", "are", "was", "were", "be", "been", "being", "have", "has", "had",
-
     "will", "would", "shall", "should", "can", "could", "may", "might", "must",
-
-    "not", "no", "very", "too", "more", "most", "than", "up", "out", "off", "down"
-
+    "not", "no", "very", "too", "more", "most", "than", "up", "out", "off", "down",
+    # Hindi / Hinglish
+    "ki", "ke", "ka", "ko", "se", "aur", "ya", "par", "pe", "toh", "to",
+    "agar", "jab", "kyunki", "kyuki", "matlab"
 }
 
 
 
 DANGLING_START_WORDS = {
-
+    # English
     "and", "but", "or", "so", "because", "then", "which", "also", "plus",
-
     "yet", "however", "though", "well", "like", "actually", "basically",
-
-    "now", "furthermore", "moreover", "anyway"
-
+    "now", "furthermore", "moreover", "anyway", "since", "until", "unless",
+    # Hindi / Hinglish
+    "toh", "to", "aur", "isliye", "fir", "phir", "lekin", "par", "magar",
+    "kyunki", "kyuki", "jabki", "waise", "waisebhi", "matlab", "yani",
+    "jaise", "jaisi", "agar", "tab", "tabhi", "phirbhi", "firbhi"
 }
 
 
@@ -1050,20 +1047,26 @@ def snap_to_sentence_boundaries(
 
 
     if clean_starts:
-
         clean_starts.sort(key=lambda x: x[0])
-
         best_start = clean_starts[0][1]
-
         best_start_idx = clean_starts[0][2]
-
     else:
-
         closest = min(range(num_segs), key=lambda i: abs(segments[i]["start"] - target_start))
-
         best_start = segments[closest]["start"]
-
         best_start_idx = closest
+
+    # Setup Context Expansion: If start begins with a dangling connector ("Toh", "Isliye", "Aur", "But"),
+    # expand backward so the setup is never cut off!
+    while best_start_idx > 0:
+        words = segments[best_start_idx].get("text", "").split()
+        if not words:
+            break
+        first_w = words[0].lower().strip(".,!?;:\"'-()[]{}")
+        if first_w in DANGLING_START_WORDS:
+            best_start_idx -= 1
+            best_start = segments[best_start_idx]["start"]
+        else:
+            break
 
 
 
@@ -1626,15 +1629,38 @@ def detect_semantic_story_candidates(
     """
 
     print(f"[Channel 2/3: Semantic Stories] Scanning {len(segments)} speech segments for viral story hooks...")
-
     if not segments:
-
         return []
 
-
+    # Priority 1: Sentence-ID Driven LLM Narrative Arc Finder (AI Finder, not Regex)
+    try:
+        from transcript_arc_finder import discover_story_arcs_with_sentence_ids
+        arc_moments = discover_story_arcs_with_sentence_ids(
+            segments=segments,
+            target_moments=top_n,
+            min_duration=MIN_CLIP_DURATION,
+            max_duration=MAX_CLIP_DURATION
+        )
+        if arc_moments and len(arc_moments) >= 1:
+            print(f"[Channel 2/3: Semantic Stories] LLM Arc Finder discovered {len(arc_moments)} complete story arcs!")
+            ai_candidates = []
+            for arc in arc_moments:
+                ai_candidates.append({
+                    "start": arc["start"],
+                    "end": arc["end"],
+                    "duration": arc["duration"],
+                    "score": float(arc.get("virality_score", 95)),
+                    "semantic_score": float(arc.get("virality_score", 95)),
+                    "title": arc.get("title") or "Viral Story Arc 🎯",
+                    "hook_quote": arc.get("hook_quote", ""),
+                    "reason": arc.get("virality_reason", "Complete story arc from setup to payoff."),
+                    "source": "llm_sentence_arc_finder"
+                })
+            return ai_candidates
+    except Exception as arc_err:
+        print(f"[Channel 2/3: Semantic Stories] Arc finder notice: {arc_err}. Falling back to sliding window heuristic.")
 
     candidates = []
-
     num_segs = len(segments)
 
 
@@ -2052,84 +2078,66 @@ def evaluate_context_with_llm(text: str, duration: float, opening_text: Optional
 
 
 
-    # 1. Try Groq Cloud LLM (Qwen 3.8 27B)
+    prompt = (
+        f"You are an expert viral short-form video editor specializing in YouTube Shorts and Instagram Reels.\n\n"
+        f"Opening Hook Zone (First 3-5s of speech):\n"
+        f"\"\"\"{hook_slice}\"\"\"\n\n"
+        f"Full Speech Segment Transcript (~{int(duration)}s):\n"
+        f"\"\"\"{text}\"\"\"\n\n"
+        f"Instructions:\n"
+        f"1. Rate viral potential on a scale of 1-10:\n"
+        f"   - Crucial: Does the opening hook ('{hook_slice}') instantly grab the viewer (curiosity gap, provocative statement, question, bold claim) without feeling cut mid-sentence?\n"
+        f"   - Does it deliver a satisfying revelation, emotional punch, or insight before ending?\n"
+        f"   - Is it completely coherent as a standalone clip?\n"
+        f"2. Generate an ultra-catchy, viral 3-6 word title summarizing this exact moment's hook/core insight (DO NOT use generic titles like 'Interesting Moment' or 'Video Highlight').\n\n"
+        f"Respond with JSON ONLY in this format:\n"
+        f"{{\"rating\": 8.8, \"title\": \"Punchy 3-6 Word Title\"}}"
+    )
 
+    # 1. Try Gemini 3.8 / 3.5 / Flash-Latest first
+    from transcript_arc_finder import get_gemini_client
+    g_client = get_gemini_client()
+    if g_client:
+        for m_name in ["gemini-3.8-flash", "gemini-3.5-flash", "gemini-flash-latest"]:
+            try:
+                g_res = g_client.models.generate_content(
+                    model=m_name,
+                    contents=prompt,
+                    config={
+                        "response_mime_type": "application/json",
+                        "temperature": 0.3
+                    }
+                )
+                if g_res and g_res.text:
+                    data = json.loads(g_res.text.strip())
+                    rating = max(1.0, min(10.0, float(data.get("rating", 8.0))))
+                    raw_title = data.get("title", "").strip()
+                    title = raw_title if raw_title and len(raw_title) > 3 else generate_smart_title_from_text(text)
+                    return rating, title
+            except Exception:
+                continue
+
+    # 2. Try Groq Cloud LLM (Qwen 3.8 27B) as backup
     client = get_cached_groq_client()
-
     if client:
-
         try:
-
-            prompt = (
-
-                f"You are an expert viral short-form video editor specializing in YouTube Shorts and Instagram Reels.\n\n"
-
-                f"Opening Hook Zone (First 3-5s of speech):\n"
-
-                f"\"\"\"{hook_slice}\"\"\"\n\n"
-
-                f"Full Speech Segment Transcript (~{int(duration)}s):\n"
-
-                f"\"\"\"{text}\"\"\"\n\n"
-
-                f"Instructions:\n"
-
-                f"1. Rate viral potential on a scale of 1-10:\n"
-
-                f"   - Crucial: Does the opening hook ('{hook_slice}') instantly grab the viewer (curiosity gap, provocative statement, question, bold claim) without feeling cut mid-sentence?\n"
-
-                f"   - Does it deliver a satisfying revelation, emotional punch, or insight before ending?\n"
-
-                f"   - Is it completely coherent as a standalone clip?\n"
-
-                f"2. Generate an ultra-catchy, viral 3-6 word title summarizing this exact moment's hook/core insight (DO NOT use generic titles like 'Interesting Moment' or 'Video Highlight').\n\n"
-
-                f"Respond with JSON ONLY in this format:\n"
-
-                f"{{\"rating\": 8.8, \"title\": \"Punchy 3-6 Word Title\"}}"
-
-            )
-
             resp = client.chat.completions.create(
-
                 model="qwen/qwen3.8-27b",
-
                 messages=[
-
                     {"role": "system", "content": "You are an expert viral short video curator. Always reply in valid JSON only."},
-
                     {"role": "user", "content": prompt}
-
                 ],
-
                 temperature=0.3,
-
                 max_tokens=150,
-
                 response_format={"type": "json_object"}
-
             )
-
             raw_content = resp.choices[0].message.content or "{}"
-
             data = json.loads(raw_content)
-
             rating = max(1.0, min(10.0, float(data.get("rating", 7.5))))
-
             raw_title = data.get("title", "").strip()
-
-            if raw_title and raw_title.lower() not in ["interesting moment", "top video moment", "best video highlight", "untitled"]:
-
-                title = raw_title
-
-            else:
-
-                title = generate_smart_title_from_text(text)
-
+            title = raw_title if raw_title and len(raw_title) > 3 else generate_smart_title_from_text(text)
             return rating, title
-
         except Exception as err:
-
             print(f"  -> Groq LLM evaluation notice: {err}. Gracefully falling back to local heuristic.")
 
 
