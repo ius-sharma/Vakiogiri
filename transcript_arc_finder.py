@@ -269,7 +269,7 @@ def discover_story_arcs_with_sentence_ids(
 - Max Moments Requested: {target_moments}
 
 NUMBERED TRANSCRIPT:
-{indexed_transcript_text[:18000]}
+{indexed_transcript_text[:120000]}
 
 JSON OUTPUT FORMAT:
 Return a JSON array of objects matching this exact schema:

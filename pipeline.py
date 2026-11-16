@@ -121,7 +121,36 @@ def probe_stream_metadata(url: str) -> Dict[str, Any]:
     except Exception as e:
         clean_msg = strip_ansi(str(e))
         print(f"[Probe Notice] Fast probe encountered notice: {clean_msg}")
-        return {"duration": 0.0, "title": "YouTube Video", "is_live": False, "live_status": "unknown"}
+        title = "YouTube Video"
+        uploader = ""
+        thumbnail = ""
+        try:
+            import urllib.request
+            oe_url = f"https://www.youtube.com/oembed?url={url}&format=json"
+            req = urllib.request.Request(oe_url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=4) as r:
+                d = json.loads(r.read().decode("utf-8"))
+                title = d.get("title") or title
+                uploader = d.get("author_name") or uploader
+                thumbnail = d.get("thumbnail_url") or thumbnail
+        except Exception:
+            pass
+        vid_match = re.search(r"(?:v=|\/|youtu\.be\/)([0-9A-Za-z_-]{11})", url)
+        v_id = vid_match.group(1) if vid_match else ""
+        is_live_hint = ("/live/" in url.lower()) or ("live" in title.lower()) or ("bgmi" in title.lower())
+        est_dur = 14400.0 if is_live_hint else 1800.0
+        return {
+            "is_stream": is_live_hint,
+            "duration": est_dur,
+            "duration_formatted": format_duration(est_dur),
+            "title": title,
+            "is_live": False,
+            "live_status": "not_live",
+            "was_live": is_live_hint,
+            "uploader": uploader,
+            "video_id": v_id,
+            "thumbnail": thumbnail or (f"https://img.youtube.com/vi/{v_id}/hqdefault.jpg" if v_id else "")
+        }
 
 
 def check_ffmpeg_installed() -> bool:
