@@ -83,9 +83,11 @@ class VakiogiriLayoutEngine:
                 "1. Distinguish between REAL HUMAN streamers and video game characters/animations. NEVER classify in-game characters or HUD graphics as a facecam.\n"
                 "2. A streamer webcam is typically positioned along the perimeter or corners (bottom-left, bottom-right, top-left, top-right) and often has an overlay border or camera box.\n"
                 "3. If a real human streamer facecam is detected, return bounding box coordinates [ymin, xmin, ymax, xmax] normalized from 0 to 1000:\n"
-                "   {\"has_facecam\": true, \"box_2d\": [ymin, xmin, ymax, xmax]}\n"
+                "   - 'webcam_box': Bounding box of the entire webcam overlay container on screen.\n"
+                "   - 'face_box': Bounding box of the streamer's human face/head inside that webcam.\n"
+                "   {\"has_facecam\": true, \"webcam_box\": [ymin, xmin, ymax, xmax], \"face_box\": [ymin, xmin, ymax, xmax]}\n"
                 "4. If NO human streamer webcam is present (pure gameplay only, or only video game characters), return:\n"
-                "   {\"has_facecam\": false, \"box_2d\": null}\n"
+                "   {\"has_facecam\": false, \"webcam_box\": null, \"face_box\": null}\n"
                 "5. Return ONLY a valid JSON object matching this schema."
             )
 
@@ -116,48 +118,91 @@ class VakiogiriLayoutEngine:
                 print("  -> [Gemini Vision Layout] Confirmed: No streamer facecam (Pure Gameplay stream).")
                 return None
 
-            box_2d = data.get("box_2d")
-            if not box_2d or len(box_2d) != 4:
+            # Support both new schema ('webcam_box') and legacy schema ('box_2d')
+            raw_box = data.get("webcam_box") or data.get("box_2d")
+            if not raw_box or len(raw_box) != 4:
                 return None
 
-            ymin, xmin, ymax, xmax = [float(coord) for coord in box_2d]
+            ymin, xmin, ymax, xmax = [float(coord) for coord in raw_box]
             raw_x = int((xmin / 1000.0) * w)
             raw_y = int((ymin / 1000.0) * h)
             raw_w = int(((xmax - xmin) / 1000.0) * w)
             raw_h = int(((ymax - ymin) / 1000.0) * h)
 
             # Plausibility sanity checks:
-            # A real webcam is between 40px and 65% of screen dimensions
-            if raw_w < 40 or raw_h < 40 or raw_w > int(w * 0.65) or raw_h > int(h * 0.70):
+            # A real webcam is between 40px and 70% of screen dimensions
+            if raw_w < 40 or raw_h < 40 or raw_w > int(w * 0.70) or raw_h > int(h * 0.75):
                 print(f"  -> [Gemini Vision Layout] Implausible facecam dimensions ({raw_w}x{raw_h}), rejecting.")
                 return None
 
-            # Calculate center & target aspect ratio
-            cx = raw_x + raw_w // 2
-            cy = raw_y + raw_h // 2
+            # Detect or refine the streamer's face location inside the webcam box
+            face_x, face_y, face_w, face_h = None, None, None, None
+            raw_fb = data.get("face_box")
+            if raw_fb and len(raw_fb) == 4:
+                f_ymin, f_xmin, f_ymax, f_xmax = [float(coord) for coord in raw_fb]
+                face_x = int((f_xmin / 1000.0) * w)
+                face_y = int((f_ymin / 1000.0) * h)
+                face_w = int(((f_xmax - f_xmin) / 1000.0) * w)
+                face_h = int(((f_ymax - f_ymin) / 1000.0) * h)
+
+            # Local Haar cascade refinement inside the webcam boundary if Gemini didn't return face_box
+            if not face_w or face_w < 10 or not face_h or face_h < 10:
+                try:
+                    wc_crop = frame_bgr[raw_y:raw_y + raw_h, raw_x:raw_x + raw_w]
+                    if wc_crop.shape[0] > 30 and wc_crop.shape[1] > 30:
+                        gray_wc = cv2.cvtColor(wc_crop, cv2.COLOR_BGR2GRAY)
+                        faces = self.face_cascade.detectMultiScale(
+                            gray_wc,
+                            scaleFactor=1.10,
+                            minNeighbors=3,
+                            minSize=(25, 25)
+                        )
+                        if len(faces) > 0:
+                            bfx, bfy, bfw, bfh = max(faces, key=lambda b: b[2] * b[3])
+                            face_x = raw_x + bfx
+                            face_y = raw_y + bfy
+                            face_w = bfw
+                            face_h = bfh
+                except Exception:
+                    pass
+
             target_aspect_h = 720 if layout_mode == "face_top_game_bottom" else 960
-            cam_aspect = target_aspect_h / 1080.0
+            target_aspect_w = 1080
+            aspect_ratio = target_aspect_w / float(target_aspect_h)  # 1.125 for 50/50 split
 
-            cam_target_w = int(max(raw_w * 1.30, 300))
-            cam_target_h = int(cam_target_w * cam_aspect)
+            # If face coordinates are found, zoom in tightly on the streamer's face & shoulders (~2.1x face height)
+            # If no face is found, use the webcam center
+            if face_w and face_h and face_w > 10 and face_h > 10:
+                face_cx = face_x + face_w // 2
+                face_cy = face_y + face_h // 2
+                desired_h = max(int(face_h * 2.1), int(raw_h * 0.60))
+            else:
+                face_cx = raw_x + raw_w // 2
+                face_cy = raw_y + raw_h // 2
+                desired_h = raw_h
 
-            cam_x = max(0, cx - cam_target_w // 2)
-            cam_y = max(0, cy - int(cam_target_h * 0.44))
+            desired_w = int(desired_h * aspect_ratio)
 
-            if cam_x + cam_target_w > w:
-                cam_x = max(0, w - cam_target_w)
-            if cam_y + cam_target_h > h:
-                cam_y = max(0, h - cam_target_h)
+            # Strict Boundary Rule: Crop MUST stay completely inside the webcam box to prevent game HUD/floor bleed
+            if desired_w > raw_w:
+                desired_w = raw_w
+                desired_h = int(desired_w / aspect_ratio)
+            if desired_h > raw_h:
+                desired_h = raw_h
+                desired_w = int(desired_h * aspect_ratio)
 
-            cam_w = min(cam_target_w, w - cam_x)
-            cam_h = min(cam_target_h, h - cam_y)
+            # Center on face while clamping strictly inside webcam perimeter
+            cam_x = max(raw_x, min(face_cx - desired_w // 2, raw_x + raw_w - desired_w))
+            cam_y = max(raw_y, min(face_cy - int(desired_h * 0.40), raw_y + raw_h - desired_h))
+            cam_w = desired_w
+            cam_h = desired_h
 
             cam_x -= (cam_x % 2)
             cam_y -= (cam_y % 2)
             cam_w -= (cam_w % 2)
             cam_h -= (cam_h % 2)
 
-            print(f"  -> [Gemini Vision Layout] Detected high-accuracy facecam box: x={cam_x}, y={cam_y}, w={cam_w}, h={cam_h}")
+            print(f"  -> [Gemini Vision Layout] Detected tight zoomed facecam box: x={cam_x}, y={cam_y}, w={cam_w}, h={cam_h} (Aspect: {cam_w}:{cam_h})")
             return {
                 "x": cam_x,
                 "y": cam_y,
@@ -258,17 +303,16 @@ class VakiogiriLayoutEngine:
         median_cy = int(sorted(cy_list)[len(cy_list) // 2])
         median_fw = int(sorted(fw_list)[len(fw_list) // 2])
 
-        cam_target_w = int(max(median_fw * 2.8, 300))
         target_aspect_h = 720 if layout_mode == "face_top_game_bottom" else 960
-        cam_target_h = int(cam_target_w * (target_aspect_h / 1080))
+        target_aspect_w = 1080
+        aspect_ratio = target_aspect_w / float(target_aspect_h)
 
-        cam_x = max(0, median_cx - cam_target_w // 2)
-        cam_y = max(0, median_cy - int(cam_target_h * 0.42))
+        # Tight face zoom: ~2.1x face height for impactful streamer facial reactions
+        cam_target_h = int(max(median_fw * 2.1, 240))
+        cam_target_w = int(cam_target_h * aspect_ratio)
 
-        if cam_x + cam_target_w > width:
-            cam_x = max(0, width - cam_target_w)
-        if cam_y + cam_target_h > height:
-            cam_y = max(0, height - cam_target_h)
+        cam_x = max(0, min(median_cx - cam_target_w // 2, width - cam_target_w))
+        cam_y = max(0, min(median_cy - int(cam_target_h * 0.40), height - cam_target_h))
 
         cam_w = min(cam_target_w, width - cam_x)
         cam_h = min(cam_target_h, height - cam_y)
