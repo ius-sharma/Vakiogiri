@@ -169,6 +169,103 @@ def check_ffmpeg_installed() -> bool:
     return True
 
 
+def resolve_youtube_stream_source(url: str, quality: str = "720p") -> Optional[Dict[str, Any]]:
+    """
+    Extracts direct HLS (m3u8) or HTTPS direct stream URLs using yt-dlp in ~2-5s.
+    Enables instant micro-slicing (Option D): zero whole-video download, zero disk overflow.
+    """
+    cookie_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cookies.txt")
+    try:
+        max_h = int(quality.lower().rstrip("p")) if quality and quality.lower() != "best" else 720
+    except Exception:
+        max_h = 720
+
+    # Priority 1: HLS m3u8 (Segmented parallel streams, fastest and immune to YouTube throttling)
+    hls_opts = {
+        'quiet': True,
+        'no_warnings': True,
+        'nocheckcertificate': True,
+        'format': f'bestvideo[protocol*=m3u8][height<={max_h}]+bestaudio[protocol*=m3u8]/best[protocol*=m3u8][height<={max_h}]/best[protocol*=m3u8]',
+    }
+    if os.path.exists(cookie_path):
+        hls_opts['cookiefile'] = cookie_path
+
+    try:
+        with yt_dlp.YoutubeDL(hls_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            if info and info.get('url'):
+                return {'type': 'hls', 'url': info['url'], 'quality': quality}
+    except Exception as e:
+        print(f"[Stream Resolver] HLS probe notice: {strip_ansi(str(e))}")
+
+    # Priority 2: Direct DASH separate video + audio streams
+    dash_opts = {
+        'quiet': True,
+        'no_warnings': True,
+        'nocheckcertificate': True,
+        'format': f'bestvideo[height<={max_h}][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<={max_h}]+bestaudio/best[height<={max_h}]',
+    }
+    if os.path.exists(cookie_path):
+        dash_opts['cookiefile'] = cookie_path
+
+    try:
+        with yt_dlp.YoutubeDL(dash_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            req = info.get('requested_formats')
+            if req and len(req) >= 2:
+                return {'type': 'dash', 'video_url': req[0]['url'], 'audio_url': req[1]['url'], 'quality': quality}
+            elif info.get('url'):
+                return {'type': 'single', 'url': info['url'], 'quality': quality}
+    except Exception as e:
+        print(f"[Stream Resolver] DASH probe notice: {strip_ansi(str(e))}")
+
+    return None
+
+
+def extract_stream_slice(stream_source: Dict[str, Any], start_sec: float, duration_sec: float, output_path: str) -> bool:
+    """
+    Extracts a pristine micro-slice (e.g. 30-45s) directly from YouTube HLS/DASH streams in ~2-4s.
+    Zero full-video download, zero disk overflow.
+    """
+    os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+    st_type = stream_source.get("type", "single")
+    
+    if st_type == "dash" and stream_source.get("video_url") and stream_source.get("audio_url"):
+        cmd = [
+            "ffmpeg", "-y",
+            "-ss", str(start_sec),
+            "-t", str(duration_sec),
+            "-i", stream_source["video_url"],
+            "-ss", str(start_sec),
+            "-t", str(duration_sec),
+            "-i", stream_source["audio_url"],
+            "-c:v", "copy",
+            "-c:a", "aac",
+            "-avoid_negative_ts", "make_zero",
+            output_path
+        ]
+    else:
+        stream_url = stream_source.get("url") or stream_source.get("video_url")
+        if not stream_url:
+            return False
+        cmd = [
+            "ffmpeg", "-y",
+            "-ss", str(start_sec),
+            "-t", str(duration_sec),
+            "-i", stream_url,
+            "-c", "copy",
+            "-avoid_negative_ts", "make_zero",
+            output_path
+        ]
+
+    try:
+        subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+        return os.path.exists(output_path) and os.path.getsize(output_path) > 10000
+    except Exception as err:
+        print(f"[Micro-Slice Error] ffmpeg direct stream slice error: {err}")
+        return False
+
+
 def download_video(
     url: str,
     output_dir: str,
@@ -486,7 +583,7 @@ def get_render_dimensions(aspect_ratio: str, quality: str = "1080p") -> tuple[in
 
 
 def split_and_crop_video(
-    video_path: str,
+    video_path: Optional[str],
     output_dir: str,
     duration: float,
     moments: Optional[List[Dict[str, Any]]] = None,
@@ -498,7 +595,8 @@ def split_and_crop_video(
     speech_segments: Optional[List[Dict[str, Any]]] = None,
     progress_callback: Optional[Callable[[str, int, str], None]] = None,
     subtitle_language: str = "hinglish",
-    layout_mode: str = "gaming_split"
+    layout_mode: str = "gaming_split",
+    stream_source: Optional[Dict[str, Any]] = None
 ) -> List[Dict[str, Any]]:
     """
     Split and render video clips based on dynamic best moments.
@@ -564,145 +662,176 @@ def split_and_crop_video(
         clip_name = f"clip_{i + 1}.mp4"
         clip_path = os.path.join(output_dir, clip_name)
         
-        # Calculate progress between 75% and 92%
+        # Calculate progress
         if progress_callback:
-            clip_progress = int(75 + ((i + 1) / max(1, num_clips)) * 17)
+            base_prog = 20 if stream_source else 75
+            max_span = 72 if stream_source else 17
+            clip_progress = int(base_prog + ((i) / max(1, num_clips)) * max_span)
             progress_callback(
                 "clipping",
                 clip_progress,
-                f"Rendering clip {i + 1} of {num_clips} ({ratio_label} '{target['title']}', score {target['score']})..."
+                f"Rendering Short {i + 1} of {num_clips} ({ratio_label} '{target['title']}')..."
             )
 
-        # Dynamic Vakiogiri 9:16 Signature Layout Engine (Top Gameplay + Bottom Facecam + Center Line & Captions)
-        current_vf = vf_filter
-        use_filter_complex = False
-        current_filtergraph = None
+        # Option D: Direct Micro-Slice handling (Zero whole-video download, zero disk overflow)
+        current_input_video = video_path
+        current_seek = start_time
+        temp_raw_slice = None
 
-        if aspect_ratio == "9:16":
-            # 1. Detect facecam/reaction window in video
-            facecam_box = vakiogiri_layout_engine.detect_facecam_box(
-                video_path=video_path,
-                start_time=start_time,
-                duration=clip_dur,
-                layout_mode=layout_mode
+        if stream_source:
+            temp_raw_slice = os.path.join(output_dir, f"temp_raw_{i + 1}.mp4")
+            if progress_callback:
+                progress_callback(
+                    "clipping",
+                    clip_progress,
+                    f"Direct streaming Short {i + 1} of {num_clips} ({format_duration(start_time)})..."
+                )
+            slice_ok = extract_stream_slice(
+                stream_source=stream_source,
+                start_sec=start_time,
+                duration_sec=clip_dur,
+                output_path=temp_raw_slice
             )
+            if slice_ok and os.path.exists(temp_raw_slice):
+                current_input_video = temp_raw_slice
+                current_seek = 0.0
+            else:
+                print(f"[Pipeline Warning] Micro-slice extraction failed for clip {i + 1}, falling back to video_path.")
 
-            # 2. Build center-anchored subtitle file if caption_style != 'none'
-            ass_sub_path = None
-            if caption_style != "none":
-                ass_file = os.path.join(output_dir, f"subs_{i + 1}.ass")
-                
-                # Always transcribe this specific clip's audio slice directly for 100% full-clip subtitle coverage
-                slice_wav = os.path.join(output_dir, f"temp_slice_{i + 1}.wav")
-                subprocess.run([
-                    "ffmpeg", "-y",
-                    "-ss", str(start_time),
-                    "-t", str(clip_dur),
-                    "-i", video_path,
-                    "-vn", "-ac", "1", "-ar", "16000",
-                    slice_wav
-                ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                
-                direct_segs = []
-                if os.path.exists(slice_wav):
-                    try:
-                        direct_segs = transcribe_video_audio(slice_wav, subtitle_language=subtitle_language)
-                    finally:
-                        if os.path.exists(slice_wav):
-                            try:
-                                os.remove(slice_wav)
-                            except Exception:
-                                pass
+        if not current_input_video or not os.path.exists(current_input_video):
+            print(f"[Pipeline Error] No valid input video for clip {i + 1}")
+            continue
 
-                if direct_segs:
-                    ass_sub_path = vakiogiri_layout_engine.generate_center_ass_subtitles(
-                        ass_path=ass_file,
-                        speech_segments=direct_segs,
-                        video_w=target_w,
-                        video_h=target_h,
-                        style=caption_style,
-                        clip_start=0.0,
-                        clip_end=clip_dur,
-                        layout_mode=layout_mode
-                    )
-                    # Update title and hook_quote with first spoken words
-                    if direct_segs[0].get("text") and str(target.get("title", "")).startswith("Key Highlight #"):
-                        first_hook = direct_segs[0]["text"].strip()
-                        target["title"] = f'"{first_hook}"'
-                        target["hook_quote"] = first_hook
-                elif speech_segments:
-                    # Fallback to global speech segments if slice transcription was empty
-                    clip_words = [s for s in speech_segments if float(s.get("end", 0.0)) > start_time and float(s.get("start", 0.0)) < (start_time + clip_dur)]
-                    if clip_words:
+        try:
+            # Dynamic Vakiogiri 9:16 Signature Layout Engine (Top Gameplay + Bottom Facecam + Center Line & Captions)
+            current_vf = vf_filter
+            use_filter_complex = False
+            current_filtergraph = None
+
+            if aspect_ratio == "9:16":
+                # 1. Detect facecam/reaction window in video
+                facecam_box = vakiogiri_layout_engine.detect_facecam_box(
+                    video_path=current_input_video,
+                    start_time=current_seek,
+                    duration=clip_dur,
+                    layout_mode=layout_mode
+                )
+
+                # 2. Build center-anchored subtitle file if caption_style != 'none'
+                ass_sub_path = None
+                if caption_style != "none":
+                    ass_file = os.path.join(output_dir, f"subs_{i + 1}.ass")
+                    
+                    # Always transcribe this specific clip's audio slice directly for 100% full-clip subtitle coverage
+                    slice_wav = os.path.join(output_dir, f"temp_slice_{i + 1}.wav")
+                    subprocess.run([
+                        "ffmpeg", "-y",
+                        "-ss", str(current_seek),
+                        "-t", str(clip_dur),
+                        "-i", current_input_video,
+                        "-vn", "-ac", "1", "-ar", "16000",
+                        slice_wav
+                    ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    
+                    direct_segs = []
+                    if os.path.exists(slice_wav):
+                        try:
+                            direct_segs = transcribe_video_audio(slice_wav, subtitle_language=subtitle_language)
+                        finally:
+                            if os.path.exists(slice_wav):
+                                try:
+                                    os.remove(slice_wav)
+                                except Exception:
+                                    pass
+
+                    if direct_segs:
                         ass_sub_path = vakiogiri_layout_engine.generate_center_ass_subtitles(
                             ass_path=ass_file,
-                            speech_segments=speech_segments,
+                            speech_segments=direct_segs,
                             video_w=target_w,
                             video_h=target_h,
                             style=caption_style,
-                            clip_start=start_time,
-                            clip_end=start_time + clip_dur,
+                            clip_start=0.0,
+                            clip_end=clip_dur,
                             layout_mode=layout_mode
                         )
+                        # Update title and hook_quote with first spoken words
+                        if direct_segs[0].get("text") and str(target.get("title", "")).startswith("Key Highlight #"):
+                            first_hook = direct_segs[0]["text"].strip()
+                            target["title"] = f'"{first_hook}"'
+                            target["hook_quote"] = first_hook
+                    elif speech_segments:
+                        # Fallback to global speech segments if slice transcription was empty
+                        clip_words = [s for s in speech_segments if float(s.get("end", 0.0)) > start_time and float(s.get("start", 0.0)) < (start_time + clip_dur)]
+                        if clip_words:
+                            ass_sub_path = vakiogiri_layout_engine.generate_center_ass_subtitles(
+                                ass_path=ass_file,
+                                speech_segments=speech_segments,
+                                video_w=target_w,
+                                video_h=target_h,
+                                style=caption_style,
+                                clip_start=start_time,
+                                clip_end=start_time + clip_dur,
+                                layout_mode=layout_mode
+                            )
 
-            # 3. Construct dual-stack split layout or fallback vertical crop
-            current_filtergraph = vakiogiri_layout_engine.build_ffmpeg_filter(
-                target_w=target_w,
-                target_h=target_h,
-                facecam_box=facecam_box,
-                ass_subtitle_path=ass_sub_path,
-                layout_mode=layout_mode
-            )
-            use_filter_complex = True
+                # 3. Construct dual-stack split layout or fallback vertical crop
+                current_filtergraph = vakiogiri_layout_engine.build_ffmpeg_filter(
+                    target_w=target_w,
+                    target_h=target_h,
+                    facecam_box=facecam_box,
+                    ass_subtitle_path=ass_sub_path,
+                    layout_mode=layout_mode
+                )
+                use_filter_complex = True
 
-        if use_filter_complex and current_filtergraph:
-            fg_with_pts = current_filtergraph + ",setpts=PTS-STARTPTS[outv]"
-            ffmpeg_cmd = [
-                "ffmpeg",
-                "-y",
-                "-ss", str(start_time),
-                "-t", str(clip_dur),
-                "-i", video_path,
-                "-avoid_negative_ts", "make_zero",
-                "-filter_complex", fg_with_pts,
-                "-map", "[outv]",
-                "-map", "0:a?",
-                "-af", "asetpts=PTS-STARTPTS",
-                "-c:v", "libx264",
-                "-preset", "faster",
-                "-crf", "15",
-                "-tune", "film",
-                "-pix_fmt", "yuv420p",
-                "-c:a", "aac",
-                "-b:a", "256k",
-                "-ar", "48000",
-                "-movflags", "+faststart",
-                clip_path
-            ]
-        else:
-            vf_with_pts = current_vf + (",setpts=PTS-STARTPTS" if current_vf else "setpts=PTS-STARTPTS")
-            ffmpeg_cmd = [
-                "ffmpeg",
-                "-y",
-                "-ss", str(start_time),
-                "-t", str(clip_dur),
-                "-i", video_path,
-                "-avoid_negative_ts", "make_zero",
-                "-vf", vf_with_pts,
-                "-af", "asetpts=PTS-STARTPTS",
-                "-c:v", "libx264",
-                "-preset", "faster",
-                "-crf", "15",
-                "-tune", "film",
-                "-pix_fmt", "yuv420p",
-                "-c:a", "aac",
-                "-b:a", "256k",
-                "-ar", "48000",
-                "-movflags", "+faststart",
-                clip_path
-            ]
-        
-        try:
+            if use_filter_complex and current_filtergraph:
+                fg_with_pts = current_filtergraph + ",setpts=PTS-STARTPTS[outv]"
+                ffmpeg_cmd = [
+                    "ffmpeg",
+                    "-y",
+                    "-ss", str(current_seek),
+                    "-t", str(clip_dur),
+                    "-i", current_input_video,
+                    "-avoid_negative_ts", "make_zero",
+                    "-filter_complex", fg_with_pts,
+                    "-map", "[outv]",
+                    "-map", "0:a?",
+                    "-af", "asetpts=PTS-STARTPTS",
+                    "-c:v", "libx264",
+                    "-preset", "faster",
+                    "-crf", "15",
+                    "-tune", "film",
+                    "-pix_fmt", "yuv420p",
+                    "-c:a", "aac",
+                    "-b:a", "256k",
+                    "-ar", "48000",
+                    "-movflags", "+faststart",
+                    clip_path
+                ]
+            else:
+                vf_with_pts = current_vf + (",setpts=PTS-STARTPTS" if current_vf else "setpts=PTS-STARTPTS")
+                ffmpeg_cmd = [
+                    "ffmpeg",
+                    "-y",
+                    "-ss", str(current_seek),
+                    "-t", str(clip_dur),
+                    "-i", current_input_video,
+                    "-avoid_negative_ts", "make_zero",
+                    "-vf", vf_with_pts,
+                    "-af", "asetpts=PTS-STARTPTS",
+                    "-c:v", "libx264",
+                    "-preset", "faster",
+                    "-crf", "15",
+                    "-tune", "film",
+                    "-pix_fmt", "yuv420p",
+                    "-c:a", "aac",
+                    "-b:a", "256k",
+                    "-ar", "48000",
+                    "-movflags", "+faststart",
+                    clip_path
+                ]
+            
             subprocess.run(ffmpeg_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
             
             # Extract instant visual preview thumbnail poster from rendered video
@@ -739,6 +868,12 @@ def split_and_crop_video(
             })
         except subprocess.CalledProcessError as e:
             raise RuntimeError(f"Failed creating clip {clip_name}: {e.stderr}")
+        finally:
+            if temp_raw_slice and os.path.exists(temp_raw_slice):
+                try:
+                    os.remove(temp_raw_slice)
+                except Exception:
+                    pass
 
     # Persist clip metadata.json for the frontend, critic agent, and API consumers
     try:
@@ -828,42 +963,49 @@ def run_pipeline(
                     f"Please choose a stream under {int(MAX_STREAM_DURATION_HOURS)} hours to avoid system overload."
                 )
 
-            # Determine slice bounds for stream mode or user-selected moments
-            stream_slice_start = max(0.0, float(stream_start_min or 0.0) * 60.0) if content_type == "stream" else 0.0
-            stream_slice_end = (float(stream_end_min) * 60.0) if (content_type == "stream" and stream_end_min and float(stream_end_min) > 0) else None
-            
-            # If user selected specific viral moments, automatically scope download slice to cover those moments!
-            # This turns a 10 GB (4.7-hour) download into a lightweight ~20-50 MB slice that downloads in seconds!
+            # Option D: If user selected specific viral moments, use direct streaming micro-slicing!
+            # Zero 10GB downloads, zero 2-hour throttling, zero disk overflow!
             if selected_moments and len(selected_moments) > 0:
-                min_m_start = max(0.0, min(float(m.get("start", 0.0)) for m in selected_moments) - 15.0)
-                max_m_end = max(float(m.get("end", 0.0)) for m in selected_moments) + 15.0
-                if max_m_end > min_m_start and (max_m_end - min_m_start) <= 5400.0:
-                    stream_slice_start = min_m_start
-                    stream_slice_end = max_m_end
-                    print(f"[Pipeline] Smart Slice Active for {len(selected_moments)} selected moments: {format_duration(stream_slice_start)} to {format_duration(stream_slice_end)}")
+                if progress_callback:
+                    progress_callback("resolving_stream", 15, "Connecting to direct YouTube stream for instant micro-slicing (Option D)...")
+                try:
+                    stream_source = resolve_youtube_stream_source(youtube_url, quality=quality)
+                    if stream_source:
+                        print(f"[Pipeline] Option D Active: Resolved high-speed direct stream ({stream_source['type']}).")
+                except Exception as stream_res_err:
+                    print(f"[Pipeline Notice] Stream resolver notice: {stream_res_err}")
 
-            # Only perform time-sliced download when an explicit, bounded end timestamp is provided
-            is_partial_stream = (stream_slice_end is not None and stream_slice_end > stream_slice_start)
+            if stream_source:
+                duration = stream_dur if stream_dur > 0 else 14400.0
+                video_path = None
+                is_partial_stream = False
+            else:
+                # Determine slice bounds for stream mode or user-selected moments
+                stream_slice_start = max(0.0, float(stream_start_min or 0.0) * 60.0) if content_type == "stream" else 0.0
+                stream_slice_end = (float(stream_end_min) * 60.0) if (content_type == "stream" and stream_end_min and float(stream_end_min) > 0) else None
 
-            # For full-length downloads of long livestreams (> 30 mins) without slicing,
-            # cap quality to 720p to guarantee safe remuxing within server disk limits (prevents 20GB disk full crash)
-            effective_quality = quality
-            if not is_partial_stream and stream_dur > 1800.0 and quality.lower() in ["1080p", "best"]:
-                print(f"[Pipeline] Long stream detected ({format_duration(stream_dur)}). Using 720p to guarantee safe remuxing within disk limits.")
-                effective_quality = "720p"
+                # Only perform time-sliced download when an explicit, bounded end timestamp is provided
+                is_partial_stream = (stream_slice_end is not None and stream_slice_end > stream_slice_start)
 
-            # 1. Download YouTube video in requested quality (partial range download if stream slice active)
-            video_path = download_video(
-                url=youtube_url,
-                output_dir=download_dir,
-                quality=effective_quality,
-                start_sec=stream_slice_start if is_partial_stream else 0.0,
-                end_sec=stream_slice_end if is_partial_stream else None,
-                progress_callback=progress_callback
-            )
-            
-            # 2. Extract Duration of downloaded media
-            duration = get_video_duration(video_path)
+                # For full-length downloads of long livestreams (> 30 mins) without slicing,
+                # cap quality to 720p to guarantee safe remuxing within server disk limits (prevents 20GB disk full crash)
+                effective_quality = quality
+                if not is_partial_stream and stream_dur > 1800.0 and quality.lower() in ["1080p", "best"]:
+                    print(f"[Pipeline] Long stream detected ({format_duration(stream_dur)}). Using 720p to guarantee safe remuxing within disk limits.")
+                    effective_quality = "720p"
+
+                # 1. Download YouTube video in requested quality (partial range download if stream slice active)
+                video_path = download_video(
+                    url=youtube_url,
+                    output_dir=download_dir,
+                    quality=effective_quality,
+                    start_sec=stream_slice_start if is_partial_stream else 0.0,
+                    end_sec=stream_slice_end if is_partial_stream else None,
+                    progress_callback=progress_callback
+                )
+                
+                # 2. Extract Duration of downloaded media
+                duration = get_video_duration(video_path)
         
         # 3. Detect Best Moments
         if is_supercut:
@@ -1017,7 +1159,8 @@ def run_pipeline(
             speech_segments=speech_segments,
             progress_callback=progress_callback,
             subtitle_language=subtitle_language,
-            layout_mode=layout_mode
+            layout_mode=layout_mode,
+            stream_source=stream_source
         )
         
         for c in clips:
