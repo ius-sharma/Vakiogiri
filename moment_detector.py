@@ -516,16 +516,16 @@ def transcribe_video_audio(video_or_audio_path: str, subtitle_language: str = "h
             return []
 
     try:
-        # Tier 1: Gemini 2.0 Flash Native Audio (Pure Roman Hinglish, zero Devanagari)
+        # Tier 1: Groq Cloud Whisper Large V3 (Studio ground-truth timestamps, zero hallucination)
+        groq_segs = transcribe_audio_groq(temp_wav, subtitle_language=lang_mode)
+        if groq_segs:
+            return groq_segs
+
+        # Tier 2: Gemini 2.0 Flash Native Audio (Hinglish transliterated fallback)
         if lang_mode in ["hinglish", "auto"]:
             gemini_segs = transcribe_audio_gemini_hinglish(temp_wav)
             if gemini_segs:
                 return gemini_segs
-
-        # Tier 2: Groq Cloud Whisper Large V3 + Vocal Filter (Ultra-fast acoustic timestamps fallback)
-        groq_segs = transcribe_audio_groq(temp_wav, subtitle_language=lang_mode)
-        if groq_segs:
-            return groq_segs
 
         # Tier 3: Local faster-whisper
         model = get_cached_whisper_model()

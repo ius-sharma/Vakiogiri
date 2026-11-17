@@ -538,14 +538,16 @@ Return a JSON array of objects with this schema:
                     s = max(window_start, float(m.get("start", window_start)))
                     e = min(window_end, float(m.get("end", s + 35.0)))
                     
-                    # Ensure flexible gaming length between 18s and 65s
+                    # Flexible organic duration: Story decides duration, never truncate payoff/reaction!
                     dur = e - s
                     if dur < 18.0:
-                        e = min(window_end, s + 30.0)
+                        e = min(window_end, s + 28.0)
                         dur = e - s
-                    elif dur > 65.0:
-                        e = s + 55.0
-                        dur = 55.0
+                    elif dur > 75.0:
+                        # Golden rule: Never cut the payoff or reaction from the end!
+                        # Trim lead-in buildup from the START instead.
+                        s = max(window_start, e - 70.0)
+                        dur = e - s
 
                     validated_moments.append({
                         "id": f"moment_{idx + 1}",

@@ -26,6 +26,7 @@ from dotenv import load_dotenv
 load_dotenv(override=True)
 
 from google import genai
+from moment_critic import evaluate_moment_completeness
 
 # Comprehensive Hinglish + English Dangling Starters
 DANGLING_START_WORDS = {
@@ -196,12 +197,13 @@ def resolve_dangling_boundaries(
     final_end = sentences[end_idx]["end"]
     dur = final_end - final_start
 
-    # Ensure duration constraints
-    if dur > max_duration and end_idx > start_idx + 1:
-        # Trim from end while preserving min_duration
-        while (sentences[end_idx]["end"] - final_start) > max_duration and end_idx > start_idx + 1:
-            end_idx -= 1
-        final_end = sentences[end_idx]["end"]
+    # GOLDEN STORYTELLING RULE:
+    # Story determines duration, not a rigid timer. NEVER cut off the punchline or reaction from the end!
+    # If the candidate duration exceeds max_duration (e.g. 75s), trim filler/throat-clearing from the START instead.
+    if dur > max_duration and end_idx > start_idx + 2:
+        while (final_end - sentences[start_idx]["start"]) > max_duration and (end_idx - start_idx) > 3:
+            start_idx += 1
+        final_start = sentences[start_idx]["start"]
 
     final_start_id = sentences[start_idx]["id"]
     final_end_id = sentences[end_idx]["id"]
@@ -364,7 +366,43 @@ Return a JSON array of objects matching this exact schema:
                     max_duration=max_duration
                 )
 
+                # Step D: Independent Completeness Critic Gatekeeper
+                # Judge whether payoff settles and context is self-contained
+                curr_s_idx = id_map[resolved_start_id]["index"]
+                curr_e_idx = id_map[resolved_end_id]["index"]
+                clip_sents = sentences[curr_s_idx : curr_e_idx + 1]
+                before_sents = sentences[max(0, curr_s_idx - 3) : curr_s_idx]
+                after_sents = sentences[curr_e_idx + 1 : min(len(sentences), curr_e_idx + 4)]
+
+                critique = evaluate_moment_completeness(
+                    clip_sentences=clip_sents,
+                    before_sentences=before_sents,
+                    after_sentences=after_sents,
+                    video_title=video_title
+                )
+
+                # Apply nudges if suggested by the critic
+                adj_start = critique.get("adjust_start", 0)
+                adj_end = critique.get("adjust_end", 0)
+                if adj_start < 0 and curr_s_idx > 0:
+                    curr_s_idx = max(0, curr_s_idx + adj_start)
+                if adj_end > 0 and curr_e_idx < len(sentences) - 1:
+                    curr_e_idx = min(len(sentences) - 1, curr_e_idx + adj_end)
+
+                resolved_start_id = sentences[curr_s_idx]["id"]
+                resolved_end_id = sentences[curr_e_idx]["id"]
+                start_sec = sentences[curr_s_idx]["start"]
+                end_sec = sentences[curr_e_idx]["end"]
                 dur = round(end_sec - start_sec, 1)
+
+                critic_score = float(critique.get("score", 8.0))
+                critic_passed = critique.get("passed", True)
+
+                # If critic explicitly rejects with low score (<6.5), filter out
+                if not critic_passed and critic_score < 6.5:
+                    print(f"[ArcFinder] Step D Critic rejected arc ({resolved_start_id}..{resolved_end_id}): {critique.get('reason')} (score: {critic_score})")
+                    continue
+
                 discovered_moments.append({
                     "id": f"moment_{len(discovered_moments) + 1}",
                     "title": item.get("title") or f"Story Arc #{len(discovered_moments) + 1} 🎯",
@@ -373,8 +411,8 @@ Return a JSON array of objects matching this exact schema:
                     "duration": dur,
                     "start_id": resolved_start_id,
                     "end_id": resolved_end_id,
-                    "virality_score": int(item.get("virality_score", 95)),
-                    "virality_reason": item.get("virality_reason", "Complete story arc from setup to punchline."),
+                    "virality_score": int(min(100, max(50, int(item.get("virality_score", 95)) * (critic_score / 10.0)))),
+                    "virality_reason": f"{item.get('virality_reason', 'Complete story arc.')} | Critic: {critique.get('reason', 'Payoff verified.')}",
                     "hook_quote": item.get("hook_quote") or id_map[resolved_start_id]["text"],
                     "engine": "sentence_id_arc_finder_v2"
                 })
