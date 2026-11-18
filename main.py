@@ -1085,6 +1085,10 @@ def head_clip(job_id: str, filename: str):
     """Serve HEAD requests for preflight media probing by browsers."""
     clip_path = os.path.join("clips", job_id, filename)
     if not os.path.exists(clip_path):
+        supabase_url = os.getenv("SUPABASE_URL", "").rstrip("/")
+        if supabase_url:
+            cloud_url = f"{supabase_url}/storage/v1/object/public/clips/{job_id}/{filename}"
+            return RedirectResponse(url=cloud_url, status_code=307)
         raise HTTPException(status_code=404, detail="Clip file not found")
     file_size = os.path.getsize(clip_path)
     ext = os.path.splitext(filename)[1].lower()
@@ -1108,22 +1112,47 @@ def direct_download_clip_file(job_id: str, filename: str):
     Clean REST URL prevents browser filename parsing bugs (e.g. saving as '1').
     """
     clip_path = os.path.join("clips", job_id, filename)
-    if not os.path.exists(clip_path):
-        raise HTTPException(status_code=404, detail="Clip file not found")
+    if os.path.exists(clip_path):
+        ext = os.path.splitext(filename)[1].lower()
+        media_type = "video/mp4" if ext == ".mp4" else ("image/jpeg" if ext in [".jpg", ".jpeg"] else "application/octet-stream")
 
-    ext = os.path.splitext(filename)[1].lower()
-    media_type = "video/mp4" if ext == ".mp4" else ("image/jpeg" if ext in [".jpg", ".jpeg"] else "application/octet-stream")
+        return FileResponse(
+            clip_path,
+            media_type=media_type,
+            filename=filename,
+            content_disposition_type="attachment",
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Expose-Headers": "Content-Disposition, Content-Length, Accept-Ranges",
+            }
+        )
 
-    return FileResponse(
-        clip_path,
-        media_type=media_type,
-        filename=filename,
-        content_disposition_type="attachment",
-        headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Expose-Headers": "Content-Disposition, Content-Length, Accept-Ranges",
-        }
-    )
+    # If local file was purged after Supabase CDN upload, stream from Supabase with attachment header
+    supabase_url = os.getenv("SUPABASE_URL", "").rstrip("/")
+    if supabase_url:
+        cloud_url = f"{supabase_url}/storage/v1/object/public/clips/{job_id}/{filename}"
+        try:
+            req = requests.get(cloud_url, stream=True, timeout=60)
+            if req.status_code == 200:
+                content_length = req.headers.get("Content-Length")
+                headers = {
+                    "Content-Disposition": f'attachment; filename="{filename}"',
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Expose-Headers": "Content-Disposition, Content-Length, Accept-Ranges",
+                }
+                if content_length:
+                    headers["Content-Length"] = content_length
+                return StreamingResponse(
+                    req.iter_content(chunk_size=1024 * 512),
+                    media_type="video/mp4",
+                    headers=headers
+                )
+        except Exception as e:
+            print(f"[Download Error] Failed streaming from Supabase: {e}")
+        # If streaming failed, fallback to 307 redirect
+        return RedirectResponse(url=cloud_url, status_code=307)
+
+    raise HTTPException(status_code=404, detail="Clip file not found")
 
 
 @app.get("/clips/{job_id}/{filename}")
@@ -1141,6 +1170,10 @@ def serve_clip(
     """
     clip_path = os.path.join("clips", job_id, filename)
     if not os.path.exists(clip_path):
+        supabase_url = os.getenv("SUPABASE_URL", "").rstrip("/")
+        if supabase_url:
+            cloud_url = f"{supabase_url}/storage/v1/object/public/clips/{job_id}/{filename}"
+            return RedirectResponse(url=cloud_url, status_code=307)
         raise HTTPException(status_code=404, detail="Clip file not found")
 
     ext = os.path.splitext(filename)[1].lower()
@@ -1244,6 +1277,11 @@ def download_proxy(url: str = Query(..., description="Target file URL"), filenam
                         "Access-Control-Expose-Headers": "Content-Disposition, Content-Length, Accept-Ranges",
                     }
                 )
+            else:
+                supabase_url = os.getenv("SUPABASE_URL", "").rstrip("/")
+                if supabase_url:
+                    cloud_url = f"{supabase_url}/storage/v1/object/public/clips/{job_id}/{fname}"
+                    return RedirectResponse(url=cloud_url, status_code=307)
 
         # Fallback for external URLs with Content-Length preserved
         req = requests.get(url, stream=True, timeout=60)
