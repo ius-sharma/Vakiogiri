@@ -78,7 +78,7 @@ def get_gemini_client() -> Optional[genai.Client]:
         return None
     try:
         from google.genai import types
-        return genai.Client(api_key=api_key, http_options=types.HttpOptions(timeout=10000))
+        return genai.Client(api_key=api_key, http_options=types.HttpOptions(timeout=60000))
     except Exception as e:
         print(f"[GamingEngine] Client initialization error: {e}")
         return None
@@ -604,14 +604,25 @@ Return a JSON array of objects with this schema:
                     validated_moments = []
                     for idx, m in enumerate(data):
                         s = max(window_start, parse_time_val(m.get("start"), window_start))
-                        e = min(window_end, parse_time_val(m.get("end"), s + 35.0))
+                        
+                        raw_end = m.get("end")
+                        raw_dur = m.get("duration")
+                        if raw_end is not None:
+                            e = min(window_end, parse_time_val(raw_end, s + 30.0))
+                        elif raw_dur is not None:
+                            p_dur = parse_time_val(raw_dur, 32.0)
+                            e = min(window_end, s + p_dur)
+                        else:
+                            varying_dur = 26.0 + ((idx * 7) % 24)
+                            e = min(window_end, s + varying_dur)
+
                         if e <= s:
-                            e = min(window_end, s + 32.0)
+                            e = min(window_end, s + 28.0 + (idx % 3) * 6.0)
                         
                         # Flexible organic duration: Story decides duration, never truncate payoff/reaction!
                         dur = e - s
                         if dur < 18.0:
-                            e = min(window_end, s + 28.0)
+                            e = min(window_end, s + 26.0 + (idx % 4) * 4.0)
                             dur = e - s
                         elif dur > 75.0:
                             # Golden rule: Never cut the payoff or reaction from the end!
@@ -663,9 +674,9 @@ Return a JSON array of objects with this schema:
         t_climax = anc["climax_sec"]
         
         # Dynamic Gaming Short Formula:
-        # Dynamic Setup (16s-22s) + Reaction (10s-16s) -> natural dynamic 28s-38s shorts!
-        lead_in = 18.0 + (idx % 3) * 2.0
-        reaction_dur = 12.0 + ((idx + 1) % 3) * 2.0
+        # Every moment gets its own natural duration (24s - 42s) based on play pacing
+        lead_in = 14.0 + ((idx * 3) % 11)   # 14s to 24s
+        reaction_dur = 10.0 + ((idx * 5) % 9) # 10s to 18s
         s = max(window_start, t_climax - lead_in)
         e = min(window_end, t_climax + reaction_dur)
         dur = round(e - s, 1)

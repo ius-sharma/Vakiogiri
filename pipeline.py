@@ -885,11 +885,14 @@ def split_and_crop_video(
                     "-c:v", "libx264",
                     "-preset", "veryfast",
                     "-crf", "20",
+                    "-r", "30",
+                    "-threads", "2",
                     "-pix_fmt", "yuv420p",
                     "-c:a", "aac",
                     "-b:a", "192k",
                     "-ar", "48000",
                     "-movflags", "+faststart",
+                    "-progress", "pipe:1",
                     clip_path
                 ]
             else:
@@ -906,26 +909,26 @@ def split_and_crop_video(
                     "-c:v", "libx264",
                     "-preset", "veryfast",
                     "-crf", "20",
+                    "-r", "30",
+                    "-threads", "2",
                     "-pix_fmt", "yuv420p",
                     "-c:a", "aac",
                     "-b:a", "192k",
                     "-ar", "48000",
                     "-movflags", "+faststart",
+                    "-progress", "pipe:1",
                     clip_path
                 ]
             
             # Real-time sub-progress streaming via ffmpeg -progress pipe:1
-            # Updates progress bar every ~1.5s smoothly (e.g. 21% -> 22% -> 23% -> 27%)
-            ffmpeg_cmd_with_prog = list(ffmpeg_cmd)
-            ffmpeg_cmd_with_prog.extend(["-progress", "pipe:1"])
-
+            # Updates progress bar every ~1s smoothly (e.g. 21% -> 22% -> 23% -> 27%)
             clip_base_pct = base_prog + int(((i) / max(1, num_clips)) * max_span)
             clip_span = max_span / max(1, num_clips)
             last_sub_update = time.time()
 
             try:
                 proc = subprocess.Popen(
-                    ffmpeg_cmd_with_prog,
+                    ffmpeg_cmd,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.DEVNULL,
                     text=True,
