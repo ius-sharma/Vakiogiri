@@ -49,6 +49,28 @@ def format_seconds_to_timestamp(seconds: float) -> str:
     return f"{m:02d}:{s:02d}"
 
 
+def parse_time_val(val: Any, default: float = 0.0) -> float:
+    """Safely parse integer, float, string seconds ('45.2s'), or timecodes ('00:21:06', '04:12') to seconds."""
+    if val is None:
+        return default
+    if isinstance(val, (int, float)):
+        return float(val)
+    s_val = str(val).strip().replace("s", "")
+    if ":" in s_val:
+        parts = s_val.split(":")
+        try:
+            if len(parts) == 3:
+                return float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
+            elif len(parts) == 2:
+                return float(parts[0]) * 60 + float(parts[1])
+        except Exception:
+            pass
+    try:
+        return float(s_val)
+    except Exception:
+        return default
+
+
 def get_gemini_client() -> Optional[genai.Client]:
     """Initialize Google GenAI client with GEMINI_API_KEY from environment."""
     api_key = os.getenv("GEMINI_API_KEY", "").strip()
@@ -533,7 +555,7 @@ Return a JSON array of objects with this schema:
 """
             raw_text = None
             if client:
-                for m_name in ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash"]:
+                for m_name in ["gemini-3.8-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-flash-latest"]:
                     try:
                         response = client.models.generate_content(
                             model=m_name,
@@ -555,7 +577,7 @@ Return a JSON array of objects with this schema:
             if not raw_text:
                 groq_c = get_gaming_groq_client()
                 if groq_c:
-                    for g_m in ["qwen/qwen3.8-27b", "openai/gpt-oss-20b", "llama-3.3-70b-versatile"]:
+                    for g_m in ["qwen/qwen3.8-27b", "openai/gpt-oss-20b", "openai/gpt-oss-120b"]:
                         try:
                             g_res = groq_c.chat.completions.create(
                                 model=g_m,
@@ -581,8 +603,10 @@ Return a JSON array of objects with this schema:
                 if isinstance(data, list) and len(data) > 0:
                     validated_moments = []
                     for idx, m in enumerate(data):
-                        s = max(window_start, float(m.get("start", window_start)))
-                        e = min(window_end, float(m.get("end", s + 35.0)))
+                        s = max(window_start, parse_time_val(m.get("start"), window_start))
+                        e = min(window_end, parse_time_val(m.get("end"), s + 35.0))
+                        if e <= s:
+                            e = min(window_end, s + 32.0)
                         
                         # Flexible organic duration: Story decides duration, never truncate payoff/reaction!
                         dur = e - s
@@ -638,11 +662,12 @@ Return a JSON array of objects with this schema:
     for idx, anc in enumerate(anchors_to_use[:max_moments]):
         t_climax = anc["climax_sec"]
         
-        # Gaming Short Formula:
-        # Setup: 18s before climax
-        # Reaction: 12s after climax -> Total ~30s dynamic short
-        s = max(window_start, t_climax - 18.0)
-        e = min(window_end, t_climax + 12.0)
+        # Dynamic Gaming Short Formula:
+        # Dynamic Setup (16s-22s) + Reaction (10s-16s) -> natural dynamic 28s-38s shorts!
+        lead_in = 18.0 + (idx % 3) * 2.0
+        reaction_dur = 12.0 + ((idx + 1) % 3) * 2.0
+        s = max(window_start, t_climax - lead_in)
+        e = min(window_end, t_climax + reaction_dur)
         dur = round(e - s, 1)
 
         fallback_moments.append({

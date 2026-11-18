@@ -45,6 +45,28 @@ def strip_ansi(text: str) -> str:
     return re.sub(r'\x1b\[[0-9;]*[a-zA-Z]|\[[0-9;]+m', '', str(text)).strip()
 
 
+def parse_time_to_sec(val: Any, default: float = 0.0) -> float:
+    """Safely parse integer, float, string seconds ('45.2s'), or timecodes ('00:21:06', '04:12') to seconds."""
+    if val is None:
+        return default
+    if isinstance(val, (int, float)):
+        return float(val)
+    s_val = str(val).strip().replace("s", "")
+    if ":" in s_val:
+        parts = s_val.split(":")
+        try:
+            if len(parts) == 3:
+                return float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
+            elif len(parts) == 2:
+                return float(parts[0]) * 60 + float(parts[1])
+        except Exception:
+            pass
+    try:
+        return float(s_val)
+    except Exception:
+        return default
+
+
 def format_duration(seconds: float) -> str:
     """Format seconds into readable 'Xh Ym' or 'Ym Zs' string."""
     hours = int(seconds // 3600)
@@ -674,8 +696,10 @@ def split_and_crop_video(
     clip_targets = []
     if moments and len(moments) > 0:
         for idx, m in enumerate(moments[:max_clips]):
-            s_time = max(0.0, float(m["start"]))
-            e_time = min(duration, float(m["end"]))
+            s_time = max(0.0, parse_time_to_sec(m.get("start"), 0.0))
+            e_time = min(duration, parse_time_to_sec(m.get("end"), s_time + float(segment_len)))
+            if e_time <= s_time:
+                e_time = min(duration, s_time + float(segment_len))
             clip_dur = max(1.0, e_time - s_time)
             clip_targets.append({
                 "start": s_time,
@@ -903,7 +927,7 @@ def split_and_crop_video(
                 proc = subprocess.Popen(
                     ffmpeg_cmd_with_prog,
                     stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL,
                     text=True,
                     bufsize=1
                 )
@@ -934,12 +958,11 @@ def split_and_crop_video(
 
                 ret_code = proc.wait()
                 if ret_code != 0:
-                    err_out = proc.stderr.read() if proc.stderr else "Unknown error"
-                    raise RuntimeError(f"FFmpeg encoding error: {err_out[-400:]}")
+                    raise RuntimeError(f"FFmpeg encoding exited with code {ret_code}")
             except Exception as render_ex:
                 # Direct fallback if pipe streaming had an issue
                 if not os.path.exists(clip_path) or os.path.getsize(clip_path) < 10000:
-                    subprocess.run(ffmpeg_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+                    subprocess.run(ffmpeg_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, check=True)
             
             # Extract instant visual preview thumbnail poster from rendered video
             thumb_name = f"thumb_{i + 1}.jpg"
@@ -1202,8 +1225,10 @@ def run_pipeline(
                 progress_callback("curating_moments", 60, f"Processing {len(selected_moments)} curated viral moment(s)...")
             moments = []
             for idx, m in enumerate(selected_moments):
-                orig_s = max(0.0, float(m.get("start", 0.0)))
-                orig_e = float(m.get("end", orig_s + segment_duration))
+                orig_s = max(0.0, parse_time_to_sec(m.get("start"), 0.0))
+                orig_e = parse_time_to_sec(m.get("end"), orig_s + float(segment_duration))
+                if orig_e <= orig_s:
+                    orig_e = orig_s + float(segment_duration)
                 dur = max(1.0, orig_e - orig_s)
 
                 # If partial slice was downloaded, shift timestamps relative to slice start!
