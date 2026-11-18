@@ -455,9 +455,19 @@ export const ShortsStudioCommandCenter: React.FC<ShortsStudioCommandCenterProps>
     setViewMode("discovering");
 
     try {
+      // Dynamic moments scaling based on video/stream length:
+      // Short video (<15m): 6, Medium (15-45m): 10, 1-2h: 16, 3h+ stream: 24 moments
+      let dynamicMoments = 8;
+      if (selectedSource.duration) {
+        if (selectedSource.duration < 900) dynamicMoments = 6;
+        else if (selectedSource.duration < 2700) dynamicMoments = 10;
+        else if (selectedSource.duration < 7200) dynamicMoments = 16;
+        else dynamicMoments = 24;
+      }
+
       const payload: Record<string, any> = {
         target_duration: targetDuration,
-        max_moments: 6,
+        max_moments: dynamicMoments,
         video_title: selectedSource.title,
         duration: selectedSource.duration,
       };

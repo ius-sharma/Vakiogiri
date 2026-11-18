@@ -224,45 +224,91 @@ def resolve_youtube_stream_source(url: str, quality: str = "720p") -> Optional[D
 
 def extract_stream_slice(stream_source: Dict[str, Any], start_sec: float, duration_sec: float, output_path: str) -> bool:
     """
-    Extracts a pristine micro-slice (e.g. 30-45s) directly from YouTube HLS/DASH streams in ~2-4s.
+    Extracts a pristine micro-slice directly from YouTube HLS m3u8 streams in ~1-2s.
     Zero full-video download, zero disk overflow.
     """
     os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
     st_type = stream_source.get("type", "single")
     
-    if st_type == "dash" and stream_source.get("video_url") and stream_source.get("audio_url"):
-        cmd = [
-            "ffmpeg", "-y",
-            "-ss", str(start_sec),
-            "-t", str(duration_sec),
-            "-i", stream_source["video_url"],
-            "-ss", str(start_sec),
-            "-t", str(duration_sec),
-            "-i", stream_source["audio_url"],
-            "-c:v", "copy",
-            "-c:a", "aac",
-            "-avoid_negative_ts", "make_zero",
-            output_path
-        ]
-    else:
-        stream_url = stream_source.get("url") or stream_source.get("video_url")
-        if not stream_url:
-            return False
-        cmd = [
-            "ffmpeg", "-y",
-            "-ss", str(start_sec),
-            "-t", str(duration_sec),
-            "-i", stream_url,
-            "-c", "copy",
-            "-avoid_negative_ts", "make_zero",
-            output_path
-        ]
+    stream_url = stream_source.get("url") or stream_source.get("video_url")
+    if not stream_url:
+        return False
+
+    cmd = [
+        "ffmpeg", "-y",
+        "-ss", str(start_sec),
+        "-t", str(duration_sec),
+        "-i", stream_url,
+        "-c", "copy",
+        "-avoid_negative_ts", "make_zero",
+        output_path
+    ]
 
     try:
         subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
         return os.path.exists(output_path) and os.path.getsize(output_path) > 10000
     except Exception as err:
-        print(f"[Micro-Slice Error] ffmpeg direct stream slice error: {err}")
+        print(f"[Micro-Slice Notice] ffmpeg direct stream slice notice: {err}")
+        return False
+
+
+def download_clip_micro_slice(
+    url: str,
+    start_sec: float,
+    duration_sec: float,
+    output_path: str,
+    quality: str = "720p"
+) -> bool:
+    """
+    Robust targeted micro-range downloader via yt-dlp.
+    Downloads ONLY the specified ~30-60s window (~8-15 MB) directly from YouTube.
+    Works universally across normal VODs, live streams, and post-live streams.
+    """
+    os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+    cookie_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cookies.txt")
+    try:
+        max_h = int(quality.lower().rstrip("p")) if quality and quality.lower() != "best" else 720
+    except Exception:
+        max_h = 720
+
+    end_sec = round(start_sec + duration_sec, 2)
+    clean_url = url
+    # Clean trailing query params or /live/ quirks
+    v_match = re.search(r"(?:v=|\/live\/|youtu\.be\/)([0-9A-Za-z_-]{11})", url)
+    if v_match:
+        clean_url = f"https://www.youtube.com/watch?v={v_match.group(1)}"
+
+    ytdlp_bin = shutil.which("yt-dlp") or "yt-dlp"
+    cmd = [
+        ytdlp_bin,
+        "--download-sections", f"*{start_sec}-{end_sec}",
+        "--force-keyframes-at-cuts",
+        "-f", f"bestvideo[height<={max_h}][vcodec^=avc1]+bestaudio[ext=m4a]/bestvideo[height<={max_h}]+bestaudio/best[height<={max_h}]/best",
+        "--merge-output-format", "mp4",
+        "--no-warnings",
+        "--quiet",
+        clean_url,
+        "-o", output_path,
+        "--force-overwrites"
+    ]
+    if os.path.exists(cookie_path):
+        cmd.insert(1, "--cookies")
+        cmd.insert(2, cookie_path)
+
+    try:
+        subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+        # Verify output exists and is not corrupt/empty
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 10000:
+            return True
+        # If merged with different extension, check and rename
+        for alt_ext in [".mp4.webm", ".mp4.mkv", ".mkv", ".webm"]:
+            alt_file = output_path + alt_ext if not output_path.endswith(alt_ext) else output_path
+            if os.path.exists(alt_file) and os.path.getsize(alt_file) > 10000:
+                shutil.move(alt_file, output_path)
+                return True
+        return False
+    except Exception as err:
+        print(f"[Micro-Slice Notice] yt-dlp micro-slice notice: {err}")
         return False
 
 
@@ -678,7 +724,7 @@ def split_and_crop_video(
         current_seek = start_time
         temp_raw_slice = None
 
-        if stream_source:
+        if stream_source or not video_path:
             temp_raw_slice = os.path.join(output_dir, f"temp_raw_{i + 1}.mp4")
             if progress_callback:
                 progress_callback(
@@ -686,12 +732,26 @@ def split_and_crop_video(
                     clip_progress,
                     f"Direct streaming Short {i + 1} of {num_clips} ({format_duration(start_time)})..."
                 )
-            slice_ok = extract_stream_slice(
-                stream_source=stream_source,
-                start_sec=start_time,
-                duration_sec=clip_dur,
-                output_path=temp_raw_slice
-            )
+            slice_ok = False
+            # 1. Try instant HLS m3u8 direct micro-slice (~1-2s)
+            if stream_source and stream_source.get("type") == "hls":
+                slice_ok = extract_stream_slice(
+                    stream_source=stream_source,
+                    start_sec=start_time,
+                    duration_sec=clip_dur,
+                    output_path=temp_raw_slice
+                )
+
+            # 2. If HLS unavailable or failed, use targeted yt-dlp micro-slice (~30-60s range)
+            if not slice_ok or not os.path.exists(temp_raw_slice) or os.path.getsize(temp_raw_slice) < 10000:
+                slice_ok = download_clip_micro_slice(
+                    url=youtube_url,
+                    start_sec=start_time,
+                    duration_sec=clip_dur,
+                    output_path=temp_raw_slice,
+                    quality=quality
+                )
+
             if slice_ok and os.path.exists(temp_raw_slice):
                 current_input_video = temp_raw_slice
                 current_seek = 0.0

@@ -429,9 +429,18 @@ export default function LongStudioView({
     }, 1500);
 
     try {
+      // Dynamic moments scaling based on video length:
+      let dynamicMoments = 8;
+      if (selectedSource.duration) {
+        if (selectedSource.duration < 900) dynamicMoments = 6;
+        else if (selectedSource.duration < 2700) dynamicMoments = 10;
+        else if (selectedSource.duration < 7200) dynamicMoments = 16;
+        else dynamicMoments = 24;
+      }
+
       const payload: Record<string, any> = {
         target_duration: targetDuration,
-        max_moments: 6,
+        max_moments: dynamicMoments,
         video_title: selectedSource.title,
         duration: selectedSource.duration,
       };

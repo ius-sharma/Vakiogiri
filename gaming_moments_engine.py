@@ -62,6 +62,18 @@ def get_gemini_client() -> Optional[genai.Client]:
         return None
 
 
+def get_gaming_groq_client():
+    """Initialize Groq client for lightning-fast gaming moments fallback."""
+    groq_key = os.getenv("GROQ_API_KEY", "").strip()
+    if not groq_key:
+        return None
+    try:
+        from groq import Groq
+        return Groq(api_key=groq_key)
+    except Exception:
+        return None
+
+
 def probe_source_metadata(video_source: str) -> Dict[str, Any]:
     """Extract video duration, title, description, and chapters with multi-tier fallback."""
     if os.path.exists(video_source) and os.path.isfile(video_source):
@@ -340,6 +352,12 @@ def discover_gaming_viral_moments(
         window_start = 0.0
         window_end = duration
 
+    # Dynamic moment scaling: long streams (2-5h) produce 15-25 moments instead of being restricted to 6
+    w_dur = max(60.0, window_end - window_start)
+    recommended_moments = max(6, min(25, int(w_dur / 380.0)))
+    if max_moments is None or max_moments <= 6:
+        max_moments = max(max_moments or 6, recommended_moments)
+
     # 1. Extract YouTube Heatmap Peaks (Signal 4)
     heatmap_moments = []
     is_yt = video_source.startswith("http://") or video_source.startswith("https://")
@@ -513,64 +531,92 @@ Return a JSON array of objects with this schema:
   }}
 ]
 """
-            response = None
-            for m_name in ["gemini-flash-latest", "gemini-3.8-flash", "gemini-3.5-flash"]:
-                try:
-                    response = client.models.generate_content(
-                        model=m_name,
-                        contents=prompt,
-                        config={
-                            "system_instruction": system_instruction,
-                            "response_mime_type": "application/json",
-                            "temperature": 0.35,
-                        }
-                    )
-                    if response and response.text:
-                        break
-                except Exception as ex_m:
-                    print(f"[GamingEngine] Model {m_name} notice: {ex_m}", flush=True)
-                    continue
+            raw_text = None
+            if client:
+                for m_name in ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash"]:
+                    try:
+                        response = client.models.generate_content(
+                            model=m_name,
+                            contents=prompt,
+                            config={
+                                "system_instruction": system_instruction,
+                                "response_mime_type": "application/json",
+                                "temperature": 0.35,
+                            }
+                        )
+                        if response and response.text:
+                            raw_text = response.text.strip()
+                            break
+                    except Exception as ex_m:
+                        print(f"[GamingEngine] Model {m_name} notice: {ex_m}", flush=True)
+                        continue
 
-            data = json.loads(response.text.strip())
-            if isinstance(data, list) and len(data) > 0:
-                validated_moments = []
-                for idx, m in enumerate(data):
-                    s = max(window_start, float(m.get("start", window_start)))
-                    e = min(window_end, float(m.get("end", s + 35.0)))
-                    
-                    # Flexible organic duration: Story decides duration, never truncate payoff/reaction!
-                    dur = e - s
-                    if dur < 18.0:
-                        e = min(window_end, s + 28.0)
+            # Groq Fallback if Gemini is rate-limited, busy, or timed out
+            if not raw_text:
+                groq_c = get_gaming_groq_client()
+                if groq_c:
+                    for g_m in ["qwen/qwen3.8-27b", "openai/gpt-oss-20b", "llama-3.3-70b-versatile"]:
+                        try:
+                            g_res = groq_c.chat.completions.create(
+                                model=g_m,
+                                messages=[
+                                    {"role": "system", "content": system_instruction},
+                                    {"role": "user", "content": prompt}
+                                ],
+                                response_format={"type": "json_object"},
+                                temperature=0.35
+                            )
+                            if g_res.choices and g_res.choices[0].message.content:
+                                raw_text = g_res.choices[0].message.content.strip()
+                                break
+                        except Exception as g_err:
+                            print(f"[GamingEngine] Groq model {g_m} notice: {g_err}")
+                            continue
+
+            if raw_text:
+                match = re.search(r"(\[.*\]|\{.*\})", raw_text, re.DOTALL)
+                clean_json = match.group(0) if match else raw_text
+                parsed_data = json.loads(clean_json)
+                data = parsed_data if isinstance(parsed_data, list) else parsed_data.get("moments", [])
+                if isinstance(data, list) and len(data) > 0:
+                    validated_moments = []
+                    for idx, m in enumerate(data):
+                        s = max(window_start, float(m.get("start", window_start)))
+                        e = min(window_end, float(m.get("end", s + 35.0)))
+                        
+                        # Flexible organic duration: Story decides duration, never truncate payoff/reaction!
                         dur = e - s
-                    elif dur > 75.0:
-                        # Golden rule: Never cut the payoff or reaction from the end!
-                        # Trim lead-in buildup from the START instead.
-                        s = max(window_start, e - 70.0)
-                        dur = e - s
+                        if dur < 18.0:
+                            e = min(window_end, s + 28.0)
+                            dur = e - s
+                        elif dur > 75.0:
+                            # Golden rule: Never cut the payoff or reaction from the end!
+                            # Trim lead-in buildup from the START instead.
+                            s = max(window_start, e - 70.0)
+                            dur = e - s
 
-                    validated_moments.append({
-                        "id": f"moment_{idx + 1}",
-                        "title": m.get("title") or f"Gaming Highlight #{idx + 1}",
-                        "start": round(s, 1),
-                        "end": round(e, 1),
-                        "duration": round(dur, 1),
-                        "duration_formatted": format_seconds_to_timestamp(dur),
-                        "start_formatted": format_seconds_to_timestamp(s),
-                        "end_formatted": format_seconds_to_timestamp(e),
-                        "virality_score": int(m.get("virality_score", 95)),
-                        "virality_reason": m.get("virality_reason", "High-intensity clutch and streamer reaction."),
-                        "hook_quote": m.get("hook_quote", ""),
-                    })
+                        validated_moments.append({
+                            "id": f"moment_{idx + 1}",
+                            "title": m.get("title") or f"Gaming Highlight #{idx + 1}",
+                            "start": round(s, 1),
+                            "end": round(e, 1),
+                            "duration": round(dur, 1),
+                            "duration_formatted": format_seconds_to_timestamp(dur),
+                            "start_formatted": format_seconds_to_timestamp(s),
+                            "end_formatted": format_seconds_to_timestamp(e),
+                            "virality_score": int(m.get("virality_score", 95)),
+                            "virality_reason": m.get("virality_reason", "High-intensity clutch and streamer reaction."),
+                            "hook_quote": m.get("hook_quote", ""),
+                        })
 
-                validated_moments.sort(key=lambda x: x["virality_score"], reverse=True)
-                return {
-                    "video_title": title,
-                    "duration": duration,
-                    "duration_formatted": format_seconds_to_timestamp(duration),
-                    "moments": validated_moments[:max_moments],
-                    "engine": "vakiogiri_gaming_multimodal_v2"
-                }
+                    validated_moments.sort(key=lambda x: x["virality_score"], reverse=True)
+                    return {
+                        "video_title": title,
+                        "duration": duration,
+                        "duration_formatted": format_seconds_to_timestamp(duration),
+                        "moments": validated_moments[:max_moments],
+                        "engine": "vakiogiri_gaming_multimodal_v2"
+                    }
         except Exception as gemini_err:
             print(f"[GamingEngine] Gemini synthesis error: {gemini_err}")
 
