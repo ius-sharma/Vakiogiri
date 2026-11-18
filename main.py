@@ -60,6 +60,10 @@ from youtube_service import (
 
 app = FastAPI(title="AI Video Clipping Platform Backend")
 
+# Include Dedicated Live Stream Radar Router (Isolated feature)
+from live_stream_router import router as live_stream_router
+app.include_router(live_stream_router)
+
 # Initialize database schema on startup
 init_db()
 

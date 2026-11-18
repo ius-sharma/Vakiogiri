@@ -6,6 +6,7 @@ import {
   Scissors,
   MonitorPlay,
   Film,
+  Radio,
   Share2,
   BarChart3,
   Calendar,
@@ -74,6 +75,13 @@ export default function SidebarNav({
       icon: MonitorPlay,
       badge: undefined,
       onClick: () => onSelectView("long_studio"),
+    },
+    {
+      id: "live_radar",
+      label: "Live Radar",
+      icon: Radio,
+      badge: "LIVE",
+      onClick: () => onSelectView("live_radar"),
     },
     {
       id: "projects",
@@ -281,7 +289,9 @@ export default function SidebarNav({
                 {isExpanded && item.badge !== undefined && (
                   <span
                     className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold transition-all ${
-                      typeof item.badge === "number"
+                      item.badge === "LIVE"
+                        ? "bg-red-500/20 text-red-500 border border-red-500/30 animate-pulse font-extrabold"
+                        : typeof item.badge === "number"
                         ? "bg-[#ff7427]/15 text-[#ff7427]"
                         : isLight
                         ? "bg-slate-100 text-slate-500 border border-slate-200"
@@ -305,7 +315,11 @@ export default function SidebarNav({
                   >
                     <span>{item.label}</span>
                     {item.badge !== undefined && (
-                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-[#ff7427]/20 text-[#ff7427] font-bold">
+                      <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full font-bold ${
+                        item.badge === "LIVE"
+                          ? "bg-red-500/20 text-red-400 border border-red-500/30 animate-pulse"
+                          : "bg-[#ff7427]/20 text-[#ff7427]"
+                      }`}>
                         {item.badge}
                       </span>
                     )}

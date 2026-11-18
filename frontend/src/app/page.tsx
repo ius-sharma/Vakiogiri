@@ -12,6 +12,7 @@ import AdvancedDrawer from "@/components/studio/AdvancedDrawer";
 import LivePipelineTracker from "@/components/studio/LivePipelineTracker";
 import ClipShowcaseGrid from "@/components/studio/ClipShowcaseGrid";
 import LongStudioView from "@/components/studio/LongStudioView";
+import LiveRadarView from "@/components/studio/LiveRadarView";
 import { ShortsStudioCommandCenter, SelectedVideoSource, GenerationConfig } from "@/components/studio/ShortsStudioCommandCenter";
 import HistoryView, { HistoryProject } from "@/components/studio/HistoryView";
 import { useUIFeedback } from "@/components/UIFeedback";
@@ -36,7 +37,7 @@ export default function Home() {
   const [theme, setTheme] = useState<"light" | "dark">("dark");
   
   // Navigation view
-  const [activeView, setActiveView] = useState<"studio" | "long_studio" | "history">("studio");
+  const [activeView, setActiveView] = useState<"studio" | "long_studio" | "live_radar" | "history">("studio");
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
   const [history, setHistory] = useState<HistoryProject[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -710,6 +711,8 @@ export default function Home() {
                   ? "My Clips Library"
                   : activeView === "long_studio"
                   ? "Long Studio"
+                  : activeView === "live_radar"
+                  ? "Live Stream Radar"
                   : "Shorts Studio"
               }
               userProfile={userProfile}
@@ -749,6 +752,16 @@ export default function Home() {
                 fetchUserProfile(session.access_token);
               }
             }}
+          />
+        )}
+
+        {/* VIEW 3: LIVE RADAR (ONGOING STREAM CLIPPING) */}
+        {activeView === "live_radar" && (
+          <LiveRadarView
+            session={session}
+            backendUrl={BACKEND_URL}
+            theme={theme}
+            onOpenAuth={() => handleOpenAuth("login")}
           />
         )}
 
@@ -882,6 +895,18 @@ export default function Home() {
               onDownloadSingle={handleDownloadSingle}
               onBackToStudio={() => setActiveView("studio")}
               backendUrl={BACKEND_URL}
+            />
+          </div>
+        )}
+
+        {/* VIEW: LIVE RADAR (GUEST) */}
+        {activeView === "live_radar" && (
+          <div className="px-4 sm:px-6 lg:px-8 pt-24 sm:pt-28 pb-12 md:pb-16 max-w-[1720px] mx-auto w-full transition-all duration-300">
+            <LiveRadarView
+              session={session}
+              backendUrl={BACKEND_URL}
+              theme={theme}
+              onOpenAuth={() => handleOpenAuth("login")}
             />
           </div>
         )}
