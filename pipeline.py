@@ -859,12 +859,11 @@ def split_and_crop_video(
                     "-map", "0:a?",
                     "-af", "asetpts=PTS-STARTPTS",
                     "-c:v", "libx264",
-                    "-preset", "faster",
-                    "-crf", "15",
-                    "-tune", "film",
+                    "-preset", "veryfast",
+                    "-crf", "20",
                     "-pix_fmt", "yuv420p",
                     "-c:a", "aac",
-                    "-b:a", "256k",
+                    "-b:a", "192k",
                     "-ar", "48000",
                     "-movflags", "+faststart",
                     clip_path
@@ -881,18 +880,66 @@ def split_and_crop_video(
                     "-vf", vf_with_pts,
                     "-af", "asetpts=PTS-STARTPTS",
                     "-c:v", "libx264",
-                    "-preset", "faster",
-                    "-crf", "15",
-                    "-tune", "film",
+                    "-preset", "veryfast",
+                    "-crf", "20",
                     "-pix_fmt", "yuv420p",
                     "-c:a", "aac",
-                    "-b:a", "256k",
+                    "-b:a", "192k",
                     "-ar", "48000",
                     "-movflags", "+faststart",
                     clip_path
                 ]
             
-            subprocess.run(ffmpeg_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+            # Real-time sub-progress streaming via ffmpeg -progress pipe:1
+            # Updates progress bar every ~1.5s smoothly (e.g. 21% -> 22% -> 23% -> 27%)
+            ffmpeg_cmd_with_prog = list(ffmpeg_cmd)
+            ffmpeg_cmd_with_prog.extend(["-progress", "pipe:1"])
+
+            clip_base_pct = base_prog + int(((i) / max(1, num_clips)) * max_span)
+            clip_span = max_span / max(1, num_clips)
+            last_sub_update = time.time()
+
+            try:
+                proc = subprocess.Popen(
+                    ffmpeg_cmd_with_prog,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    bufsize=1
+                )
+
+                while True:
+                    line = proc.stdout.readline() if proc.stdout else None
+                    if not line and proc.poll() is not None:
+                        break
+                    if line:
+                        line = line.strip()
+                        if line.startswith("out_time_us="):
+                            try:
+                                us_val = float(line.split("=")[1])
+                                sec_val = us_val / 1_000_000.0
+                                frac = min(0.96, max(0.0, sec_val / max(1.0, clip_dur)))
+                                now_t = time.time()
+                                if (now_t - last_sub_update) >= 1.5:
+                                    last_sub_update = now_t
+                                    smooth_pct = min(92, int(clip_base_pct + (frac * clip_span)))
+                                    if progress_callback:
+                                        progress_callback(
+                                            "clipping",
+                                            smooth_pct,
+                                            f"Rendering Short {i + 1} of {num_clips} ({int(frac * 100)}%)..."
+                                        )
+                            except Exception:
+                                pass
+
+                ret_code = proc.wait()
+                if ret_code != 0:
+                    err_out = proc.stderr.read() if proc.stderr else "Unknown error"
+                    raise RuntimeError(f"FFmpeg encoding error: {err_out[-400:]}")
+            except Exception as render_ex:
+                # Direct fallback if pipe streaming had an issue
+                if not os.path.exists(clip_path) or os.path.getsize(clip_path) < 10000:
+                    subprocess.run(ffmpeg_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
             
             # Extract instant visual preview thumbnail poster from rendered video
             thumb_name = f"thumb_{i + 1}.jpg"

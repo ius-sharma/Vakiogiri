@@ -592,12 +592,11 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 filtergraph = (
                     f"[0:v]split=2[gameplay_in][cam_in];"
                     f"[cam_in]crop={cw}:{ch}:{cx}:{cy},"
-                    f"scale={target_w}:{face_h}:force_original_aspect_ratio=increase:flags=lanczos,"
+                    f"scale={target_w}:{face_h}:force_original_aspect_ratio=increase:flags=bicubic,"
                     f"crop={target_w}:{face_h},"
-                    f"unsharp=5:5:0.6:5:5:0.0,setsar=1[top_half];"
-                    f"[gameplay_in]scale={target_w}:{game_h}:force_original_aspect_ratio=increase:flags=lanczos,"
-                    f"crop={target_w}:{game_h},"
-                    f"unsharp=5:5:0.5:5:5:0.0,setsar=1[bot_half];"
+                    f"unsharp=3:3:0.3,setsar=1[top_half];"
+                    f"[gameplay_in]scale={target_w}:{game_h}:force_original_aspect_ratio=increase:flags=bicubic,"
+                    f"crop={target_w}:{game_h},setsar=1[bot_half];"
                     f"[top_half][bot_half]vstack=inputs=2,setsar=1[stacked];"
                     f"[stacked]drawbox=x=0:y={line_y}:w={target_w}:h={line_thickness}:color=white@0.95:t=fill"
                     f"{sub_filter}"
@@ -605,9 +604,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 return filtergraph
             else:
                 filtergraph = (
-                    f"[0:v]scale={target_w}:{target_h}:force_original_aspect_ratio=increase:flags=lanczos,"
-                    f"crop={target_w}:{target_h},"
-                    f"unsharp=5:5:0.6:5:5:0.0,setsar=1"
+                    f"[0:v]scale={target_w}:{target_h}:force_original_aspect_ratio=increase:flags=bicubic,"
+                    f"crop={target_w}:{target_h},setsar=1"
                     f"{sub_filter}"
                 )
                 return filtergraph
@@ -624,13 +622,12 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
                 filtergraph = (
                     f"[0:v]split=2[gameplay_in][cam_in];"
-                    f"[gameplay_in]scale={target_w}:{half_h}:force_original_aspect_ratio=increase:flags=lanczos,"
-                    f"crop={target_w}:{half_h},"
-                    f"unsharp=5:5:0.5:5:5:0.0,setsar=1[top_half];"
+                    f"[gameplay_in]scale={target_w}:{half_h}:force_original_aspect_ratio=increase:flags=bicubic,"
+                    f"crop={target_w}:{half_h},setsar=1[top_half];"
                     f"[cam_in]crop={cw}:{ch}:{cx}:{cy},"
-                    f"scale={target_w}:{half_h}:force_original_aspect_ratio=increase:flags=lanczos,"
+                    f"scale={target_w}:{half_h}:force_original_aspect_ratio=increase:flags=bicubic,"
                     f"crop={target_w}:{half_h},"
-                    f"unsharp=5:5:0.6:5:5:0.0,setsar=1[bot_half];"
+                    f"unsharp=3:3:0.3,setsar=1[bot_half];"
                     f"[top_half][bot_half]vstack=inputs=2,setsar=1[stacked];"
                     f"[stacked]drawbox=x=0:y={line_y}:w={target_w}:h={line_thickness}:color=white@0.95:t=fill"
                     f"{sub_filter}"
@@ -638,9 +635,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 return filtergraph
             else:
                 filtergraph = (
-                    f"[0:v]scale={target_w}:{target_h}:force_original_aspect_ratio=increase:flags=lanczos,"
-                    f"crop={target_w}:{target_h},"
-                    f"unsharp=5:5:0.6:5:5:0.0,setsar=1"
+                    f"[0:v]scale={target_w}:{target_h}:force_original_aspect_ratio=increase:flags=bicubic,"
+                    f"crop={target_w}:{target_h},setsar=1"
                     f"{sub_filter}"
                 )
                 return filtergraph
